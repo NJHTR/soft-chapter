@@ -8,7 +8,6 @@ import com.douyin.service.CommentService;
 import com.douyin.service.CoverService;
 import com.douyin.service.VideoService;
 import com.douyin.utils.JwtUtil;
-import com.douyin.vo.CommentVO;
 import com.douyin.vo.VideoVO;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -67,7 +66,7 @@ public class VideoController {
 
     /** 视频评论 */
     @GetMapping("/comments")
-    public Result<List<CommentVO>> comments(@RequestParam Long id) {
+    public Result<List<Map<String, Object>>> comments(@RequestParam Long id) {
         return Result.ok(commentService.getVideoComments(id));
     }
 
