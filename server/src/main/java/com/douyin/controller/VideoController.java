@@ -137,7 +137,12 @@ public class VideoController {
         video.setAuthorUserId(userId);
         video.setMusicTitle((String) body.getOrDefault("music_title", "原创"));
         video.setType("recommend-video");
-        videoService.save(video);
+        boolean saved = videoService.save(video);
+        log.info("publish: save result={}, videoId={}", saved, video.getId());
+
+        // 保存后立即查询确认
+        Video verify = videoService.getById(video.getId());
+        log.info("publish: verify video exists={}", verify != null);
 
         try {
             String coverUrl = coverService.extractAndUpload(video.getVideoUrl());
@@ -145,7 +150,9 @@ public class VideoController {
                 video.setCoverUrl(coverUrl);
                 videoService.updateById(video);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.error("publish: cover extraction failed", e);
+        }
 
         return Result.ok(video);
     }

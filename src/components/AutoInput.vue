@@ -5,9 +5,7 @@
     class="auto-input"
     contenteditable
     @input="changeText"
-  >
-    {{ modelValue }}
-  </div>
+  />
 </template>
 
 <script lang="ts">
@@ -20,12 +18,18 @@ export default {
       default: '留下你的精彩评论吧'
     }
   },
-  mounted() {
-    // this.$refs.input.setAttribute("placeholder", "改变")
+  watch: {
+    modelValue(val) {
+      // 仅当外部改变时同步到 DOM, 避免干扰用户输入
+      if (val !== this.$el.innerText) {
+        this.$el.innerText = val || ''
+      }
+    }
   },
-  computed: {},
-  data: function () {
-    return {}
+  mounted() {
+    if (this.modelValue) {
+      this.$el.innerText = this.modelValue
+    }
   },
   methods: {
     changeText() {
