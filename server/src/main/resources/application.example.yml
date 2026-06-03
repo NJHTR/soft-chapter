@@ -1,0 +1,49 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: douyin-server
+  profiles:
+    active: dev
+  servlet:
+    multipart:
+      max-file-size: 500MB
+      max-request-size: 500MB
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: your-email@qq.com
+    password: your-smtp-password
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.ssl.enable: true
+      mail.smtp.starttls.enable: true
+
+# MyBatis-Plus
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: is_delete
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# JWT
+jwt:
+  secret: your-base64-encoded-secret-key
+  expiration: 604800000  # 7 days
+
+# MinIO
+minio:
+  enabled: true
+  endpoint: http://your-minio-host:9000
+  access-key: your-access-key
+  secret-key: your-secret-key
+  bucket-video: douyin-video
+  bucket-image: douyin-image
