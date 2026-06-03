@@ -145,31 +145,39 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     @Override
     public boolean toggleLike(Long userId, Long videoId) {
         log.info("toggleLike called: userId={}, videoId={}", userId, videoId);
-        LambdaQueryWrapper<Like> wrapper = new LambdaQueryWrapper<Like>()
-                .eq(Like::getUserId, userId)
-                .eq(Like::getVideoId, videoId);
-        Like exist = likeMapper.selectOne(wrapper);
-        Video video = getById(videoId);
-        if (video == null) {
-            log.warn("toggleLike: video not found for id={}", videoId);
+        try {
+            LambdaQueryWrapper<Like> wrapper = new LambdaQueryWrapper<Like>()
+                    .eq(Like::getUserId, userId)
+                    .eq(Like::getVideoId, videoId);
+            Like exist = likeMapper.selectOne(wrapper);
+            log.info("toggleLike: exist={}", exist != null);
+            Video video = getById(videoId);
+            if (video == null) {
+                log.warn("toggleLike: video not found for id={}", videoId);
+                return false;
+            }
+            log.info("toggleLike: video found, current likeCount={}", video.getLikeCount());
+            if (exist != null) {
+                log.info("toggleLike: unlike, deleting like record id={}", exist.getId());
+                likeMapper.deleteById(exist.getId());
+                video.setLikeCount(Math.max(0, (video.getLikeCount() != null ? video.getLikeCount() : 0) - 1));
+                updateById(video);
+                return false;
+            }
+            Like like = new Like();
+            like.setUserId(userId);
+            like.setVideoId(videoId);
+            log.info("toggleLike: about to insert like: userId={}, videoId={}", like.getUserId(), like.getVideoId());
+            int rows = likeMapper.insert(like);
+            log.info("toggleLike: insert rows={}, generated id={}", rows, like.getId());
+            video.setLikeCount((video.getLikeCount() != null ? video.getLikeCount() : 0) + 1);
+            boolean updated = updateById(video);
+            log.info("toggleLike: updateById result={}, new likeCount={}", updated, video.getLikeCount());
+            return true;
+        } catch (Exception e) {
+            log.error("toggleLike: exception occurred", e);
             return false;
         }
-        if (exist != null) {
-            log.info("toggleLike: unlike, deleting like record id={}", exist.getId());
-            likeMapper.deleteById(exist.getId());
-            video.setLikeCount(Math.max(0, (video.getLikeCount() != null ? video.getLikeCount() : 0) - 1));
-            updateById(video);
-            return false;
-        }
-        Like like = new Like();
-        like.setUserId(userId);
-        like.setVideoId(videoId);
-        boolean inserted = likeMapper.insert(like) > 0;
-        log.info("toggleLike: insert result={}, like.id={}", inserted, like.getId());
-        video.setLikeCount((video.getLikeCount() != null ? video.getLikeCount() : 0) + 1);
-        updateById(video);
-        log.info("toggleLike: likeCount after update={}", video.getLikeCount());
-        return true;
     }
 
     @Override
