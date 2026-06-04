@@ -34,8 +34,8 @@
                     {{ renderContent(item.content) }}
                   </div>
                   <div class="detail gray" v-else-if="item.user_buried">该评论已折叠</div>
-                  <!-- 语音消息：单行聊天气泡风格 -->
-                  <div class="comment-voice-bubble" v-for="(m, mi) in (item.mediaList || []).filter((x: any) => x.type === 'voice')" :key="'v'+mi" @click.stop="playVoice(m, item)">
+                  <!-- 语音消息：宽度按时长动态变化 -->
+                  <div class="comment-voice-bubble" v-for="(m, mi) in (item.mediaList || []).filter((x: any) => x.type === 'voice')" :key="'v'+mi" @click.stop="playVoice(m, item)" :style="{ width: voiceBubbleWidth(m.duration) }">
                     <img src="../assets/img/icon/message/chat/rss.png" alt="" class="voice-rss-icon" :class="{ playing: m._playing }" />
                     <div class="voice-wave-bars" :class="{ playing: m._playing }">
                       <span class="bar" v-for="j in 4" :key="j" :style="{ animationDelay: (j * 0.15) + 's' }"></span>
@@ -192,8 +192,8 @@
             <div class="right">
               <img src="../assets/img/icon/message/call.png" @click="isCall = !isCall" />
               <img src="../assets/img/icon/message/emoji-black.png" @click="showEmoji = !showEmoji" />
-              <img src="../assets/img/icon/message/camera.png" @click="pickImage" />
-              <img v-if="!recording" src="../assets/img/icon/message/voice-white.png" @click="startRecording" class="voice-btn" />
+              <img src="../assets/img/icon/message/camera.png" class="camera-btn" @click="pickImage" />
+              <img v-if="!recording" src="../assets/img/icon/message/voice-black.png" @click="startRecording" class="voice-btn" />
               <img v-if="comment || mediaList.length" class="send-btn" src="../assets/img/icon/message/up.png" @click="send" />
             </div>
           </div>
@@ -339,7 +339,9 @@ export default {
       replyingTo: null as any,
       replyingToParentId: null as any,
       sending: false,
-      previewUrl: ''
+      previewUrl: '',
+      mediaRecorder: null as any,
+      audioChunks: [] as Blob[]
     }
   },
   mounted() {
@@ -407,19 +409,45 @@ export default {
       this.voiceCancelled = false
     },
     cancelRecording() {
+      if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+        this.mediaRecorder.stop()
+      }
       this.recording = false
       this.recordingActive = false
       clearInterval(this.voiceTimer)
     },
-    voiceStart(e: any) {
+    async voiceStart(e: any) {
       if (!this.recording) return
       this.recordingActive = true
       this.voiceCancelled = false
       this.voiceDuration = 0
-      this.voiceTimer = setInterval(() => {
-        this.voiceDuration++
-        if (this.voiceDuration >= 60) this.voiceEnd(e)
-      }, 1000)
+      this.audioChunks = []
+      // 立即开始录音
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+        this.mediaRecorder.ondataavailable = (ev: any) => { if (ev.data.size > 0) this.audioChunks.push(ev.data) }
+        this.mediaRecorder.onstop = () => {
+          stream.getTracks().forEach((t: any) => t.stop())
+          if (this.voiceCancelled || this.audioChunks.length === 0) return
+          const blob = new Blob(this.audioChunks, { type: 'audio/webm' })
+          uploadVoice(blob).then((res: any) => {
+            if (res.success && res.data?.url) {
+              this.mediaList.push({ type: 'voice', url: res.data.url, duration: this.voiceDuration })
+            } else {
+              _notice('语音上传失败')
+            }
+          }).catch(() => _notice('语音上传失败'))
+        }
+        this.mediaRecorder.start()
+        this.voiceTimer = setInterval(() => {
+          this.voiceDuration++
+          if (this.voiceDuration >= 60) this.voiceEnd(e)
+        }, 1000)
+      } catch {
+        _notice('无法访问麦克风')
+        this.recording = false
+      }
     },
     voiceMove(e: any) {
       if (!this.recordingActive) return
@@ -430,43 +458,19 @@ export default {
         this.voiceCancelled = touch.clientY < rect.top - 80
       }
     },
-    async voiceEnd(e: any) {
+    voiceEnd(e: any) {
       if (!this.recordingActive) return
       this.recordingActive = false
       clearInterval(this.voiceTimer)
-      const dur = this.voiceDuration
-      if (this.voiceCancelled || dur < 1) {
-        this.recording = false
-        return
+      if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+        this.mediaRecorder.stop()
       }
       this.recording = false
-      // 使用 MediaRecorder 录制并上传
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
-        const chunks: Blob[] = []
-        mediaRecorder.ondataavailable = (ev) => { if (ev.data.size > 0) chunks.push(ev.data) }
-        mediaRecorder.onstop = async () => {
-          stream.getTracks().forEach(t => t.stop())
-          const blob = new Blob(chunks, { type: 'audio/webm' })
-          try {
-            const res = await uploadVoice(blob)
-            if (res.success && (res.data as any)?.url) {
-              this.mediaList.push({ type: 'voice', url: (res.data as any).url, duration: dur })
-            } else {
-              _notice('语音上传失败')
-            }
-          } catch { _notice('语音上传失败') }
-        }
-        mediaRecorder.start()
-        // 录够时长或 1 秒后停止
-        setTimeout(() => {
-          if (mediaRecorder.state === 'recording') mediaRecorder.stop()
-        }, dur * 1000 + 200)
-      } catch {
-        _notice('无法访问麦克风')
-        this.recording = false
-      }
+    },
+    // 语音气泡宽度按时长计算：1s→100rem, 60s→280rem
+    voiceBubbleWidth(duration: number) {
+      const dur = Math.max(1, Math.min(60, duration || 1))
+      return Math.round(100 + (dur / 60) * 180) + 'rem'
     },
     // 播放语音
     playVoice(m: any, item: any) {
@@ -559,10 +563,13 @@ export default {
         if (res.success) {
           bus.emit(EVENT_KEY.COMMENT_ADDED, this.videoId)
           // 发送成功后重新加载第一页评论
+          this.loadingMore = false
           this.pageNo = 1
           this.hasMore = true
           this.comments = []
-          this.loadComments()
+          // 强制渲染 Loading，等待 DOM 更新后再请求
+          await this.$nextTick()
+          await this.loadComments()
         } else {
           this.comment = content
           this.mediaList = sentMedia
@@ -815,8 +822,8 @@ export default {
             background: #f2f2f2;
             border-radius: 16rem;
             cursor: pointer;
-            max-width: 240rem;
-            min-width: 120rem;
+            min-width: 100rem;
+            max-width: 280rem;
 
             .voice-rss-icon {
               width: 22rem;
@@ -1152,7 +1159,14 @@ export default {
           .voice-btn {
             width: 22rem;
             height: 22rem;
-            opacity: 0.6;
+            opacity: 0.7;
+          }
+
+          .camera-btn {
+            width: 22rem;
+            height: 22rem;
+            filter: brightness(0);
+            opacity: 0.7;
           }
 
           .send-btn {
