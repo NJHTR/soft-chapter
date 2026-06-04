@@ -37,4 +37,7 @@ public interface UserService extends IService<User> {
 
     /** 获取粉丝列表 */
     java.util.List<com.douyin.vo.UserVO> getFollowers(Long userId);
+
+    /** 搜索用户（按昵称或抖音号） */
+    java.util.List<com.douyin.vo.UserVO> searchUsers(String keyword);
 }
