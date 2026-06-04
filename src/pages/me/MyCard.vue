@@ -16,7 +16,7 @@
       </div>
 
       <span class="name">ZZZZZZZZZZ</span>
-      <span class="notice">抖音扫一扫，立即关注我</span>
+      <span class="notice">SeekFlow扫一扫，立即关注我</span>
     </div>
     <div class="footer">
       <!--      <div class="btn" @click="$router.push('/scan')">-->

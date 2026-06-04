@@ -11,7 +11,7 @@
       </div>
       <div class="option">
         <img src="../../assets/img/icon/qr-code-white.svg" alt="" />
-        <span>我的抖音码</span>
+        <span>我的SeekFlow码</span>
       </div>
       <div class="option">
         <img src="../../assets/img/icon/qr-code-white.svg" alt="" />

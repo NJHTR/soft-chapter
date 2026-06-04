@@ -31,7 +31,7 @@
             >
               <Icon icon="eva:people-outline" />
             </div>
-            <div class="item" @click="_no">
+            <div class="item" @click="$nav('/home/search')">
               <Icon icon="ic:round-search" />
             </div>
             <div class="item" @click.stop="baseActiveIndex = 1">
@@ -80,7 +80,7 @@
                   <p class="name">{{ userinfo.nickname }}</p>
                   <div class="number mb1r">
                     <span class="mr1r" v-if="userinfo.is_private">私密账号</span>
-                    <span>抖音号：{{ _getUserDouyinId({ author: userinfo }) }}</span>
+                    <span>SeekFlow号：{{ _getUserDouyinId({ author: userinfo }) }}</span>
                     <img
                       src="../../assets/img/icon/me/qrcode-gray.png"
                       alt=""
@@ -137,7 +137,7 @@
               <div class="other">
                 <div class="item" @click="_no">
                   <Icon icon="iconamoon:shopping-card-light" />
-                  <span>抖音商城</span>
+                  <span>SeekFlow商城</span>
                 </div>
                 <div class="item" @click="$nav('/me/my-music')">
                   <Icon icon="iconamoon:music-2-light" />
@@ -290,7 +290,7 @@
             </div>
             <div class="li" @click="_no">
               <img src="../../assets/img/icon/newicon/left_menu/gongyi.png" alt="" />
-              <span>抖音公益</span>
+              <span>SeekFlow公益</span>
             </div>
             <div class="li" @click="$nav('/me/right-menu/minor-protection/index')">
               <img src="../../assets/img/icon/newicon/left_menu/umbrella.png" alt="" />

@@ -81,7 +81,7 @@ export default {
                 'http://api.amemv.com/aweme/v1/play/?video_id=v0300fg10000c32rloe8vall584jaad0&line=1&file_id=d6daaa72874445f5a71c2a671ec9abd4&sign=62621a8cd9f89bab74fb31daa201e148&is_play_url=1&source=PackSourceEnum_PUBLISH',
               video_data_size: 8569489,
               duration: 148612,
-              desc: '几分钟看科幻片《徐福》 #我的观影报告  #抖音电影',
+              desc: '几分钟看科幻片《徐福》 #我的观影报告  #SeekFlow电影',
               allow_download: 1,
               allow_duet: 0,
               allow_react: 0,
@@ -105,7 +105,7 @@ export default {
               topics: [
                 {
                   id: '41821c6d-e14f-47f1-a391-f0b1f42afbe1',
-                  name: '抖音电影',
+                  name: 'SeekFlow电影',
                   creator_id: '54884802577',
                   create_time: '1630391758',
                   status: 1

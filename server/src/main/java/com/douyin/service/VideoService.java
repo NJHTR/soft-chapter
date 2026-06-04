@@ -44,4 +44,7 @@ public interface VideoService extends IService<Video> {
 
     /** 获取用户收藏的视频列表 */
     PageDTO<VideoVO> getCollectedVideos(Long userId, int pageNo, int pageSize);
+
+    /** 搜索视频 */
+    List<VideoVO> searchVideos(String keyword);
 }

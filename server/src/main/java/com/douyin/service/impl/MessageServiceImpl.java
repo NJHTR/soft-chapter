@@ -243,6 +243,24 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
                 .eq(Notification::getIsRead, 0));
     }
 
+    @Override
+    public List<UserVO> searchChats(Long userId, String keyword) {
+        if (keyword == null || keyword.trim().isEmpty()) return List.of();
+        List<Long> partnerIds = baseMapper.searchChatPartners(userId, keyword.trim());
+        if (partnerIds.isEmpty()) return List.of();
+        List<User> users = userService.listByIds(partnerIds);
+        return users.stream().map(UserVO::from).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<UserVO> searchNotifications(Long userId, String keyword) {
+        if (keyword == null || keyword.trim().isEmpty()) return List.of();
+        List<Long> senderIds = baseMapper.searchNotifSenders(userId, keyword.trim());
+        if (senderIds.isEmpty()) return List.of();
+        List<User> users = userService.listByIds(senderIds);
+        return users.stream().map(UserVO::from).collect(Collectors.toList());
+    }
+
     private Map<Long, UserVO> getUserVOMap(Set<Long> userIds) {
         if (userIds.isEmpty()) return Map.of();
         List<User> users = userService.listByIds(userIds);

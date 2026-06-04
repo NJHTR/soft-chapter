@@ -43,7 +43,7 @@
             <span v-else>{{ people.name }}</span>
           </div>
           <div class="name f12">
-            抖音id:
+            SeekFlowid:
 
             <span v-if="people.account.indexOf(searchKey) > -1"
               >{{ people.account.substr(0, people.account.indexOf(searchKey))

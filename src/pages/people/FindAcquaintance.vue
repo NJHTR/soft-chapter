@@ -21,7 +21,7 @@
         <div class="mr2r ml2r mt1r">
           <Search
             v-if="!data.isShowRightText"
-            placeholder="搜索用户名字/抖音号"
+            placeholder="搜索用户名字/SeekFlow号"
             :is-show-right-text="false"
             @click="data.isShowRightText = true"
           >
@@ -45,7 +45,7 @@
             <div class="right">
               <div class="notice">
                 <div class="text1">查看通讯录朋友</div>
-                <div class="text2">看看有谁在抖音</div>
+                <div class="text2">看看有谁在SeekFlow</div>
               </div>
               <dy-back direction="right"></dy-back>
             </div>
@@ -68,7 +68,7 @@
         <div class="is-search" v-else>
           <div class="tooltip" v-if="data.searchKey && !data.isSearch">
             <img src="../../assets/img/icon/close.svg" style="width: 10rem" />
-            搜索用户名字/抖音号：<span class="searchKey">{{ data.searchKey }}</span>
+            搜索用户名字/SeekFlow号：<span class="searchKey">{{ data.searchKey }}</span>
           </div>
           <!--          TODO -->
           <template v-if="data.isSearch">
@@ -110,8 +110,8 @@
           </div>
           <span class="title">发现通讯录好友</span>
           <span class="desc">
-            <span>授权通讯录，看看哪些好友在使用抖音。具体使用场景及撤回授权方式详见</span>
-            <span class="link" @click="nav('/service-protocol', { type: '“抖音”用户服务协议' })"
+            <span>授权通讯录，看看哪些好友在使用SeekFlow。具体使用场景及撤回授权方式详见</span>
+            <span class="link" @click="nav('/service-protocol', { type: '“SeekFlow”用户服务协议' })"
               >《隐私政策》</span
             >
           </span>

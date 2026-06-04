@@ -2,11 +2,61 @@
   <div class="Search">
     <div class="header">
       <dy-back mode="light" @click="router.back" class="mr1r"></dy-back>
-      <Search placeholder="搜索用户名字/抖音号" :isShowRightText="true" @notice="_no"></Search>
+      <Search ref="searchRef" v-model="data.searchKey" placeholder="搜索视频/用户" :isShowRightText="true" @notice="doSearch" @search="doSearch" @clear="clearSearch"></Search>
     </div>
     <div class="content">
+      <!-- 搜索建议列表（输入中但未提交搜索） -->
+      <template v-if="data.searchKey && !data.isSearched">
+        <div class="suggestions" v-if="data.suggestions.length">
+          <div
+            class="suggest-item"
+            v-for="(item, index) in data.suggestions"
+            :key="index"
+            @click="data.searchKey = item; doSearch()"
+          >
+            <img class="search-icon" src="../../assets/img/icon/search-gray.png" alt="" />
+            <span class="text">{{ item }}</span>
+          </div>
+        </div>
+        <div class="suggestions" v-else>
+          <div class="suggest-item no-match">暂无匹配建议，按回车搜索</div>
+        </div>
+      </template>
+
+      <!-- 搜索结果 -->
+      <template v-else-if="data.isSearched">
+        <div class="search-tabs">
+          <div class="tab" :class="{ active: data.searchTab === 0 }" @click="data.searchTab = 0">视频</div>
+          <div class="tab" :class="{ active: data.searchTab === 1 }" @click="data.searchTab = 1">用户</div>
+        </div>
+        <!-- 视频结果 -->
+        <div class="video-results" v-if="data.searchTab === 0">
+          <div class="loading-tip" v-if="data.videoLoading">搜索中...</div>
+          <div class="empty-tip" v-else-if="!data.videoResults.length">暂无相关视频</div>
+          <Posters v-else :list="data.videoResults" />
+        </div>
+        <!-- 用户结果 -->
+        <div class="user-results" v-if="data.searchTab === 1">
+          <div class="loading-tip" v-if="data.userLoading">搜索中...</div>
+          <div class="empty-tip" v-else-if="!data.userResults.length">暂无相关用户</div>
+          <div
+            v-for="item in data.userResults"
+            :key="item.id"
+            @click="goChatFromSearch(item)"
+          >
+            <People
+              mode="search"
+              :searchKey="data.searchKey"
+              :people="item"
+            />
+          </div>
+        </div>
+      </template>
+
+      <!-- 默认内容：搜索历史、猜你想搜、排行榜 -->
+      <template v-else>
       <div class="history">
-        <div class="row" :key="index" v-for="(item, index) in lHistory">
+        <div class="row" :key="index" v-for="(item, index) in lHistory" @click="data.searchKey = item; doSearch()">
           <div class="left">
             <img src="../../assets/img/icon/home/time-white.png" alt="" />
             <span> {{ item }}</span>
@@ -14,7 +64,7 @@
           <dy-back
             img="close"
             mode="gray"
-            @click="data.history.splice(index, 1)"
+            @click.stop="deleteHistoryKeyword(item)"
             scale=".7"
           ></dy-back>
         </div>
@@ -45,7 +95,7 @@
       <div class="rank-list">
         <div class="indicator">
           <div class="tab" :class="{ active: data.slideIndex === 0 }" @click="data.slideIndex = 0">
-            抖音热榜
+            SeekFlow热榜
           </div>
           <div class="tab" :class="{ active: data.slideIndex === 1 }" @click="data.slideIndex = 1">
             直播榜
@@ -240,16 +290,21 @@
           </SlideItem>
         </SlideHorizontal>
       </div>
+      </template>
     </div>
   </div>
 </template>
 <script setup lang="ts">
 import Search from '../../components/Search.vue'
+import Posters from '../../components/Posters'
+import People from '../people/components/People.vue'
 import Dom from '../../utils/dom'
 import { computed, nextTick, onMounted, reactive, watch } from 'vue'
 import { _checkImgUrl, _formatNumber, _no, _showSimpleConfirmDialog, sampleSize } from '@/utils'
 import { useRouter } from 'vue-router'
 import { useNav } from '@/utils/hooks/useNav'
+import { searchVideos } from '@/api/videos'
+import { searchUsers, getSearchHistory, saveSearchHistory, clearSearchHistory, deleteSearchHistoryKeyword } from '@/api/user'
 
 defineOptions({
   name: 'SearchPage'
@@ -258,20 +313,17 @@ defineOptions({
 const router = useRouter()
 const nav = useNav()
 const data = reactive({
+  searchKey: '',
+  searchTab: 0,
+  videoLoading: false,
+  userLoading: false,
+  videoResults: [] as any[],
+  userResults: [] as any[],
   isExpand: false,
+  isSearched: false,
+  suggestions: [] as string[],
   adIndex: 0,
-  history: [
-    '历史记录1',
-    '历史记录2',
-    '历史记录3',
-    '历史记录4',
-    '历史记录5',
-    '历史记录6',
-    '历史记录7',
-    '历史记录8',
-    '历史记录9',
-    '历史记录10'
-  ],
+  history: [] as string[],
   guess: [
     { name: '少年透明人', type: -1 },
     { name: '花呗分批次接入征信', type: -1 },
@@ -676,6 +728,36 @@ const slideListHeight = computed(() => {
   }
 })
 
+// 搜索建议词池：从猜你想搜 + 各榜单汇聚
+const suggestionPool = computed(() => {
+  const names = new Set<string>()
+  data.guess.forEach(g => names.add(g.name))
+  data.hotRankList.forEach(h => names.add(h.name))
+  data.liveRankList.forEach(l => names.add(l.name))
+  data.musicRankList.forEach(m => names.add(m.name))
+  return Array.from(names)
+})
+
+watch(
+  () => data.searchKey,
+  (newVal) => {
+    // 搜索后用户又修改了输入，回到建议模式
+    if (data.isSearched) {
+      data.isSearched = false
+      data.videoResults = []
+      data.userResults = []
+    }
+    const kw = (newVal || '').trim().toLowerCase()
+    if (!kw) {
+      data.suggestions = []
+      return
+    }
+    data.suggestions = suggestionPool.value
+      .filter(s => s.toLowerCase().includes(kw))
+      .slice(0, 10)
+  }
+)
+
 watch(
   () => data.slideIndex,
   (newVal) => {
@@ -701,10 +783,118 @@ watch(
   { immediate: true }
 )
 
+async function doSearch() {
+  const kw = data.searchKey.trim()
+  if (!kw) {
+    data.videoResults = []
+    data.userResults = []
+    data.searchTab = 0
+    data.isSearched = false
+    return
+  }
+  data.isSearched = true
+  data.suggestions = []
+  // 视频搜索
+  data.videoLoading = true
+  try {
+    const res = await searchVideos(kw)
+    if (res.success && res.data) {
+      data.videoResults = (res.data as any[]).map(normalizeVideoForList)
+    } else {
+      data.videoResults = []
+    }
+  } catch { data.videoResults = [] }
+  data.videoLoading = false
+
+  // 用户搜索
+  data.userLoading = true
+  try {
+    const res = await searchUsers(kw)
+    if (res.success && res.data) {
+      data.userResults = (res.data as any[]).map(normalizeSearchUser)
+    } else {
+      data.userResults = []
+    }
+  } catch { data.userResults = [] }
+  data.userLoading = false
+
+  // 只有真正提交搜索才记录历史
+  saveHistory(kw)
+}
+
+function clearSearch() {
+  data.videoResults = []
+  data.userResults = []
+  data.searchTab = 0
+  data.isSearched = false
+  data.suggestions = []
+}
+
+function normalizeVideoForList(v: any): any {
+  return {
+    aweme_id: v.aweme_id,
+    desc: v.desc,
+    duration: v.duration,
+    video: {
+      play_addr: v.video?.play_addr,
+      cover: v.video?.cover
+    },
+    author: v.author,
+    statistics: v.statistics,
+    is_loved: v.is_loved,
+    is_collect: v.is_collect,
+    is_attention: v.is_attention
+  }
+}
+
+function normalizeSearchUser(u: any): any {
+  const avatar168 = u.avatar_168x168?.url_list?.[0] || ''
+  return {
+    id: u.uid,
+    uid: u.uid,
+    name: u.nickname || '',
+    avatar: avatar168,
+    account: u.unique_id || '',
+    avatar_168x168: u.avatar_168x168 || { url_list: [avatar168] }
+  }
+}
+
+function goChatFromSearch(item: any) {
+  const uid = item.uid
+  if (uid && !isNaN(Number(uid))) {
+    nav('/people/user-home/' + uid)
+  }
+}
+
 onMounted(() => {
-  data.history = data.history.reverse()
+  loadHistory()
   refresh()
 })
+
+async function loadHistory() {
+  try {
+    const res = await getSearchHistory()
+    if (res.success && Array.isArray(res.data)) data.history = res.data as string[]
+  } catch { /* 未登录或接口不可用时保持空列表 */ }
+}
+
+function saveHistory(keyword: string) {
+  if (!keyword.trim()) return
+  const kw = keyword.trim()
+  data.history = [kw, ...data.history.filter((h) => h !== kw)].slice(0, 50)
+  saveSearchHistory(kw).catch(() => {})
+}
+
+async function deleteHistoryKeyword(keyword: string) {
+  const kw = keyword.trim()
+  data.history = data.history.filter((h) => h !== kw)
+  try { await deleteSearchHistoryKeyword(kw) } catch {}
+}
+
+async function clearHistory() {
+  data.history = []
+  try { await clearSearchHistory() } catch {}
+}
 
 function toggleKey(key: string, i: number) {
   data.selectBrandKey = key
@@ -720,9 +910,7 @@ function toggle() {
   if (data.isExpand) {
     _showSimpleConfirmDialog(
       '是否清空历史记录？',
-      () => {
-        data.history = []
-      },
+      clearHistory,
       null,
       '确定',
       '取消'
@@ -793,6 +981,79 @@ function toggle() {
 
   .content {
     padding-top: 60rem;
+
+    .suggestions {
+      padding: 8rem var(--page-padding);
+      background: var(--main-bg);
+
+      .suggest-item {
+        display: flex;
+        align-items: center;
+        padding: 12rem 0;
+        gap: 12rem;
+        font-size: 15rem;
+        color: white;
+        border-bottom: 0.5px solid rgba(255, 255, 255, 0.06);
+        cursor: pointer;
+
+        &:active {
+          opacity: 0.6;
+        }
+
+        .search-icon {
+          width: 16rem;
+          height: 16rem;
+          opacity: 0.5;
+        }
+
+        .text {
+          flex: 1;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        &.no-match {
+          color: var(--second-text-color);
+          cursor: default;
+        }
+      }
+    }
+
+    .search-tabs {
+      padding: 10rem var(--page-padding);
+      display: flex;
+      gap: 25rem;
+      font-size: 15rem;
+      border-bottom: 1px solid var(--line-color);
+
+      .tab {
+        color: var(--second-text-color);
+        padding-bottom: 8rem;
+        cursor: pointer;
+
+        &.active {
+          color: white;
+          font-weight: bold;
+          border-bottom: 2px solid var(--primary-btn-color);
+        }
+      }
+    }
+
+    .video-results {
+      padding: var(--page-padding);
+    }
+
+    .user-results {
+      padding: 0 var(--page-padding);
+    }
+
+    .loading-tip, .empty-tip {
+      text-align: center;
+      padding: 40rem 0;
+      color: var(--second-text-color);
+      font-size: 14rem;
+    }
 
     .history {
       .row {

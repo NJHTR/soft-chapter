@@ -59,3 +59,7 @@ export function getCommentReplies(commentId: string) {
 export function toggleCollect(videoId: number) {
   return request({ url: `/video/collect/${videoId}`, method: 'post' })
 }
+
+export function searchVideos(keyword: string) {
+  return request({ url: '/video/search', method: 'get', params: { keyword } })
+}

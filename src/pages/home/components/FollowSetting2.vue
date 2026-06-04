@@ -13,7 +13,7 @@
       <div class="dialog-header">
         <div class="title-wrapper">
           <span class="title">{{ currentItem.author.nickname }}</span>
-          <span class="subtitle">抖音号：{{ _getUserDouyinId(currentItem) }}</span>
+          <span class="subtitle">SeekFlow号：{{ _getUserDouyinId(currentItem) }}</span>
         </div>
         <dy-back mode="dark" img="close" direction="right" @click="cancel()"></dy-back>
       </div>

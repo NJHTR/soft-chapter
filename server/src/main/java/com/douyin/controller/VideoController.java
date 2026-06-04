@@ -342,4 +342,10 @@ public class VideoController {
             log.error("[NOTIF] Kafka publish failed: toUser={} type={} error={}", userId, type, e.getMessage(), e);
         }
     }
+
+    /** 搜索视频 */
+    @GetMapping("/search")
+    public Result<List<VideoVO>> search(@RequestParam String keyword) {
+        return Result.ok(videoService.searchVideos(keyword));
+    }
 }

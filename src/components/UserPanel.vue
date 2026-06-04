@@ -72,7 +72,7 @@
               {{ props.currentItem.author.certification }}
             </div>
             <div class="number" v-else>
-              <span>抖音号：{{ _getUserDouyinId(props.currentItem) }}</span>
+              <span>SeekFlow号：{{ _getUserDouyinId(props.currentItem) }}</span>
               <img
                 src="@/assets/img/icon/me/copy.png"
                 alt=""

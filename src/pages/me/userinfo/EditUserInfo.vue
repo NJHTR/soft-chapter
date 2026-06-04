@@ -36,7 +36,7 @@
         </div>
       </div>
       <div class="row" @click="nav('/me/edit-userinfo-item', { type: 2 })">
-        <div class="left">抖音号</div>
+        <div class="left">SeekFlow号</div>
         <div class="right">
           <span>{{ _getUserDouyinId({ author: store.userinfo }) || '点击设置' }}</span>
           <dy-back scale=".8" direction="right"></dy-back>

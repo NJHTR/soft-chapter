@@ -24,7 +24,7 @@
           />
         </template>
         <div class="logo" v-if="!data.isFixed" @click="nav('/home/music-rank-list')">
-          抖音音乐榜
+          SeekFlow音乐榜
         </div>
         <img
           class="share"
@@ -104,7 +104,7 @@
     <ConfirmDialog
       v-model:visible="data.showSharePassword"
       title="你的口令已复制"
-      subtitle="0F.:/ a【风就应该自由要什么归宿】长按复制此条消息，打开抖音搜索，聆听音乐##kwu3VCixHl8##[抖音口令]"
+      subtitle="0F.:/ a【风就应该自由要什么归宿】长按复制此条消息，打开SeekFlow搜索，聆听音乐##kwu3VCixHl8##[SeekFlow口令]"
       :okText="data.okText"
       cancelText="不分享了"
       @ok="data.shareType = -1"
