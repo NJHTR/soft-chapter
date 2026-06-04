@@ -215,6 +215,7 @@ import { useRouter } from 'vue-router'
 import { uploadVideo } from '@/api/user'
 import { publishVideo } from '@/api/videos'
 import { _notice } from '@/utils'
+import bus, { EVENT_KEY } from '@/utils/bus'
 import { useBaseStore } from '@/store/pinia'
 
 defineOptions({ name: 'Publish' })
@@ -510,6 +511,7 @@ async function doUpload() {
     })
     if (pubRes.success) {
       _notice('发布成功！')
+      bus.emit(EVENT_KEY.REFRESH_FEED)
       recordedBlob.value = null
       actualDuration = 0
       showPostEdit.value = false

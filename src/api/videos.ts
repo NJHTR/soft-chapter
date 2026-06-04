@@ -44,6 +44,10 @@ export function recordShare(videoId: number) {
   return request({ url: `/video/share/${videoId}`, method: 'post' })
 }
 
-export function postComment(data: { video_id: number; content: string; parent_id?: number; reply_to_user_id?: number }) {
+export function postComment(data: { video_id: string; content: string; parent_id?: string; reply_to_user_id?: string }) {
   return request({ url: '/video/comments', method: 'post', data })
+}
+
+export function toggleCommentLike(commentId: string) {
+  return request({ url: `/video/comment/like/${commentId}`, method: 'post' })
 }

@@ -5,9 +5,11 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.douyin.common.PageDTO;
+import com.douyin.entity.Follow;
 import com.douyin.entity.Like;
 import com.douyin.entity.User;
 import com.douyin.entity.Video;
+import com.douyin.mapper.FollowMapper;
 import com.douyin.mapper.LikeMapper;
 import com.douyin.mapper.UserMapper;
 import com.douyin.mapper.VideoMapper;
@@ -27,10 +29,12 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
 
     private final UserMapper userMapper;
     private final LikeMapper likeMapper;
+    private final FollowMapper followMapper;
 
-    public VideoServiceImpl(UserMapper userMapper, LikeMapper likeMapper) {
+    public VideoServiceImpl(UserMapper userMapper, LikeMapper likeMapper, FollowMapper followMapper) {
         this.userMapper = userMapper;
         this.likeMapper = likeMapper;
+        this.followMapper = followMapper;
     }
 
     @Override
@@ -133,12 +137,23 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
                     .collect(Collectors.toSet());
         }
 
+        // 批量查询当前用户是否关注了这些作者
         Set<Long> finalLiked = likedVideoIds;
+        Set<Long> followedAuthorIds = Set.of();
+        if (viewerUserId != null && !authorIds.isEmpty()) {
+            followedAuthorIds = followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                            .eq(Follow::getUserId, viewerUserId)
+                            .in(Follow::getFollowId, authorIds))
+                    .stream().map(Follow::getFollowId)
+                    .collect(Collectors.toSet());
+        }
+        Set<Long> finalFollowed = followedAuthorIds;
+
         return videos.stream()
                 .map(v -> VideoVO.from(v,
                         userMap.getOrDefault(v.getAuthorUserId(), null),
                         finalLiked.contains(v.getId()),
-                        false))
+                        finalFollowed.contains(v.getAuthorUserId())))
                 .toList();
     }
 

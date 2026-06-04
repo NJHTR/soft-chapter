@@ -114,6 +114,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     @Override
     @Transactional
     public boolean toggleFollow(Long userId, Long targetUserId) {
+        if (userId.equals(targetUserId)) {
+            throw new RuntimeException("不能关注自己");
+        }
         LambdaQueryWrapper<Follow> wrapper = new LambdaQueryWrapper<Follow>()
                 .eq(Follow::getUserId, userId)
                 .eq(Follow::getFollowId, targetUserId);

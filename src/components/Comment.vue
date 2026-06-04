@@ -39,7 +39,7 @@
                         {{ _time(item.create_time)
                         }}{{ item.ip_location && ` · ${item.ip_location}` }}
                       </div>
-                      <div class="reply-text">回复</div>
+                      <div class="reply-text" @click.stop="startReply(item)">回复</div>
                     </div>
                     <div class="right d-flex" style="gap: 10rem">
                       <div class="love" :class="item.user_digged && 'loved'" @click="loved(item)">
@@ -87,12 +87,12 @@
                             {{ _time(child.create_time)
                             }}{{ child.ip_location && ` · ${item.ip_location}` }}
                           </div>
-                          <div class="reply-text">回复</div>
+                          <div class="reply-text" @click.stop="startReply(child)">回复</div>
                         </div>
                         <div
                           class="love"
                           :class="child.user_digged && 'loved'"
-                          @click="loved(item)"
+                          @click="loved(child)"
                         >
                           <Icon
                             icon="icon-park-solid:like"
@@ -153,6 +153,10 @@
         </transition>
 
         <div class="toolbar">
+          <div class="reply-to" v-if="replyingTo">
+            <span>回复 @{{ replyingTo.nickname }}</span>
+            <Icon icon="ic:round-close" @click="cancelReply" style="font-size: 14rem; cursor: pointer" />
+          </div>
           <div class="input-wrapper">
             <AutoInput v-model="comment" placeholder="善语结善缘，恶言伤人心"></AutoInput>
             <div class="right">
@@ -187,7 +191,8 @@ import {
   sampleSize
 } from '@/utils'
 import { useBaseStore } from '@/store/pinia'
-import { videoComments, postComment } from '@/api/videos'
+import bus, { EVENT_KEY } from '@/utils/bus'
+import { videoComments, postComment, toggleCommentLike } from '@/api/videos'
 
 export default {
   name: 'Comment',
@@ -246,7 +251,8 @@ export default {
       isInput: false,
       isCall: false,
       loadChildren: false,
-      loadChildrenItemCId: -1
+      loadChildrenItemCId: -1,
+      replyingTo: null as any
     }
   },
   mounted() {},
@@ -275,20 +281,38 @@ export default {
     },
     async send() {
       if (!this.comment.trim()) return
-      const baseStore = useBaseStore()
-      const res = await postComment({
+      const payload: any = {
         video_id: this.videoId,
         content: this.comment,
-      })
+      }
+      if (this.replyingTo) {
+        payload.parent_id = this.replyingTo.comment_id
+        payload.reply_to_user_id = this.replyingTo.id
+      }
+      const res = await postComment(payload)
       if (res.success) {
-        // 刷新评论列表
+        bus.emit(EVENT_KEY.COMMENT_ADDED, this.videoId)
         this.comment = ''
+        this.replyingTo = null
         this.isCall = false
         this.resetSelectStatus()
         this.getData()
       } else {
         _notice(res.msg || '评论失败')
       }
+    },
+    startReply(item) {
+      this.replyingTo = item
+      this.comment = ''
+      // 聚焦输入框
+      this.$nextTick(() => {
+        const input = this.$el.querySelector('.auto-input')
+        if (input) input.focus()
+      })
+    },
+    cancelReply() {
+      this.replyingTo = null
+      this.comment = ''
     },
     async getData() {
       let res: any = await videoComments({ id: this.videoId })
@@ -313,13 +337,12 @@ export default {
         this.comment += `@${name} `
       }
     },
-    loved(row) {
-      if (row.isLoved) {
-        row.digg_count--
-      } else {
-        row.digg_count++
+    async loved(row) {
+      const res = await toggleCommentLike(row.comment_id)
+      if (res.success) {
+        row.user_digged = res.data.isLoved
+        row.digg_count = res.data.likeCount
       }
-      row.user_digged = !row.user_digged
     },
     showOptions(row) {
       _showSelectDialog(this.options, (e) => {
@@ -582,10 +605,20 @@ export default {
       }
     }
 
+    .reply-to {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6rem 15rem;
+      background: #f5f5f5;
+      font-size: 12rem;
+      color: #666;
+    }
+
     .toolbar {
       @icon-width: 25rem;
       display: flex;
-      align-items: center;
+      flex-direction: column;
       padding: 10rem 15rem;
       border-top: 1px solid #e2e1e1;
 
