@@ -310,5 +310,6 @@ function showBirthdayDialog() {
       svg { font-size: 40rem; color: var(--second-text-color); }
     }
   }
+
 }
 </style>

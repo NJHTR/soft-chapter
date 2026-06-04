@@ -38,9 +38,10 @@
                 <div class="name">
                   <span>新朋友</span>
                 </div>
-                <div class="detail">xxx 关注了你</div>
+                <div class="detail">新的关注消息</div>
               </div>
               <div class="right">
+                <div class="badge" v-if="data.unreadCounts.follow">{{ data.unreadCounts.follow }}</div>
                 <dy-back class="arrow" mode="gray" img="back" direction="right" />
               </div>
             </div>
@@ -55,34 +56,35 @@
                 <div class="name">
                   <span>互动消息</span>
                 </div>
-                <div class="detail">xxx 近期访问过你的主页</div>
+                <div class="detail">赞、评论、@等互动消息</div>
               </div>
               <div class="right">
+                <div class="badge" v-if="data.unreadCounts.all">{{ data.unreadCounts.all }}</div>
                 <dy-back class="arrow" mode="gray" img="back" direction="right" />
               </div>
             </div>
           </div>
-          <!--      消息-->
-          <div class="message" @click="nav('/message/chat')">
+          <!--      最近的私聊会话-->
+          <div
+            class="message"
+            @click="navToChat(item)"
+            :key="'conv_' + i"
+            v-for="(item, i) in data.conversations.slice(0, 5)"
+          >
             <div class="avatar on-line">
-              <img src="../../assets/img/icon/avatar/2.png" alt="" class="head-image" />
+              <img :src="_checkImgUrl(item.target_user?.avatar_168x168?.url_list?.[0])" alt="" class="head-image" />
             </div>
             <div class="content">
               <div class="left">
                 <div class="name">
-                  <span>{{ store.userinfo.nickname }}</span>
+                  <span>{{ item.target_user?.nickname || '用户' }}</span>
                 </div>
                 <div class="detail">
-                  哈哈哈哈哈哈
-                  <div class="point"></div>
-                  10-10
+                  {{ item.last_message }}
                 </div>
               </div>
               <div class="right">
-                <!--                          <div class="not-read"></div>-->
-                <!--                          <img class="camera" src="../../assets/img/icon/close-white.png" alt="">-->
-                <!--            <img class="arrow" src="../../assets/img/icon/close-white.png" alt="">-->
-                <div class="badge">2</div>
+                <div class="badge" v-if="item.unread_count">{{ item.unread_count }}</div>
               </div>
             </div>
           </div>
@@ -431,10 +433,13 @@ import People from '../people/components/Peoples.vue'
 import Scroll from '../../components/Scroll.vue'
 import { useBaseStore } from '@/store/pinia'
 
-import { computed, onMounted, reactive, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, watch } from 'vue'
 import { useNav } from '@/utils/hooks/useNav.js'
 import { _checkImgUrl, _sleep, cloneDeep } from '@/utils'
 import { useScroll } from '@/utils/hooks/useScroll'
+import { getConversations, getNotificationUnread } from '@/api/message'
+import { connectSocket, disconnectSocket, onSocketMsg } from '@/utils/socket'
+import bus from '@/utils/bus'
 
 defineOptions({
   name: 'Message'
@@ -455,17 +460,65 @@ const data = reactive({
   text: 'AAAAAAAAA、BBBBBBBBBBBBB、CCCCCCCC',
   searchFriends: [],
   recommend: [],
-  moreChat: []
+  moreChat: [],
+  conversations: [] as any[],
+  unreadCounts: {} as Record<string, number>
 })
 
+let unsubConv: (() => void) | null = null
+let unsubNotify: (() => void) | null = null
+
 onMounted(() => {
-  console.log('create')
   data.recommend = cloneDeep(store.friends.all)
   data.recommend.map((v) => {
     v.type = -2
   })
   data.moreChat = cloneDeep(store.friends.all.slice(0, 3))
+  loadConversations()
+  loadUnreadCounts()
+  // 建立 WebSocket，实时更新会话列表和未读数
+  connectSocket()
+  unsubConv = onSocketMsg('chat', () => loadConversations())
+  unsubNotify = onSocketMsg('notification', () => loadUnreadCounts())
+  // bus 事件兜底
+  bus.on('CHAT_MESSAGE', loadConversations)
+  bus.on('NEW_NOTIFICATION', loadUnreadCounts)
 })
+
+onUnmounted(() => {
+  if (unsubConv) { unsubConv(); unsubConv = null }
+  if (unsubNotify) { unsubNotify(); unsubNotify = null }
+  bus.off('CHAT_MESSAGE', loadConversations)
+  bus.off('NEW_NOTIFICATION', loadUnreadCounts)
+})
+
+async function loadConversations() {
+  try {
+    const res = await getConversations()
+    if (res.success && res.data) {
+      data.conversations = res.data
+    }
+  } catch { /* ignore */ }
+}
+
+async function loadUnreadCounts() {
+  try {
+    const res = await getNotificationUnread()
+    if (res.success && res.data) {
+      data.unreadCounts = res.data
+    }
+  } catch { /* ignore */ }
+}
+
+function navToChat(item: any) {
+  if (item.target_user) {
+    nav('/message/chat', {
+      user_id: item.target_user.uid,
+      name: item.target_user.nickname,
+      avatar: item.target_user.avatar_168x168?.url_list?.[0] || ''
+    })
+  }
+}
 
 const selectFriends = computed(() => {
   return store.friends.all.filter((v) => v.select).length

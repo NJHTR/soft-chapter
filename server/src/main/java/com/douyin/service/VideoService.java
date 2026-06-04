@@ -38,4 +38,10 @@ public interface VideoService extends IService<Video> {
 
     /** 记录分享, 返回分享后计数 */
     long recordShare(Long videoId);
+
+    /** 切换收藏状态, 返回: true=已收藏 false=已取消 */
+    boolean toggleCollect(Long userId, Long videoId);
+
+    /** 获取用户收藏的视频列表 */
+    PageDTO<VideoVO> getCollectedVideos(Long userId, int pageNo, int pageSize);
 }

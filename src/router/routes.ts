@@ -169,6 +169,10 @@ const routes: RouteRecordRaw[] = [
     path: '/people/follow-and-fans',
     component: () => import('@/pages/people/FollowAndFans.vue')
   },
+  {
+    path: '/people/user-home/:uid',
+    component: () => import('@/pages/people/UserHome.vue')
+  },
 
   // {path: '/service-protocol', component: ServiceProtocol},
   {

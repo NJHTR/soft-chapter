@@ -65,6 +65,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             User u = userMap.get(c.getUserId());
             item.put("id", String.valueOf(c.getId()));
             item.put("comment_id", String.valueOf(c.getId()));
+            item.put("user_id", String.valueOf(c.getUserId()));
             item.put("content", c.getContent());
             item.put("digg_count", c.getLikeCount() != null ? c.getLikeCount() : 0);
             item.put("user_digged", finalLiked.contains(c.getId()));
@@ -82,48 +83,60 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             }
             item.put("showChildren", false);
             item.put("children", List.of());
-            // 子评论列表 — 按需加载
-            List<Comment> replies = list(new LambdaQueryWrapper<Comment>()
-                    .eq(Comment::getParentId, c.getId())
-                    .orderByAsc(Comment::getCreateTime));
-            if (!replies.isEmpty()) {
-                List<Long> replyUserIds = replies.stream().map(Comment::getUserId).distinct().toList();
-                List<User> replyUsers = userMapper.selectBatchIds(replyUserIds);
-                Map<Long, User> replyUserMap = replyUsers.stream()
-                        .collect(Collectors.toMap(User::getUid, ru -> ru));
-                // 批量查询子评论点赞
-                Set<Long> replyLikedIds = Set.of();
-                if (viewerUserId != null) {
-                    List<Long> replyIds = replies.stream().map(Comment::getId).toList();
-                    replyLikedIds = commentLikeMapper.selectList(new LambdaQueryWrapper<CommentLike>()
-                                    .eq(CommentLike::getUserId, viewerUserId)
-                                    .in(CommentLike::getCommentId, replyIds))
-                            .stream().map(CommentLike::getCommentId)
-                            .collect(Collectors.toSet());
-                }
-                Set<Long> finalReplyLiked = replyLikedIds;
-                List<Map<String, Object>> childList = replies.stream().map(r -> {
-                    Map<String, Object> child = new LinkedHashMap<>();
-                    User ru = replyUserMap.get(r.getUserId());
-                    child.put("id", String.valueOf(r.getId()));
-                    child.put("comment_id", String.valueOf(r.getId()));
-                    child.put("content", r.getContent());
-                    child.put("digg_count", r.getLikeCount() != null ? r.getLikeCount() : 0);
-                    child.put("user_digged", finalReplyLiked.contains(r.getId()));
-                    child.put("user_buried", false);
-                    child.put("sub_comment_count", 0);
-                    child.put("create_time", r.getCreateTime() != null
-                            ? r.getCreateTime().atZone(ZoneId.of("Asia/Shanghai")).toEpochSecond() * 1000 : 0);
-                    child.put("ip_location", "");
-                    child.put("nickname", ru != null && ru.getNickname() != null ? ru.getNickname() : "");
-                    child.put("avatar", ru != null && ru.getAvatar168Url() != null ? ru.getAvatar168Url() : "");
-                    child.put("reply_to_nickname", r.getReplyToUserId() != null && replyUserMap.containsKey(r.getReplyToUserId())
-                            ? replyUserMap.get(r.getReplyToUserId()).getNickname() : "");
-                    return child;
-                }).toList();
-                item.put("children", childList);
-            }
             return item;
+        }).toList();
+    }
+
+    @Override
+    public List<Map<String, Object>> getCommentReplies(Long commentId, Long viewerUserId) {
+        List<Comment> replies = list(new LambdaQueryWrapper<Comment>()
+                .eq(Comment::getParentId, commentId)
+                .orderByAsc(Comment::getCreateTime));
+
+        if (replies.isEmpty()) return List.of();
+
+        List<Long> replyUserIds = new java.util.ArrayList<>();
+        for (Comment r : replies) {
+            replyUserIds.add(r.getUserId());
+            if (r.getReplyToUserId() != null && r.getReplyToUserId() != 0) {
+                replyUserIds.add(r.getReplyToUserId());
+            }
+        }
+        replyUserIds = replyUserIds.stream().distinct().toList();
+        List<User> replyUsers = userMapper.selectBatchIds(replyUserIds);
+        Map<Long, User> replyUserMap = replyUsers.stream()
+                .collect(Collectors.toMap(User::getUid, ru -> ru));
+
+        Set<Long> replyLikedIds = Set.of();
+        if (viewerUserId != null) {
+            List<Long> replyIds = replies.stream().map(Comment::getId).toList();
+            replyLikedIds = commentLikeMapper.selectList(new LambdaQueryWrapper<CommentLike>()
+                            .eq(CommentLike::getUserId, viewerUserId)
+                            .in(CommentLike::getCommentId, replyIds))
+                    .stream().map(CommentLike::getCommentId)
+                    .collect(Collectors.toSet());
+        }
+        Set<Long> finalReplyLiked = replyLikedIds;
+
+        return replies.stream().map(r -> {
+            Map<String, Object> child = new LinkedHashMap<>();
+            User ru = replyUserMap.get(r.getUserId());
+            child.put("id", String.valueOf(r.getId()));
+            child.put("comment_id", String.valueOf(r.getId()));
+            child.put("user_id", String.valueOf(r.getUserId()));
+            child.put("content", r.getContent());
+            child.put("digg_count", r.getLikeCount() != null ? r.getLikeCount() : 0);
+            child.put("user_digged", finalReplyLiked.contains(r.getId()));
+            child.put("user_buried", false);
+            child.put("sub_comment_count", 0);
+            child.put("create_time", r.getCreateTime() != null
+                    ? r.getCreateTime().atZone(ZoneId.of("Asia/Shanghai")).toEpochSecond() * 1000 : 0);
+            child.put("ip_location", "");
+            child.put("nickname", ru != null && ru.getNickname() != null ? ru.getNickname() : "");
+            child.put("avatar", ru != null && ru.getAvatar168Url() != null ? ru.getAvatar168Url() : "");
+            child.put("reply_to_nickname", r.getReplyToUserId() != null && replyUserMap.containsKey(r.getReplyToUserId())
+                    ? replyUserMap.get(r.getReplyToUserId()).getNickname() : "");
+            return child;
         }).toList();
     }
 

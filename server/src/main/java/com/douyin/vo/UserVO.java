@@ -53,6 +53,12 @@ public class UserVO {
     @JsonProperty("video_count")
     private Integer videoCount;
 
+    @JsonProperty("user_age")
+    private Integer userAge;
+
+    @JsonProperty("is_followed")
+    private Boolean isFollowed;
+
     @Data
     public static class Avatar {
         @JsonProperty("url_list")
@@ -64,6 +70,9 @@ public class UserVO {
             return a;
         }
     }
+
+    private static final String DEFAULT_AVATAR = "/images/default-avatar.svg";
+    private static final String DEFAULT_COVER = "/images/default-cover.svg";
 
     public static UserVO from(User user) {
         if (user == null) return null;
@@ -77,14 +86,34 @@ public class UserVO {
         vo.birthday = user.getBirthday();
         vo.province = user.getProvince();
         vo.city = user.getCity();
-        vo.avatar168 = Avatar.of(user.getAvatar168Url());
-        vo.avatar300 = Avatar.of(user.getAvatar300Url());
-        vo.coverUrl = List.of(Avatar.of(user.getCoverUrl()));
-        vo.whiteCoverUrl = List.of(Avatar.of(user.getCoverUrl()));
+        String avatar168 = user.getAvatar168Url();
+        String avatar300 = user.getAvatar300Url();
+        String cover = user.getCoverUrl();
+        if (avatar168 == null || avatar168.isEmpty()) avatar168 = DEFAULT_AVATAR;
+        if (avatar300 == null || avatar300.isEmpty()) avatar300 = DEFAULT_AVATAR;
+        if (cover == null || cover.isEmpty()) cover = DEFAULT_COVER;
+        vo.avatar168 = Avatar.of(avatar168);
+        vo.avatar300 = Avatar.of(avatar300);
+        vo.coverUrl = List.of(Avatar.of(cover));
+        vo.whiteCoverUrl = List.of(Avatar.of(cover));
         vo.followerCount = user.getFollowerCount();
         vo.followingCount = user.getFollowingCount();
         vo.totalFavorited = user.getTotalFavorited();
         vo.videoCount = user.getVideoCount();
+        vo.userAge = calcAge(user.getBirthday());
         return vo;
+    }
+
+    private static Integer calcAge(String birthday) {
+        if (birthday == null || birthday.isEmpty()) return -1;
+        try {
+            java.time.LocalDate birth = java.time.LocalDate.parse(birthday);
+            java.time.LocalDate now = java.time.LocalDate.now();
+            int age = now.getYear() - birth.getYear();
+            if (now.getDayOfYear() < birth.getDayOfYear()) age--;
+            return Math.max(age, 0);
+        } catch (Exception e) {
+            return -1;
+        }
     }
 }

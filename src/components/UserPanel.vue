@@ -104,7 +104,7 @@
           <div class="text" v-html="props.currentItem.author.signature"></div>
         </div>
         <div class="more">
-          <div class="age item" v-if="props.currentItem.author.user_age !== -1">
+          <div class="age item" v-if="props.currentItem.author.user_age > 0">
             <img
               v-if="props.currentItem.author.gender == 1"
               src="@/assets/img/icon/me/man.png"
@@ -153,8 +153,7 @@
             class="follow-wrapper"
             :class="props.currentItem.author.follow_status ? 'follow-wrapper-followed' : ''"
           >
-            <!--            eslint-disable-next-line vue/no-mutating-props-->
-            <div class="no-follow" @click="props.currentItem.author.follow_status = 1">
+            <div class="no-follow" @click="followButton">
               <img src="@/assets/img/icon/add-white.png" alt="" />
               <span>关注</span>
             </div>
@@ -222,7 +221,11 @@
           v-if="props.currentItem.aweme_list.length"
           :list="props.currentItem.aweme_list"
         ></Posters>
-        <Loading :isFullScreen="false" v-else />
+        <Loading v-else-if="!state.videoLoaded" :isFullScreen="false" />
+        <div class="no-videos" v-else>
+          <img src="@/assets/img/icon/no-result.png" alt="" />
+          <span>暂无作品</span>
+        </div>
       </div>
     </div>
   </div>
@@ -243,7 +246,7 @@ import Posters from '@/components/Posters.vue'
 import { DefaultUser } from '@/utils/const_var'
 import Loading from '@/components/Loading.vue'
 import { useBaseStore } from '@/store/pinia'
-import { userVideoList } from '@/api/user'
+import { panel, toggleFollowUser, userVideoList } from '@/api/user'
 
 const $nav = useNav()
 const baseStore = useBaseStore()
@@ -294,24 +297,40 @@ const state = reactive({
   canMoveMaxHeight: document.body.clientHeight / 4,
   //是否自动放大Cover
   isAutoScaleCover: false,
-  uid: null
+  uid: null,
+  videoLoaded: false
 })
 
 watch(
   () => props.active,
   async (newVal) => {
     if (newVal && !props.currentItem.aweme_list.length) {
-      // console.log('props.currentItem',props.currentItem)
-      let id = _getUserDouyinId(props.currentItem)
+      let id = props.currentItem.author.uid || _getUserDouyinId(props.currentItem)
+      // 先刷新用户信息（粉丝数、关注数等最新数据）
+      const infoRes = await panel({ uid: id })
+      if (infoRes.success) {
+        const u = infoRes.data
+        props.currentItem.author.mplatform_followers_count = u.follower_count || 0
+        props.currentItem.author.following_count = u.following_count || 0
+        props.currentItem.author.total_favorited = u.total_favorited || 0
+        props.currentItem.author.follow_status = u.is_followed ? 1 : 0
+        props.currentItem.author.user_age = u.user_age ?? -1
+        emit('update:currentItem', props.currentItem)
+      }
+      // 再加载视频列表
       let r: any = await userVideoList({ id })
       if (r.success) {
         setTimeout(() => {
-          r.data = r.data.map((a) => {
+          const list = Array.isArray(r.data) ? r.data : (r.data.list || [])
+          list.forEach((a: any) => {
             a.author = props.currentItem.author
-            return a
           })
-          emit('update:currentItem', Object.assign(props.currentItem, { aweme_list: r.data }))
+          props.currentItem.author.aweme_count = r.data.total != null ? r.data.total : list.length
+          emit('update:currentItem', Object.assign(props.currentItem, { aweme_list: list }))
+          state.videoLoaded = true
         }, 300)
+      } else {
+        state.videoLoaded = true
       }
     }
   }
@@ -322,6 +341,7 @@ watch(
   async () => {
     if (props.currentItem.author.uid !== state.uid) {
       state.uid = props.currentItem.author.uid
+      state.videoLoaded = false
       emit('update:currentItem', Object.assign(props.currentItem, { aweme_list: [] }))
     }
   }
@@ -331,9 +351,25 @@ function stop(e) {
   e.stopPropagation()
 }
 
-function followButton() {}
+async function followButton() {
+  const uid = props.currentItem.author.uid
+  if (!uid) return
+  const res = await toggleFollowUser(uid)
+  if (res.success) {
+    props.currentItem.author.follow_status = res.data.isAttention ? 1 : 0
+    emit('update:currentItem', props.currentItem)
+  }
+}
 
-function cancelFollow() {}
+async function cancelFollow() {
+  const uid = props.currentItem.author.uid
+  if (!uid) return
+  const res = await toggleFollowUser(uid)
+  if (res.success) {
+    props.currentItem.author.follow_status = res.data.isAttention ? 1 : 0
+    emit('update:currentItem', props.currentItem)
+  }
+}
 
 defineExpose({ cancelFollow })
 
@@ -974,6 +1010,22 @@ function touchEnd() {
         margin-left: 5rem;
         width: 12rem;
         height: 12rem;
+      }
+    }
+
+    .no-videos {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 80rem;
+      color: var(--second-text-color);
+      font-size: 14rem;
+
+      img {
+        width: 80rem;
+        height: 80rem;
+        margin-bottom: 20rem;
+        opacity: 0.4;
       }
     }
   }

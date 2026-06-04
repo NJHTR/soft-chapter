@@ -31,4 +31,10 @@ public interface UserService extends IService<User> {
 
     /** 切换关注状态, 返回: true=已关注 false=已取消 */
     boolean toggleFollow(Long userId, Long targetUserId);
+
+    /** 获取关注列表 */
+    java.util.List<com.douyin.vo.UserVO> getFollowings(Long userId);
+
+    /** 获取粉丝列表 */
+    java.util.List<com.douyin.vo.UserVO> getFollowers(Long userId);
 }

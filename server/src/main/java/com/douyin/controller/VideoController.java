@@ -3,11 +3,16 @@ package com.douyin.controller;
 import com.douyin.common.PageDTO;
 import com.douyin.common.Result;
 import com.douyin.entity.Comment;
+import com.douyin.entity.User;
 import com.douyin.entity.Video;
+import com.douyin.kafka.MessagePublisher;
+import com.douyin.kafka.dto.NotificationEvent;
+import com.douyin.mapper.UserMapper;
 import com.douyin.service.CommentService;
 import com.douyin.service.CoverService;
 import com.douyin.service.VideoService;
 import com.douyin.utils.JwtUtil;
+import com.douyin.vo.NotificationVO;
 import com.douyin.vo.VideoVO;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -26,13 +31,18 @@ public class VideoController {
     private final CommentService commentService;
     private final CoverService coverService;
     private final JwtUtil jwtUtil;
+    private final MessagePublisher messagePublisher;
+    private final UserMapper userMapper;
 
     public VideoController(VideoService videoService, CommentService commentService,
-                           CoverService coverService, JwtUtil jwtUtil) {
+                           CoverService coverService, JwtUtil jwtUtil,
+                           MessagePublisher messagePublisher, UserMapper userMapper) {
         this.videoService = videoService;
         this.commentService = commentService;
         this.coverService = coverService;
         this.jwtUtil = jwtUtil;
+        this.messagePublisher = messagePublisher;
+        this.userMapper = userMapper;
     }
 
     /** 从请求头提取当前登录用户ID, 未登录返回 null */
@@ -79,6 +89,13 @@ public class VideoController {
         boolean liked = commentService.toggleCommentLike(userId, commentId);
         Comment c = commentService.getById(commentId);
         return Result.ok(Map.of("isLoved", liked, "likeCount", c != null ? c.getLikeCount() : 0));
+    }
+
+    /** 获取子评论 */
+    @GetMapping("/comment/replies/{commentId}")
+    public Result<List<Map<String, Object>>> getReplies(@PathVariable Long commentId, HttpServletRequest req) {
+        Long viewerUserId = getLoginUserId(req);
+        return Result.ok(commentService.getCommentReplies(commentId, viewerUserId));
     }
 
     /** 我的视频 */
@@ -177,6 +194,14 @@ public class VideoController {
         Video video = videoService.getById(videoId);
         log.info("toggleLike response: liked={}, likeCount={}, videoExists={}", liked,
                 video != null ? video.getLikeCount() : null, video != null);
+
+        // 点赞通知 → Kafka
+        if (liked && video != null && !userId.equals(video.getAuthorUserId())) {
+            messagePublisher.publishNotification(new NotificationEvent(
+                    video.getAuthorUserId(), userId, NotificationVO.TYPE_LIKE,
+                    videoId, null, "赞了你的作品", System.currentTimeMillis()));
+        }
+
         return Result.ok(Map.of("isLoved", liked, "likeCount", video != null ? video.getLikeCount() : 0));
     }
 
@@ -187,12 +212,96 @@ public class VideoController {
         return Result.ok(Map.of("shareCount", count));
     }
 
+    /** 切换收藏 */
+    @PostMapping("/collect/{videoId}")
+    public Result<Map<String, Object>> toggleCollect(@PathVariable Long videoId, HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        boolean collected = videoService.toggleCollect(userId, videoId);
+        Video video = videoService.getById(videoId);
+
+        // 收藏通知 → Kafka
+        if (collected && video != null && !userId.equals(video.getAuthorUserId())) {
+            messagePublisher.publishNotification(new NotificationEvent(
+                    video.getAuthorUserId(), userId, NotificationVO.TYPE_COLLECT,
+                    videoId, null, "收藏了你的作品", System.currentTimeMillis()));
+        }
+
+        return Result.ok(Map.of("isCollected", collected, "collectCount",
+                video != null ? video.getCollectCount() : 0));
+    }
+
     /** 发表评论 */
     @PostMapping("/comments")
     public Result<Comment> addComment(@RequestBody Comment comment, HttpServletRequest req) {
         Long userId = getLoginUserId(req);
         if (userId == null) return Result.fail("请先登录");
         comment.setUserId(userId);
-        return Result.ok(commentService.addComment(comment));
+        Comment saved = commentService.addComment(comment);
+        Video video = videoService.getById(comment.getVideoId());
+
+        // 评论通知 → 视频作者
+        if (video != null && !userId.equals(video.getAuthorUserId())) {
+            messagePublisher.publishNotification(new NotificationEvent(
+                    video.getAuthorUserId(), userId, NotificationVO.TYPE_COMMENT,
+                    comment.getVideoId(), saved.getId(),
+                    comment.getContent() != null ? comment.getContent() : "评论了你的作品",
+                    System.currentTimeMillis()));
+        }
+
+        // 回复通知 → 被回复的评论作者（如果是回复，且不是回复自己或视频作者）
+        if (comment.getParentId() != null && comment.getParentId() != 0) {
+            Comment parentComment = commentService.getById(comment.getParentId());
+            if (parentComment != null
+                    && !parentComment.getUserId().equals(userId)
+                    && (video == null || !parentComment.getUserId().equals(video.getAuthorUserId()))) {
+                messagePublisher.publishNotification(new NotificationEvent(
+                        parentComment.getUserId(), userId, NotificationVO.TYPE_COMMENT,
+                        comment.getVideoId(), saved.getId(),
+                        "回复了你的评论",
+                        System.currentTimeMillis()));
+            }
+        }
+
+        // @提及通知 → Kafka（支持两种格式: @[uid:name] 精确指定 / @name 昵称匹配）
+        String content = comment.getContent();
+        if (content != null && content.contains("@")) {
+            java.util.regex.Pattern mentionPattern = java.util.regex.Pattern
+                    .compile("@(?:\\[([^\\]:]+):([^\\]]+)\\]|([^@\\s]+))");
+            java.util.regex.Matcher matcher = mentionPattern.matcher(content);
+            while (matcher.find()) {
+                String explicitId = matcher.group(1);  // @[uid:name] 中的 uid
+                String displayName = matcher.group(2);  // @[uid:name] 中的 name
+                String nickname = matcher.group(3);     // @name 旧格式
+
+                User mentionedUser = null;
+                if (explicitId != null) {
+                    // 新格式 @[uid:name] — 直接用ID查找，精准无歧义
+                    try {
+                        mentionedUser = userMapper.selectById(Long.parseLong(explicitId));
+                    } catch (NumberFormatException e) {
+                        mentionedUser = userMapper.selectOne(
+                                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<User>()
+                                        .eq(User::getNickname, displayName != null ? displayName : explicitId));
+                    }
+                } else if (nickname != null) {
+                    // 旧格式 @name — 昵称匹配（向后兼容）
+                    mentionedUser = userMapper.selectOne(
+                            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<User>()
+                                    .eq(User::getNickname, nickname));
+                }
+
+                if (mentionedUser != null
+                        && !mentionedUser.getUid().equals(userId)
+                        && (video == null || !mentionedUser.getUid().equals(video.getAuthorUserId()))) {
+                    messagePublisher.publishNotification(new NotificationEvent(
+                            mentionedUser.getUid(), userId, NotificationVO.TYPE_AT,
+                            comment.getVideoId(), saved.getId(), "在评论中@了你",
+                            System.currentTimeMillis()));
+                }
+            }
+        }
+
+        return Result.ok(saved);
     }
 }

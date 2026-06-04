@@ -98,3 +98,13 @@ CREATE TABLE t_like (
     create_time DATETIME  DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_user_video (user_id, video_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='点赞记录表';
+
+-- ============ 收藏记录表 ============
+DROP TABLE IF EXISTS t_video_collect;
+CREATE TABLE t_video_collect (
+    id          BIGINT    NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id     BIGINT    NOT NULL COMMENT '用户ID',
+    video_id    BIGINT    NOT NULL COMMENT '视频ID',
+    create_time DATETIME  DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_collect (user_id, video_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='收藏记录表';

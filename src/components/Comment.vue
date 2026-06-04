@@ -31,7 +31,7 @@
                 <div class="comment-container">
                   <div class="name">{{ item.nickname }}</div>
                   <div class="detail" :class="item.user_buried && 'gray'">
-                    {{ item.user_buried ? '该评论已折叠' : item.content }}
+                    {{ item.user_buried ? '该评论已折叠' : renderContent(item.content) }}
                   </div>
                   <div class="time-wrapper">
                     <div class="left">
@@ -71,23 +71,24 @@
             <div class="replies" v-if="Number(item.sub_comment_count)">
               <template v-if="item.showChildren">
                 <div class="reply" :key="i" v-for="(child, i) in item.children">
-                  <!--                 v-longpress="e => showOptions(child)"-->
                   <div class="content">
                     <img :src="_checkImgUrl(child.avatar)" alt="" class="head-image" />
                     <div class="comment-container">
                       <div class="name">
                         {{ child.nickname }}
-                        <div class="reply-user" v-if="child.replay"></div>
-                        {{ child.replay }}
+                        <template v-if="child.reply_to_nickname">
+                          <div class="reply-user"></div>
+                          <span class="reply-to-name">@{{ child.reply_to_nickname }}</span>
+                        </template>
                       </div>
-                      <div class="detail">{{ child.content }}</div>
+                      <div class="detail">{{ renderContent(child.content) }}</div>
                       <div class="time-wrapper">
                         <div class="left">
                           <div class="time">
                             {{ _time(child.create_time)
                             }}{{ child.ip_location && ` · ${item.ip_location}` }}
                           </div>
-                          <div class="reply-text" @click.stop="startReply(child)">回复</div>
+                          <div class="reply-text" @click.stop="startReply(child, item.comment_id)">回复</div>
                         </div>
                         <div
                           class="love"
@@ -112,16 +113,14 @@
                 </div>
               </template>
               <Loading
-                v-if="loadChildren && loadChildrenItemCId === item.comment_id"
+                v-if="item._loadingChildren"
                 :type="'small'"
                 :is-full-screen="false"
               />
               <div class="more" v-else @click="handShowChildren(item)">
                 <div class="gang"></div>
-                <span
-                  >展开{{ item.showChildren ? '更多' : `${item.sub_comment_count}条` }}回复</span
-                >
-                <Icon icon="ep:arrow-down-bold" />
+                <span>{{ item.showChildren ? '收起' : `展开${item.sub_comment_count}条` }}回复</span>
+                <Icon :icon="item.showChildren ? 'ep:arrow-up-bold' : 'ep:arrow-down-bold'" />
               </div>
             </div>
           </div>
@@ -162,9 +161,9 @@
             <div class="right">
               <img src="../assets/img/icon/message/call.png" @click="isCall = !isCall" />
               <img src="../assets/img/icon/message/emoji-black.png" @click="_no" />
+              <img v-if="comment" class="send-btn" src="../assets/img/icon/message/up.png" @click="send" />
             </div>
           </div>
-          <img v-if="comment" src="../assets/img/icon/message/up.png" @click="send" />
         </div>
       </div>
       <ConfirmDialog title="私信给" ok-text="发送" v-model:visible="showPrivateChat">
@@ -186,13 +185,11 @@ import {
   _formatNumber,
   _no,
   _showSelectDialog,
-  _sleep,
-  _time,
-  sampleSize
+  _time
 } from '@/utils'
 import { useBaseStore } from '@/store/pinia'
 import bus, { EVENT_KEY } from '@/utils/bus'
-import { videoComments, postComment, toggleCommentLike } from '@/api/videos'
+import { videoComments, postComment, toggleCommentLike, getCommentReplies } from '@/api/videos'
 
 export default {
   name: 'Comment',
@@ -250,9 +247,9 @@ export default {
       showPrivateChat: false,
       isInput: false,
       isCall: false,
-      loadChildren: false,
-      loadChildrenItemCId: -1,
-      replyingTo: null as any
+      replyingTo: null as any,
+      replyingToParentId: null as any,
+      sending: false
     }
   },
   mounted() {},
@@ -261,6 +258,11 @@ export default {
     _time,
     _formatNumber,
     _checkImgUrl,
+    // 渲染评论内容，将 @[id:name] 格式转为显示用的 @name
+    renderContent(content) {
+      if (!content) return ''
+      return content.replace(/@\[([^\]:]+):([^\]]+)\]/g, '@$2')
+    },
     // 评论发送成功后调用此方法
     resetSelectStatus() {
       this.friends.all.forEach((item) => {
@@ -268,26 +270,33 @@ export default {
       })
     },
     async handShowChildren(item) {
-      this.loadChildrenItemCId = item.comment_id
-      this.loadChildren = true
-      await _sleep(500)
-      this.loadChildren = false
       if (item.showChildren) {
-        item.children = item.children.concat(sampleSize(this.comments, 10))
-      } else {
-        item.children = sampleSize(this.comments, 3)
-        item.showChildren = true
+        item.showChildren = false
+        return
       }
+      // 首次展开时从后端加载子评论
+      if (!item.children || item.children.length === 0) {
+        item._loadingChildren = true
+        const res = await getCommentReplies(item.comment_id)
+        item._loadingChildren = false
+        if (res.success) {
+          item.children = res.data
+        }
+      }
+      item.showChildren = true
     },
     async send() {
+      if (this.sending) return
       if (!this.comment.trim()) return
+      this.sending = true
       const payload: any = {
         video_id: this.videoId,
         content: this.comment,
       }
       if (this.replyingTo) {
-        payload.parent_id = this.replyingTo.comment_id
-        payload.reply_to_user_id = this.replyingTo.id
+        // 子评论的回复挂到主评论下（同级），reply_to_user_id 指向被回复的用户
+        payload.parent_id = this.replyingToParentId || this.replyingTo.comment_id
+        payload.reply_to_user_id = this.replyingTo.user_id || this.replyingTo.id
       }
       const res = await postComment(payload)
       if (res.success) {
@@ -300,11 +309,12 @@ export default {
       } else {
         _notice(res.msg || '评论失败')
       }
+      this.sending = false
     },
-    startReply(item) {
-      this.replyingTo = item
+    startReply(comment, parentCommentId) {
+      this.replyingTo = comment
+      this.replyingToParentId = parentCommentId || null
       this.comment = ''
-      // 聚焦输入框
       this.$nextTick(() => {
         const input = this.$el.querySelector('.auto-input')
         if (input) input.focus()
@@ -312,6 +322,7 @@ export default {
     },
     cancelReply() {
       this.replyingTo = null
+      this.replyingToParentId = null
       this.comment = ''
     },
     async getData() {
@@ -330,11 +341,11 @@ export default {
     },
     toggleCall(item) {
       item.select = !item.select
-      let name = item.name
-      if (this.comment.includes('@' + name)) {
-        this.comment = this.comment.replace(`@${name} `, '')
+      const mentionStr = `@[${item.id}:${item.name}]`
+      if (this.comment.includes(mentionStr)) {
+        this.comment = this.comment.replace(mentionStr + ' ', '').replace(mentionStr, '').trim()
       } else {
-        this.comment += `@${name} `
+        this.comment += mentionStr + ' '
       }
     },
     async loved(row) {
@@ -500,6 +511,12 @@ export default {
               border: 5rem solid transparent;
               border-left: 6rem solid gray;
             }
+
+            .reply-to-name {
+              color: #507daf;
+              margin-left: 2rem;
+              font-size: 12rem;
+            }
           }
 
           .detail {
@@ -623,30 +640,38 @@ export default {
       border-top: 1px solid #e2e1e1;
 
       .input-wrapper {
-        flex: 1;
         display: flex;
         align-items: center;
-        justify-content: space-between;
         box-sizing: border-box;
         padding: 5rem 10rem;
         background: #eee;
         border-radius: 20rem;
+        gap: 6rem;
+
+        .auto-input {
+          flex: 1;
+          min-width: 0;
+        }
 
         .right {
           display: flex;
           align-items: center;
-        }
+          flex-shrink: 0;
+          gap: 6rem;
 
-        .auto-input {
-          width: calc(100% - 160rem);
-        }
-      }
+          img {
+            width: @icon-width;
+            height: @icon-width;
+          }
 
-      img {
-        width: @icon-width;
-        height: @icon-width;
-        border-radius: 50%;
-        margin-left: 15rem;
+          .send-btn {
+            width: 22rem;
+            height: 22rem;
+            border-radius: 50%;
+            background: #fe2c55;
+            padding: 3rem;
+          }
+        }
       }
     }
   }

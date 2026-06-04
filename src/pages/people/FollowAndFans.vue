@@ -35,7 +35,7 @@
           />
           <div class="is-search" v-if="data.searchKey">
             <div class="search-result" v-if="data.searchFriends.length">
-              <People :key="i" v-for="(item, i) in data.searchFriends" :people="item"></People>
+              <People :key="i" v-for="(item, i) in data.searchFriends" :people="item" @click="nav('/people/user-home/' + item.uid)"></People>
             </div>
             <div class="no-result" v-else>
               <img src="../../assets/img/icon/no-result.png" alt="" />
@@ -45,11 +45,11 @@
           </div>
           <div class="no-search" v-else>
             <div class="title">我的关注</div>
-            <People :key="i" v-for="(item, i) in store.friends.all" :people="item"></People>
+            <People :key="i" v-for="(item, i) in data.followings" :people="item" @click="nav('/people/user-home/' + item.uid)"></People>
           </div>
         </SlideItem>
         <SlideItem class="tab2">
-          <People :key="i" v-for="(item, i) in store.friends.all" :people="item"></People>
+          <People :key="i" v-for="(item, i) in data.followers" :people="item" @click="nav('/people/user-home/' + item.uid)"></People>
           <NoMore />
         </SlideItem>
       </SlideHorizontal>
@@ -64,6 +64,7 @@ import { useBaseStore } from '@/store/pinia'
 import { onMounted, reactive, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useNav } from '@/utils/hooks/useNav'
+import { getFollowings, getFollowers } from '@/api/user'
 
 defineOptions({
   name: 'FindAcquaintance'
@@ -77,19 +78,50 @@ const data = reactive({
   searchKey: '',
 
   slideIndex: 0,
-  searchFriends: []
+  searchFriends: [],
+  followings: [],
+  followers: []
 })
+
+function mapUser(u: any) {
+  return {
+    name: u.nickname || '',
+    account: u.unique_id || '',
+    avatar: u.avatar_168x168?.url_list?.[0] || '',
+    uid: u.uid
+  }
+}
+
+async function loadFollowings() {
+  const res = await getFollowings(store.userinfo.uid)
+  if (res.success) data.followings = (res.data || []).map(mapUser)
+}
+
+async function loadFollowers() {
+  const res = await getFollowers(store.userinfo.uid)
+  if (res.success) data.followers = (res.data || []).map(mapUser)
+}
 
 onMounted(() => {
   data.slideIndex = ~~route.query.type
+  loadFollowings()
+  loadFollowers()
 })
+
+watch(
+  () => data.slideIndex,
+  (newVal) => {
+    if (newVal === 0 && !data.followings.length) loadFollowings()
+    if (newVal === 1 && !data.followers.length) loadFollowers()
+  }
+)
 
 watch(
   () => data.searchKey,
   (newVal) => {
     if (newVal) {
       //TODO 搜索时仅仅判断是否包含了对应字符串，抖音做了拼音判断的
-      data.searchFriends = store.friends.all.filter((v) => {
+      data.searchFriends = data.followings.filter((v) => {
         if (v.name.includes(newVal)) return true
         return v.account.includes(newVal)
       })

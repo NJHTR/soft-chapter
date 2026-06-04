@@ -90,7 +90,7 @@ public class VideoVO {
         private UrlList playUrl;
     }
 
-    public static VideoVO from(Video v, UserVO author, boolean isLoved, boolean isAttention) {
+    public static VideoVO from(Video v, UserVO author, boolean isLoved, boolean isAttention, boolean isCollect) {
         VideoVO vo = new VideoVO();
         vo.awemeId = v.getId();
         vo.desc = v.getDesc();
@@ -123,7 +123,7 @@ public class VideoVO {
         vo.address = "";
         vo.isLoved = isLoved;
         vo.isAttention = isAttention;
-        vo.isCollect = false;
+        vo.isCollect = isCollect;
 
         return vo;
     }

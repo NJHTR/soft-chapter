@@ -34,6 +34,7 @@
 import People from './People'
 import FromBottomDialog from '../../../components/dialog/FromBottomDialog'
 import { _notice, _showConfirmDialog } from '@/utils'
+import { toggleFollowUser } from '@/api/user'
 
 export default {
   name: 'Peoples',
@@ -79,25 +80,38 @@ export default {
       _notice('将不会再为你推荐该用户')
       this.localList.splice(index, 1)
     },
-    follow(index) {
-      if (this.mode === 'visitor') {
-        this.localList[index].type = this.RELATE_ENUM.FOLLOW_HE
-      }
-      if (this.mode === 'recommend') {
-        this.localList[index].type = this.RELATE_ENUM.FOLLOW_HE
-      }
-      if (this.mode === 'fans') {
-        if (this.localList[index].type === this.RELATE_ENUM.FOLLOW_ME) {
-          this.localList[index].type = this.RELATE_ENUM.FOLLOW_EACH_OTHER
+    async follow(index) {
+      const uid = this.localList[index]?.uid
+      if (!uid) return
+      const res = await toggleFollowUser(uid)
+      if (res.success) {
+        if (res.data.isAttention) {
+          if (this.mode === 'visitor') {
+            this.localList[index].type = this.RELATE_ENUM.FOLLOW_HE
+          }
+          if (this.mode === 'recommend') {
+            this.localList[index].type = this.RELATE_ENUM.FOLLOW_HE
+          }
+          if (this.mode === 'fans') {
+            if (this.localList[index].type === this.RELATE_ENUM.FOLLOW_ME) {
+              this.localList[index].type = this.RELATE_ENUM.FOLLOW_EACH_OTHER
+            }
+          }
         }
       }
     },
-    unfollow(index) {
-      if (this.mode === 'visitor') {
-        this.localList[index].type = this.RELATE_ENUM.FOLLOW_ME
-      }
-      if (this.mode === 'recommend') {
-        this.localList[index].type = this.RELATE_ENUM.RECOMMEND
+    async unfollow(index) {
+      const uid = this.localList[index]?.uid
+      if (uid) {
+        const res = await toggleFollowUser(uid)
+        if (res.success && !res.data.isAttention) {
+          if (this.mode === 'visitor') {
+            this.localList[index].type = this.RELATE_ENUM.FOLLOW_ME
+          }
+          if (this.mode === 'recommend') {
+            this.localList[index].type = this.RELATE_ENUM.RECOMMEND
+          }
+        }
       }
 
       if (this.mode === 'fans') {
@@ -111,8 +125,14 @@ export default {
     ignore(index) {
       this.localList.splice(index, 1)
     },
-    confirmUnfollow() {
-      this.localList[this.currentIndex].type = this.RELATE_ENUM.FOLLOW_ME
+    async confirmUnfollow() {
+      const uid = this.localList[this.currentIndex]?.uid
+      if (uid) {
+        const res = await toggleFollowUser(uid)
+        if (res.success && !res.data.isAttention) {
+          this.localList[this.currentIndex].type = this.RELATE_ENUM.FOLLOW_ME
+        }
+      }
       this.cancel()
     },
     cancel() {

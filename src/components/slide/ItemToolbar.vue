@@ -5,7 +5,7 @@ import bus, { EVENT_KEY } from '@/utils/bus'
 import { Icon } from '@iconify/vue'
 import { useClick } from '@/utils/hooks/useClick'
 import { inject, onMounted, onUnmounted } from 'vue'
-import { toggleVideoLike } from '@/api/videos'
+import { toggleVideoLike, toggleCollect } from '@/api/videos'
 import { toggleFollowUser } from '@/api/user'
 
 const props = defineProps({
@@ -65,14 +65,39 @@ async function loved() {
   }
 }
 
-function collected() {
-  setTimeout(() => {
-    _updateItem(props, 'is_collect', !props.item.is_collect)
-  }, 100)
-  if (!props.item.is_collect) {
-    props.item.statistics.collect_count++
-  } else {
-    props.item.statistics.collect_count--
+let collecting = false
+
+async function collected() {
+  if (collecting) return
+  const awemeId = props.item.aweme_id
+  if (!awemeId) return
+
+  collecting = true
+  const wasCollected = props.item.is_collect
+  // 乐观更新
+  props.item.is_collect = !wasCollected
+  props.item.statistics.collect_count += wasCollected ? -1 : 1
+  _updateItem(props, 'is_collect', !wasCollected)
+
+  try {
+    const res = await toggleCollect(awemeId)
+    if (res.success) {
+      props.item.is_collect = res.data.isCollected
+      props.item.statistics.collect_count = res.data.collectCount
+      _updateItem(props, 'is_collect', res.data.isCollected)
+      bus.emit(EVENT_KEY.COLLECT_UPDATED)
+    } else {
+      // 回滚
+      props.item.is_collect = wasCollected
+      props.item.statistics.collect_count += wasCollected ? 1 : -1
+      _updateItem(props, 'is_collect', wasCollected)
+    }
+  } catch {
+    props.item.is_collect = wasCollected
+    props.item.statistics.collect_count += wasCollected ? 1 : -1
+    _updateItem(props, 'is_collect', wasCollected)
+  } finally {
+    collecting = false
   }
 }
 
