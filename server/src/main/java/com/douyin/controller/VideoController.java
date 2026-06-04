@@ -79,11 +79,15 @@ public class VideoController {
         return Result.ok(videoService.getRecommended(viewerUserId, (pageNo - 1) * pageSize, pageSize));
     }
 
-    /** 视频评论 */
+    /** 视频评论（分页） */
     @GetMapping("/comments")
-    public Result<List<Map<String, Object>>> comments(@RequestParam Long id, HttpServletRequest req) {
+    public Result<List<Map<String, Object>>> comments(
+            @RequestParam Long id,
+            @RequestParam(defaultValue = "1") int pageNo,
+            @RequestParam(defaultValue = "15") int pageSize,
+            HttpServletRequest req) {
         Long viewerUserId = getLoginUserId(req);
-        return Result.ok(commentService.getVideoComments(id, viewerUserId));
+        return Result.ok(commentService.getVideoComments(id, viewerUserId, pageNo, pageSize));
     }
 
     /** 点赞/取消点赞评论 */

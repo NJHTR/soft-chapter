@@ -33,6 +33,9 @@ public class Comment {
     /** 回复目标用户ID */
     private Long replyToUserId;
 
+    /** 媒体附件 JSON: [{"type":"image","url":"..."},{"type":"voice","url":"...","duration":5}] */
+    private String extra;
+
     @TableLogic
     private Integer isDelete;
 

@@ -24,14 +24,25 @@
       <div class="wrapper" v-if="comments.length">
         <div class="items">
           <div class="item" :key="i" :data-comment-id="item.comment_id" v-for="(item, i) in comments">
-            <!--            v-longpress="(e) => showOptions(item)"-->
             <div class="main">
               <div class="content">
                 <img :src="_checkImgUrl(item.avatar)" alt="" class="head-image" />
                 <div class="comment-container">
                   <div class="name">{{ item.nickname }}</div>
-                  <div class="detail" :class="item.user_buried && 'gray'">
-                    {{ item.user_buried ? '该评论已折叠' : renderContent(item.content) }}
+                  <!-- 文字内容 -->
+                  <div class="detail" :class="item.user_buried && 'gray'" v-if="item.content && !item.user_buried">
+                    {{ renderContent(item.content) }}
+                  </div>
+                  <div class="detail gray" v-else-if="item.user_buried">该评论已折叠</div>
+                  <!-- 媒体附件 -->
+                  <div class="media-attachments" v-if="item.mediaList && item.mediaList.length">
+                    <div class="media-item" v-for="(m, mi) in item.mediaList" :key="mi">
+                      <img v-if="m.type === 'image'" :src="m.url" class="comment-image" @click.stop="previewImage(m.url)" />
+                      <div v-else-if="m.type === 'voice'" class="comment-voice" @click.stop="playVoice(m, item, mi)">
+                        <Icon icon="mdi:microphone" class="voice-icon" />
+                        <span>{{ m.duration || 0 }}″</span>
+                      </div>
+                    </div>
                   </div>
                   <div class="time-wrapper">
                     <div class="left">
@@ -156,12 +167,50 @@
             <span>回复 @{{ replyingTo.nickname }}</span>
             <Icon icon="ic:round-close" @click="cancelReply" style="font-size: 14rem; cursor: pointer" />
           </div>
+          <!-- 媒体预览 -->
+          <div class="media-preview" v-if="mediaList.length">
+            <div class="preview-item" v-for="(m, i) in mediaList" :key="i">
+              <img v-if="m.type === 'image'" :src="m.url" class="preview-img" />
+              <div v-else-if="m.type === 'voice'" class="preview-voice">
+                <Icon icon="mdi:microphone" /> {{ m.duration }}″
+              </div>
+              <Icon icon="ic:round-close" class="remove-media" @click="mediaList.splice(i, 1)" />
+            </div>
+          </div>
+          <!-- 隐藏的文件选择器 -->
+          <input ref="imageInput" type="file" accept="image/*" style="display:none" @change="handleImagePicked" />
           <div class="input-wrapper">
-            <AutoInput v-model="comment" placeholder="善语结善缘，恶言伤人心"></AutoInput>
+            <AutoInput ref="autoInputRef" v-model="comment" placeholder="善语结善缘，恶言伤人心"></AutoInput>
             <div class="right">
               <img src="../assets/img/icon/message/call.png" @click="isCall = !isCall" />
-              <img src="../assets/img/icon/message/emoji-black.png" @click="_no" />
-              <img v-if="comment" class="send-btn" src="../assets/img/icon/message/up.png" @click="send" />
+              <img src="../assets/img/icon/message/emoji-black.png" @click="showEmoji = !showEmoji" />
+              <img src="../assets/img/icon/message/camera.png" @click="pickImage" />
+              <img v-if="!recording" src="../assets/img/icon/message/voice-white.png" @click="startRecording" class="voice-btn" />
+              <img v-if="comment || mediaList.length" class="send-btn" src="../assets/img/icon/message/up.png" @click="send" />
+            </div>
+          </div>
+          <!-- 表情包面板 -->
+          <div class="emoji-panel" v-if="showEmoji">
+            <span class="emoji-item" v-for="e in emojiList" :key="e" @click="comment += e">{{ e }}</span>
+          </div>
+          <!-- 录音状态 -->
+          <div class="recording-bar" v-if="recording">
+            <span class="recording-hint">{{ recordingActive ? '松开 发送' : '按住 说话' }}</span>
+            <div class="record-timer" v-if="recordingActive">{{ voiceDuration }}″</div>
+            <button class="cancel-record" @click="cancelRecording">取消</button>
+            <div
+              class="record-zone"
+              @touchstart.prevent="voiceStart"
+              @touchmove.prevent="voiceMove"
+              @touchend.prevent="voiceEnd"
+              @mousedown.prevent="voiceStart"
+              @mousemove.prevent="voiceMove"
+              @mouseup.prevent="voiceEnd"
+              @mouseleave.prevent="voiceEnd"
+            >
+              <div class="record-wave" :class="{ active: recordingActive }">
+                <span class="bar" v-for="i in 5" :key="i"></span>
+              </div>
             </div>
           </div>
         </div>
@@ -191,6 +240,9 @@ import {
 import { useBaseStore } from '@/store/pinia'
 import bus, { EVENT_KEY } from '@/utils/bus'
 import { videoComments, postComment, toggleCommentLike, getCommentReplies } from '@/api/videos'
+import { uploadImage, uploadVoice } from '@/api/user'
+
+const emojiList = ['😀','😂','🤣','😍','🥰','😘','😜','😎','🤩','😊','😏','🥺','😭','😡','🤬','👍','👎','👏','🙌','💪','🤝','❤️','💔','🔥','⭐','🎉','🎊','🙏','🤔','🤗','😱','😴','🤤','🫡','🫠','😶','🤐','😮‍💨','😵','🥴','🤧','💩','👻','💀','👀','👋','🫶','🌹','🌈','🍉','🎂','🍺','💰','🔞']
 
 export default {
   name: 'Comment',
@@ -204,9 +256,7 @@ export default {
   props: {
     modelValue: {
       type: Boolean,
-      default() {
-        return false
-      }
+      default() { return false }
     },
     videoId: {
       type: String,
@@ -231,9 +281,17 @@ export default {
   watch: {
     modelValue(newVale) {
       if (newVale) {
-        this.getData().then(() => this.$nextTick(() => this.scrollToTargetComment()))
+        this.pageNo = 1
+        this.hasMore = true
+        this.comments = []
+        this.loadComments().then(() => this.$nextTick(() => this.scrollToTargetComment()))
       } else {
         this.comments = []
+        this.comment = ''
+        this.mediaList = []
+        this.replyingTo = null
+        this.showEmoji = false
+        this.recording = false
       }
     }
   },
@@ -242,6 +300,18 @@ export default {
       comment: '',
       test: '',
       comments: [],
+      mediaList: [] as { type: string; url: string; duration?: number }[],
+      showEmoji: false,
+      recording: false,
+      recordingActive: false,
+      voiceDuration: 0,
+      voiceTimer: null as any,
+      voiceCancelled: false,
+      emojiList,
+      pageNo: 1,
+      pageSize: 15,
+      hasMore: true,
+      loadingMore: false,
       options: [
         { id: 1, name: '私信回复' },
         { id: 2, name: '复制' },
@@ -257,21 +327,29 @@ export default {
       sending: false
     }
   },
-  mounted() {},
+  mounted() {
+    this.$nextTick(() => {
+      // FromBottomDialog 的 .wrapper 才是真正的滚动容器
+      const el = this.$el?.parentElement
+      if (el) el.addEventListener('scroll', this.onScroll)
+    })
+  },
+  beforeUnmount() {
+    const el = this.$el?.parentElement
+    if (el) el.removeEventListener('scroll', this.onScroll)
+  },
   methods: {
     _no,
     _time,
     _formatNumber,
     _checkImgUrl,
-    // 渲染评论内容，将 @[id:name] 格式转为显示用的 @name
     renderContent(content) {
       if (!content) return ''
       return content.replace(/@\[([^\]:]+):([^\]]+)\]/g, '@$2')
     },
-    // 评论发送成功后调用此方法
     resetSelectStatus() {
       this.friends.all.forEach((item) => {
-        item.select = false // 重置选中状态
+        item.select = false
       })
     },
     async handShowChildren(item) {
@@ -279,7 +357,6 @@ export default {
         item.showChildren = false
         return
       }
-      // 首次展开时从后端加载子评论
       if (!item.children || item.children.length === 0) {
         item._loadingChildren = true
         const res = await getCommentReplies(item.comment_id)
@@ -290,33 +367,216 @@ export default {
       }
       item.showChildren = true
     },
+    // 图片上传
+    pickImage() {
+      (this.$refs.imageInput as HTMLInputElement)?.click()
+    },
+    async handleImagePicked(e: Event) {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+      try {
+        const res = await uploadImage(file)
+        if (res.success && (res.data as any)?.url) {
+          this.mediaList.push({ type: 'image', url: (res.data as any).url })
+        } else {
+          _notice('图片上传失败')
+        }
+      } catch { _notice('图片上传失败') }
+      // 重置 input 以便重复选同一文件
+      ;(e.target as HTMLInputElement).value = ''
+    },
+    // 语音录制
+    startRecording() {
+      this.recording = true
+      this.recordingActive = false
+      this.voiceCancelled = false
+    },
+    cancelRecording() {
+      this.recording = false
+      this.recordingActive = false
+      clearInterval(this.voiceTimer)
+    },
+    voiceStart(e: any) {
+      if (!this.recording) return
+      this.recordingActive = true
+      this.voiceCancelled = false
+      this.voiceDuration = 0
+      this.voiceTimer = setInterval(() => {
+        this.voiceDuration++
+        if (this.voiceDuration >= 60) this.voiceEnd(e)
+      }, 1000)
+    },
+    voiceMove(e: any) {
+      if (!this.recordingActive) return
+      const touch = e.touches?.[0] || e
+      const el = this.$el.querySelector('.record-zone')
+      if (el) {
+        const rect = el.getBoundingClientRect()
+        this.voiceCancelled = touch.clientY < rect.top - 80
+      }
+    },
+    async voiceEnd(e: any) {
+      if (!this.recordingActive) return
+      this.recordingActive = false
+      clearInterval(this.voiceTimer)
+      const dur = this.voiceDuration
+      if (this.voiceCancelled || dur < 1) {
+        this.recording = false
+        return
+      }
+      this.recording = false
+      // 使用 MediaRecorder 录制并上传
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+        const chunks: Blob[] = []
+        mediaRecorder.ondataavailable = (ev) => { if (ev.data.size > 0) chunks.push(ev.data) }
+        mediaRecorder.onstop = async () => {
+          stream.getTracks().forEach(t => t.stop())
+          const blob = new Blob(chunks, { type: 'audio/webm' })
+          try {
+            const res = await uploadVoice(blob)
+            if (res.success && (res.data as any)?.url) {
+              this.mediaList.push({ type: 'voice', url: (res.data as any).url, duration: dur })
+            } else {
+              _notice('语音上传失败')
+            }
+          } catch { _notice('语音上传失败') }
+        }
+        mediaRecorder.start()
+        // 录够时长或 1 秒后停止
+        setTimeout(() => {
+          if (mediaRecorder.state === 'recording') mediaRecorder.stop()
+        }, dur * 1000 + 200)
+      } catch {
+        _notice('无法访问麦克风')
+        this.recording = false
+      }
+    },
+    // 播放语音
+    playVoice(m: any, item: any, mi: number) {
+      if (m._playing) {
+        m._playing = false
+        if (m._audio) { m._audio.pause(); m._audio = null }
+        return
+      }
+      // 停止其他播放中的
+      this.comments.forEach(c => {
+        if (c.mediaList) c.mediaList.forEach((cm: any) => {
+          if (cm !== m && cm._playing) { cm._playing = false; if (cm._audio) { cm._audio.pause(); cm._audio = null } }
+        })
+      })
+      m._playing = true
+      m._audio = new Audio(m.url)
+      m._audio.onended = () => { m._playing = false; m._audio = null }
+      m._audio.onerror = () => { m._playing = false; m._audio = null }
+      m._audio.play()
+    },
+    previewImage(url: string) {
+      window.open(url, '_blank')
+    },
+    // 分页加载评论
+    async loadComments() {
+      if (this.loadingMore || !this.hasMore) return
+      this.loadingMore = true
+      try {
+        const res: any = await videoComments({ id: this.videoId, pageNo: this.pageNo, pageSize: this.pageSize })
+        if (res.success) {
+          const list = (res.data || []).map((v: any) => {
+            v.showChildren = false
+            v.digg_count = Number(v.digg_count)
+            if (v.extra) {
+              try { v.mediaList = JSON.parse(v.extra) } catch { v.mediaList = [] }
+            }
+            return v
+          })
+          this.comments = [...this.comments, ...list]
+          this.hasMore = list.length >= this.pageSize
+          this.pageNo++
+          // 滑动窗口：超过 200 条时从尾部裁剪
+          this.trimCache()
+        }
+      } catch { /* ignore */ }
+      this.loadingMore = false
+    },
+    // 滑动窗口裁剪：保留最新 200 条
+    trimCache() {
+      const MAX = 200
+      if (this.comments.length > MAX) {
+        this.comments = this.comments.slice(0, MAX)
+      }
+    },
+    // 滚动加载更多
+    onScroll(e: Event) {
+      const el = e.target as HTMLElement
+      if (!el) return
+      const { scrollTop, scrollHeight, clientHeight } = el
+      if (scrollHeight - scrollTop - clientHeight < 100) {
+        this.loadComments()
+      }
+    },
     async send() {
       if (this.sending) return
-      if (!this.comment.trim()) return
+      const content = this.comment.trim()
+      if (!content && !this.mediaList.length) return
       this.sending = true
       const payload: any = {
         video_id: this.videoId,
-        content: this.comment,
+        content: content,
+      }
+      if (this.mediaList.length) {
+        payload.extra = JSON.stringify(this.mediaList)
       }
       if (this.replyingTo) {
         payload.parent_id = this.replyingToParentId || this.replyingTo.comment_id
         payload.reply_to_user_id = this.replyingTo.user_id || this.replyingTo.id
       }
+      // 乐观清空输入
+      this.comment = ''
+      const sentMedia = [...this.mediaList]
+      this.mediaList = []
+      this.replyingTo = null
+      this.isCall = false
+      this.showEmoji = false
+      this.resetSelectStatus()
       try {
-        const res = await postComment(payload)
+        const res: any = await postComment(payload)
         if (res.success) {
           bus.emit(EVENT_KEY.COMMENT_ADDED, this.videoId)
-          this.comment = ''
-          this.replyingTo = null
-          this.isCall = false
-          this.resetSelectStatus()
-          this.getData()
+          // 本地插入新评论到列表顶部，无需全量刷新
+          if (res.data) {
+            const newComment: any = {
+              ...res.data,
+              comment_id: String(res.data.id),
+              id: String(res.data.id),
+              user_id: String(res.data.userId),
+              content: res.data.content || content,
+              extra: res.data.extra || payload.extra || '',
+              digg_count: 0,
+              user_digged: false,
+              user_buried: false,
+              sub_comment_count: 0,
+              create_time: Date.now(),
+              nickname: this.$root?.$data?.userinfo?.nickname || '我',
+              avatar: '',
+              showChildren: false,
+              children: [],
+            }
+            if (newComment.extra) {
+              try { newComment.mediaList = JSON.parse(newComment.extra) } catch { newComment.mediaList = [] }
+            }
+            this.comments.unshift(newComment)
+            this.trimCache()
+          }
         } else {
-          _notice(res.msg || '评论失败')
+          this.comment = content
+          this.mediaList = sentMedia
+          _notice((res as any).msg || '评论失败')
         }
       } catch (e) {
+        this.comment = content
+        this.mediaList = sentMedia
         _notice('评论发送失败，请重试')
-        console.error('send comment error:', e)
       } finally {
         this.sending = false
       }
@@ -325,6 +585,7 @@ export default {
       this.replyingTo = comment
       this.replyingToParentId = parentCommentId || null
       this.comment = ''
+      this.mediaList = []
       this.$nextTick(() => {
         const input = this.$el.querySelector('.auto-input')
         if (input) input.focus()
@@ -334,6 +595,7 @@ export default {
       this.replyingTo = null
       this.replyingToParentId = null
       this.comment = ''
+      this.mediaList = []
     },
     async getData() {
       let res: any = await videoComments({ id: this.videoId })
@@ -341,6 +603,10 @@ export default {
         res.data.map((v) => {
           v.showChildren = false
           v.digg_count = Number(v.digg_count)
+          // 解析媒体附件
+          if (v.extra) {
+            try { v.mediaList = JSON.parse(v.extra) } catch { v.mediaList = [] }
+          }
         })
         this.comments = res.data
       }
@@ -543,6 +809,40 @@ export default {
             margin-bottom: 5rem;
           }
 
+          .media-attachments {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8rem;
+            margin-bottom: 8rem;
+
+            .media-item {
+              .comment-image {
+                width: 80rem;
+                height: 80rem;
+                object-fit: cover;
+                border-radius: 6rem;
+                cursor: pointer;
+              }
+
+              .comment-voice {
+                display: flex;
+                align-items: center;
+                gap: 6rem;
+                padding: 8rem 14rem;
+                background: #f0f0f0;
+                border-radius: 20rem;
+                cursor: pointer;
+                font-size: 14rem;
+                color: #333;
+
+                .voice-icon {
+                  font-size: 18rem;
+                  color: #fe2c55;
+                }
+              }
+            }
+          }
+
           .time-wrapper {
             display: flex;
             align-items: center;
@@ -642,6 +942,132 @@ export default {
       }
     }
 
+    .media-preview {
+      display: flex;
+      gap: 8rem;
+      padding: 8rem 15rem 0 15rem;
+      flex-wrap: wrap;
+
+      .preview-item {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+
+        .preview-img {
+          width: 50rem;
+          height: 50rem;
+          object-fit: cover;
+          border-radius: 6rem;
+        }
+
+        .preview-voice {
+          display: flex;
+          align-items: center;
+          gap: 4rem;
+          padding: 6rem 12rem;
+          background: #f0f0f0;
+          border-radius: 16rem;
+          font-size: 13rem;
+          color: #fe2c55;
+        }
+
+        .remove-media {
+          position: absolute;
+          top: -6rem;
+          right: -6rem;
+          font-size: 16rem;
+          background: rgba(0,0,0,0.5);
+          color: white;
+          border-radius: 50%;
+          cursor: pointer;
+        }
+      }
+    }
+
+    .emoji-panel {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6rem;
+      padding: 10rem 15rem;
+      border-top: 1px solid #e2e1e1;
+      max-height: 120rem;
+      overflow-y: auto;
+      background: #fafafa;
+
+      .emoji-item {
+        font-size: 22rem;
+        cursor: pointer;
+        padding: 4rem;
+        &:active { transform: scale(1.3); }
+      }
+    }
+
+    .recording-bar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10rem;
+      padding: 10rem 15rem;
+      border-top: 1px solid #e2e1e1;
+      background: #fafafa;
+
+      .recording-hint {
+        font-size: 14rem;
+        color: #666;
+      }
+
+      .record-timer {
+        font-size: 18rem;
+        font-weight: bold;
+        color: #fe2c55;
+      }
+
+      .cancel-record {
+        padding: 4rem 16rem;
+        border-radius: 16rem;
+        border: 1px solid #ddd;
+        background: white;
+        font-size: 13rem;
+        cursor: pointer;
+      }
+
+      .record-zone {
+        width: 80%;
+        height: 50rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f0f0f0;
+        border-radius: 25rem;
+        cursor: pointer;
+        user-select: none;
+
+        .record-wave {
+          display: flex;
+          align-items: center;
+          gap: 4rem;
+          opacity: 0.5;
+
+          &.active {
+            opacity: 1;
+            .bar { animation: waveAnim 0.8s infinite alternate; }
+          }
+
+          .bar {
+            width: 4rem;
+            height: 16rem;
+            background: #fe2c55;
+            border-radius: 2rem;
+          }
+        }
+      }
+    }
+
+    @keyframes waveAnim {
+      from { height: 8rem; }
+      to { height: 24rem; }
+    }
+
     .reply-to {
       display: flex;
       align-items: center;
@@ -682,6 +1108,13 @@ export default {
           img {
             width: @icon-width;
             height: @icon-width;
+            cursor: pointer;
+          }
+
+          .voice-btn {
+            width: 22rem;
+            height: 22rem;
+            opacity: 0.6;
           }
 
           .send-btn {

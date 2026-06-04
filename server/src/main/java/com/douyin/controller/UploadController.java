@@ -60,4 +60,18 @@ public class UploadController {
             return Result.fail("上传失败: " + e.getMessage());
         }
     }
+
+    @PostMapping("/voice")
+    public Result<Map<String, Object>> uploadVoice(@RequestParam("file") MultipartFile file,
+                                                    HttpServletRequest req) {
+        if (getLoginUserId(req) == null) {
+            return Result.fail("请先登录");
+        }
+        try {
+            String url = fileService.uploadVideo(file);  // 音频也用 video 桶
+            return Result.ok(Map.of("url", url));
+        } catch (Exception e) {
+            return Result.fail("上传失败: " + e.getMessage());
+        }
+    }
 }
