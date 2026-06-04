@@ -137,11 +137,10 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
     public void markRead(Long userId, Long fromUserId) {
         Message update = new Message();
         update.setIsRead(1);
-        update(new LambdaQueryWrapper<Message>()
+        update(update, new LambdaQueryWrapper<Message>()
                 .eq(Message::getFromUserId, fromUserId)
                 .eq(Message::getToUserId, userId)
-                .eq(Message::getIsRead, 0),
-                update);
+                .eq(Message::getIsRead, 0));
     }
 
     @Override
