@@ -146,7 +146,8 @@
 
     <Comment
       page-id="home-index"
-      :video-id="state.currentItem.aweme_id"
+      :video-id="state.targetVideoId || state.currentItem.aweme_id"
+      :scroll-to-comment-id="state.targetCommentId"
       v-model="state.commentVisible"
       @close="closeComments"
     />
@@ -217,7 +218,8 @@ import SlideItem from '@/components/slide/SlideItem.vue'
 import Comment from '../../components/Comment.vue'
 import Share from '../../components/Share.vue'
 import IndicatorHome from './components/IndicatorHome.vue'
-import { onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import bus, { EVENT_KEY } from '../../utils/bus'
 import { useNav } from '@/utils/hooks/useNav'
 import PlayFeedback from '@/pages/home/components/PlayFeedback.vue'
@@ -267,6 +269,8 @@ const state = reactive({
   shareToFriend: false,
 
   commentVisible: false,
+  targetVideoId: '' as any,
+  targetCommentId: '' as any,
   fullScreen: false,
   currentItem: {
     aweme_id: '',
@@ -293,6 +297,30 @@ function setCurrentItem(item) {
   }
   // console.log('item', item)
 }
+
+const route = useRoute()
+
+function handleNotificationNav() {
+  const q = route.query
+  if (q.id) {
+    state.targetVideoId = String(q.id)
+  }
+  if (q.commentId) {
+    state.targetCommentId = String(q.commentId)
+  } else {
+    state.targetCommentId = ''
+  }
+  if (q.openComments === '1' && state.targetVideoId) {
+    // 延迟打开，确保页面已渲染
+    setTimeout(() => {
+      state.commentVisible = true
+    }, 400)
+  }
+}
+// 初始加载时检查
+handleNotificationNav()
+// 后续路由变化时检查
+watch(() => route.query, () => handleNotificationNav(), { deep: true })
 
 onMounted(() => {
   bus.on(EVENT_KEY.ENTER_FULLSCREEN, () => {
@@ -344,6 +372,8 @@ onDeactivated(() => {
 
 function closeComments() {
   bus.emit(EVENT_KEY.CLOSE_COMMENTS)
+  state.targetVideoId = ''
+  state.targetCommentId = ''
 }
 
 function dislike() {

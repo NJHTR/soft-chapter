@@ -172,9 +172,15 @@ function handleNotificationClick(item: any) {
     nav('/people/user-home/' + item.from_user_id)
     return
   }
-  // 点赞/评论/收藏/@提及 → 跳转对应视频
-  if (item.video_id) {
+  // 点赞/收藏 → 跳转视频
+  if ((item.type === 2 || item.type === 4) && item.video_id) {
     nav('/slide', { id: item.video_id })
+    return
+  }
+  // 评论/@提及 → 跳转视频并打开评论区（滚动到对应评论）
+  if ((item.type === 3 || item.type === 5) && item.video_id) {
+    nav('/slide', { id: item.video_id, openComments: '1', commentId: item.comment_id })
+    return
   }
 }
 </script>

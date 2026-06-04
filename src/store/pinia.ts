@@ -6,6 +6,19 @@ import resource from '@/assets/data/resource'
 import { _notice } from '@/utils'
 import { connectSocket, disconnectSocket } from '@/utils/socket'
 
+/** 统一用户数据格式：将后端 UserVO 或 mock 数据规范化为模板所需的字段 */
+function normalizeUser(u: any): any {
+  const avatar168 = u.avatar_168x168?.url_list?.[0] || u.avatar || ''
+  return {
+    ...u,
+    id: u.uid ?? u.id,
+    name: u.nickname || u.name || '',
+    avatar: avatar168,
+    account: u.unique_id || u.account || '',
+    avatar_168x168: u.avatar_168x168 || { url_list: [avatar168] }
+  }
+}
+
 export const useBaseStore = defineStore('base', {
   state: () => {
     return {
@@ -75,7 +88,17 @@ export const useBaseStore = defineStore('base', {
       }
       const r2 = await friends()
       if (r2.success) {
-        this.users = r2.data
+        const data = r2.data as any
+        // 兼容 mock 返回数组、后端返回 { all, recent, eachOther } 两种格式
+        const rawAll: any[] = Array.isArray(data) ? data : (data.all || [])
+        const rawRecent: any[] = Array.isArray(data) ? [] : (data.recent || [])
+        const rawEachOther: any[] = Array.isArray(data) ? [] : (data.eachOther || [])
+        this.friends = {
+          all: rawAll.map(normalizeUser),
+          recent: rawRecent.map(normalizeUser),
+          eachOther: rawEachOther.map(normalizeUser)
+        }
+        this.users = this.friends.all
       }
     },
     async login(email: string, password: string): Promise<{ success: boolean; msg?: string }> {
