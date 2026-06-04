@@ -26,13 +26,14 @@ export function connectSocket() {
   ws = new WebSocket(wsUrl)
 
   ws.onopen = () => {
-    console.log('WS connected')
+    console.log('[WS] connected at', wsUrl)
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
   }
 
   ws.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data)
+      console.log('[WS] received:', msg.type !== undefined ? 'notification' : 'chat', msg)
       dispatch('raw', msg)
       // 通知消息：有 type 字段（通知类型1-5）且没有 to_user_id
       if (msg.type !== undefined && msg.to_user_id === undefined) {

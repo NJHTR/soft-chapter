@@ -8,7 +8,7 @@
       {{ message.time }}
     </div>
     <template v-else>
-      <img v-if="!isMe" src="../../../assets/img/icon/avatar/3.png" alt="" class="avatar" />
+      <img v-if="!isMe" :src="_checkImgUrl(message.user.avatar)" alt="" class="avatar" />
       <div class="chat-wrapper" @click="$emit('itemClick', message)">
         <div class="chat-text" v-if="message.type === MESSAGE_TYPE.TEXT">
           {{ message.data }}
@@ -99,7 +99,7 @@
           />
         </div>
       </div>
-      <img v-if="isMe" src="../../../assets/img/icon/avatar/2.png" alt="" class="avatar" />
+      <img v-if="isMe" :src="_checkImgUrl(message.user.avatar)" alt="" class="avatar" />
     </template>
   </div>
 </template>
@@ -107,6 +107,7 @@
 <script>
 import { mapState } from 'pinia'
 import { useBaseStore } from '@/store/pinia'
+import { _checkImgUrl } from '@/utils'
 
 let CALL_STATE = {
   REJECT: 0,
@@ -169,7 +170,9 @@ export default {
     }
   },
   created() {},
-  methods: {}
+  methods: {
+    _checkImgUrl
+  }
 }
 </script>
 

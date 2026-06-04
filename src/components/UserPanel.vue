@@ -162,7 +162,7 @@
                 <span>已关注</span>
                 <Icon icon="bxs:down-arrow" class="arrow" />
               </div>
-              <div class="l-button" @click="$nav('/message/chat')">
+              <div class="l-button" @click="openChat">
                 <span>私信</span>
               </div>
             </div>
@@ -349,6 +349,19 @@ watch(
 
 function stop(e) {
   e.stopPropagation()
+}
+
+function openChat() {
+  const author = props.currentItem.author
+  const uid = author.uid
+  console.log('[UserPanel] openChat author:', JSON.stringify({ uid: author.uid, nickname: author.nickname, unique_id: author.unique_id, short_id: author.short_id }))
+  if (!uid) { console.warn('[UserPanel] openChat: uid is empty'); return }
+  console.log('[UserPanel] openChat navigating with user_id:', uid)
+  $nav('/message/chat', {
+    user_id: uid,
+    name: author.nickname || '',
+    avatar: author.avatar_168x168?.url_list?.[0] || ''
+  })
 }
 
 async function followButton() {

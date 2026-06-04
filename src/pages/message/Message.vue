@@ -513,12 +513,16 @@ async function loadUnreadCounts() {
 function navToChat(item: any) {
   const u = item.target_user || item
   const uid = u?.uid || u?.id
+  console.log('[Message] navToChat item:', JSON.stringify({ hasTargetUser: !!item.target_user, u_uid: u?.uid, u_id: u?.id, u_nickname: u?.nickname }))
   if (u && uid && !isNaN(Number(uid))) {
+    console.log('[Message] navToChat navigating with uid:', uid)
     nav('/message/chat', {
       user_id: uid,
       name: u.nickname || u.name || '',
       avatar: u.avatar_168x168?.url_list?.[0] || u.avatar || ''
     })
+  } else {
+    console.warn('[Message] navToChat: invalid uid', uid, 'u:', JSON.stringify(u))
   }
 }
 

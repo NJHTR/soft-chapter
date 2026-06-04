@@ -47,12 +47,18 @@ export default {
     bus.on(EVENT_KEY.ENTER_FULLSCREEN, () => (this.visible = false))
     bus.on(EVENT_KEY.EXIT_FULLSCREEN, () => (this.visible = true))
     bus.on('NEW_NOTIFICATION', this._onNotify)
+    bus.on('CHAT_MESSAGE', this._onNotify)
+    bus.on('REFRESH_UNREAD', this._onNotify)
     this.loadUnreadCount()
   },
   unmounted() {
     bus.off(EVENT_KEY.ENTER_FULLSCREEN)
     bus.off(EVENT_KEY.EXIT_FULLSCREEN)
-    if (this._onNotify) bus.off('NEW_NOTIFICATION', this._onNotify)
+    if (this._onNotify) {
+      bus.off('NEW_NOTIFICATION', this._onNotify)
+      bus.off('CHAT_MESSAGE', this._onNotify)
+      bus.off('REFRESH_UNREAD', this._onNotify)
+    }
   },
   methods: {
     $nav(path) {
