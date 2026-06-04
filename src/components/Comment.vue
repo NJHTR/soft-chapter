@@ -34,15 +34,23 @@
                     {{ renderContent(item.content) }}
                   </div>
                   <div class="detail gray" v-else-if="item.user_buried">该评论已折叠</div>
-                  <!-- 媒体附件 -->
-                  <div class="media-attachments" v-if="item.mediaList && item.mediaList.length">
-                    <div class="media-item" v-for="(m, mi) in item.mediaList" :key="mi">
-                      <img v-if="m.type === 'image'" :src="m.url" class="comment-image" @click.stop="previewImage(m.url)" />
-                      <div v-else-if="m.type === 'voice'" class="comment-voice" @click.stop="playVoice(m, item, mi)">
-                        <Icon icon="mdi:microphone" class="voice-icon" />
-                        <span>{{ m.duration || 0 }}″</span>
-                      </div>
+                  <!-- 语音消息：单行聊天气泡风格 -->
+                  <div class="comment-voice-bubble" v-for="(m, mi) in (item.mediaList || []).filter((x: any) => x.type === 'voice')" :key="'v'+mi" @click.stop="playVoice(m, item)">
+                    <img src="../assets/img/icon/message/chat/rss.png" alt="" class="voice-rss-icon" :class="{ playing: m._playing }" />
+                    <div class="voice-wave-bars" :class="{ playing: m._playing }">
+                      <span class="bar" v-for="j in 4" :key="j" :style="{ animationDelay: (j * 0.15) + 's' }"></span>
                     </div>
+                    <span class="voice-dur">{{ m.duration || 0 }}″</span>
+                  </div>
+                  <!-- 图片消息：在文字下面展示，点击预览 -->
+                  <div class="comment-images" v-if="(item.mediaList || []).some((x: any) => x.type === 'image')">
+                    <img
+                      v-for="(m, mi) in (item.mediaList || []).filter((x: any) => x.type === 'image')"
+                      :key="'img'+mi"
+                      :src="m.url"
+                      class="comment-image-item"
+                      @click.stop="previewImage(m.url)"
+                    />
                   </div>
                   <div class="time-wrapper">
                     <div class="left">
@@ -218,6 +226,12 @@
       <ConfirmDialog title="私信给" ok-text="发送" v-model:visible="showPrivateChat">
         <Search mode="light" v-model="test" :isShowSearchIcon="false" />
       </ConfirmDialog>
+      <!-- 图片全屏预览 -->
+      <transition name="fade">
+        <div class="image-preview-mask" v-if="previewUrl" @click="previewUrl = ''">
+          <img :src="previewUrl" alt="" />
+        </div>
+      </transition>
     </div>
   </from-bottom-dialog>
 </template>
@@ -324,7 +338,8 @@ export default {
       isCall: false,
       replyingTo: null as any,
       replyingToParentId: null as any,
-      sending: false
+      sending: false,
+      previewUrl: ''
     }
   },
   mounted() {
@@ -454,7 +469,7 @@ export default {
       }
     },
     // 播放语音
-    playVoice(m: any, item: any, mi: number) {
+    playVoice(m: any, item: any) {
       if (m._playing) {
         m._playing = false
         if (m._audio) { m._audio.pause(); m._audio = null }
@@ -473,7 +488,7 @@ export default {
       m._audio.play()
     },
     previewImage(url: string) {
-      window.open(url, '_blank')
+      this.previewUrl = url
     },
     // 分页加载评论
     async loadComments() {
@@ -543,31 +558,11 @@ export default {
         const res: any = await postComment(payload)
         if (res.success) {
           bus.emit(EVENT_KEY.COMMENT_ADDED, this.videoId)
-          // 本地插入新评论到列表顶部，无需全量刷新
-          if (res.data) {
-            const newComment: any = {
-              ...res.data,
-              comment_id: String(res.data.id),
-              id: String(res.data.id),
-              user_id: String(res.data.userId),
-              content: res.data.content || content,
-              extra: res.data.extra || payload.extra || '',
-              digg_count: 0,
-              user_digged: false,
-              user_buried: false,
-              sub_comment_count: 0,
-              create_time: Date.now(),
-              nickname: this.$root?.$data?.userinfo?.nickname || '我',
-              avatar: '',
-              showChildren: false,
-              children: [],
-            }
-            if (newComment.extra) {
-              try { newComment.mediaList = JSON.parse(newComment.extra) } catch { newComment.mediaList = [] }
-            }
-            this.comments.unshift(newComment)
-            this.trimCache()
-          }
+          // 发送成功后重新加载第一页评论
+          this.pageNo = 1
+          this.hasMore = true
+          this.comments = []
+          this.loadComments()
         } else {
           this.comment = content
           this.mediaList = sentMedia
@@ -809,37 +804,80 @@ export default {
             margin-bottom: 5rem;
           }
 
-          .media-attachments {
+          // 语音气泡：聊天气泡风格，独占一行
+          .comment-voice-bubble {
+            display: flex;
+            align-items: center;
+            gap: 8rem;
+            padding: 8rem 14rem;
+            margin-bottom: 8rem;
+            margin-top: 6rem;
+            background: #f2f2f2;
+            border-radius: 16rem;
+            cursor: pointer;
+            max-width: 240rem;
+            min-width: 120rem;
+
+            .voice-rss-icon {
+              width: 22rem;
+              height: 22rem;
+              flex-shrink: 0;
+            }
+
+            .voice-dur {
+              font-size: 13rem;
+              color: #666;
+              min-width: 24rem;
+              text-align: right;
+            }
+
+            .voice-wave-bars {
+              display: flex;
+              align-items: flex-end;
+              gap: 2.5rem;
+              height: 22rem;
+              flex: 1;
+              justify-content: center;
+
+              .bar {
+                width: 3rem;
+                border-radius: 2rem;
+                background: #ccc;
+                height: 6rem;
+                transition: height 0.2s;
+              }
+
+              &.playing .bar {
+                background: #fe2c55;
+                animation: voiceWave 0.7s ease-in-out infinite alternate;
+
+                &:nth-child(1) { height: 10rem; }
+                &:nth-child(2) { height: 18rem; }
+                &:nth-child(3) { height: 14rem; }
+                &:nth-child(4) { height: 20rem; }
+              }
+            }
+          }
+
+          @keyframes voiceWave {
+            0% { transform: scaleY(0.4); }
+            100% { transform: scaleY(1); }
+          }
+
+          // 图片：在文字下方，网格展示
+          .comment-images {
             display: flex;
             flex-wrap: wrap;
-            gap: 8rem;
+            gap: 6rem;
             margin-bottom: 8rem;
 
-            .media-item {
-              .comment-image {
-                width: 80rem;
-                height: 80rem;
-                object-fit: cover;
-                border-radius: 6rem;
-                cursor: pointer;
-              }
-
-              .comment-voice {
-                display: flex;
-                align-items: center;
-                gap: 6rem;
-                padding: 8rem 14rem;
-                background: #f0f0f0;
-                border-radius: 20rem;
-                cursor: pointer;
-                font-size: 14rem;
-                color: #333;
-
-                .voice-icon {
-                  font-size: 18rem;
-                  color: #fe2c55;
-                }
-              }
+            .comment-image-item {
+              width: 75rem;
+              height: 75rem;
+              object-fit: cover;
+              border-radius: 6rem;
+              cursor: pointer;
+              border: 1px solid #eee;
             }
           }
 
@@ -1146,5 +1184,25 @@ export default {
 .comment-enter-from,
 .comment-leave-to {
   transform: translateY(60vh);
+}
+
+.image-preview-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: calc(var(--vh, 1vh) * 100);
+  background: rgba(0, 0, 0, 0.95);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+  img {
+    max-width: 100vw;
+    max-height: 100vh;
+    object-fit: contain;
+  }
 }
 </style>
