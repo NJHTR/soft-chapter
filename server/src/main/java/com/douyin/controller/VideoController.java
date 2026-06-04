@@ -259,7 +259,7 @@ public class VideoController {
             log.info("[NOTIF] comment notify: author={} commenter={}", video.getAuthorUserId(), userId);
             pubNotif(video.getAuthorUserId(), userId, NotificationVO.TYPE_COMMENT,
                     comment.getVideoId(), saved.getId(),
-                    comment.getContent() != null ? comment.getContent() : "评论了你的作品");
+                    buildNotifContent(comment));
         } else {
             log.info("[NOTIF] skip comment self-notify: videoAuthor={} commenter={}",
                     video != null ? video.getAuthorUserId() : null, userId);
@@ -276,7 +276,7 @@ public class VideoController {
                     && (video == null || !parentComment.getUserId().equals(video.getAuthorUserId()))) {
                 log.info("[NOTIF] reply notify: to={} from={}", parentComment.getUserId(), userId);
                 pubNotif(parentComment.getUserId(), userId, NotificationVO.TYPE_COMMENT,
-                        comment.getVideoId(), saved.getId(), "回复了你的评论");
+                        comment.getVideoId(), saved.getId(), buildReplyNotifContent(comment));
             }
         }
 
@@ -310,8 +310,10 @@ public class VideoController {
                         && !mentionedUser.getUid().equals(userId)
                         && (video == null || !mentionedUser.getUid().equals(video.getAuthorUserId()))) {
                     log.info("[NOTIF] at notify: to={} from={}", mentionedUser.getUid(), userId);
+                    String atContent = buildNotifContent(comment);
                     pubNotif(mentionedUser.getUid(), userId, NotificationVO.TYPE_AT,
-                            comment.getVideoId(), saved.getId(), "在评论中@了你");
+                            comment.getVideoId(), saved.getId(),
+                            atContent.equals("评论了你的作品") ? "在评论中@了你" : atContent);
                 }
             }
         }
@@ -351,6 +353,36 @@ public class VideoController {
                 log.error("[NOTIF] Kafka publish failed: toUser={} type={} error={}", fUserId, fType, e.getMessage(), e);
             }
         });
+    }
+
+    /** 根据评论内容生成通知文案：文本优先，纯媒体则显示类型标签 */
+    private String buildNotifContent(Comment comment) {
+        String text = comment.getContent();
+        if (text != null && !text.isBlank()) return text;
+        String mediaLabel = getMediaLabel(comment.getExtra());
+        return !mediaLabel.isEmpty() ? mediaLabel : "评论了你的作品";
+    }
+
+    private String buildReplyNotifContent(Comment comment) {
+        String text = comment.getContent();
+        if (text != null && !text.isBlank()) return text;
+        String mediaLabel = getMediaLabel(comment.getExtra());
+        return !mediaLabel.isEmpty() ? mediaLabel : "回复了你的评论";
+    }
+
+    private String getMediaLabel(String extraJson) {
+        if (extraJson == null || extraJson.isBlank()) return "";
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.List<java.util.Map<String, Object>> mediaList = mapper.readValue(
+                    extraJson, new com.fasterxml.jackson.core.type.TypeReference<>() {});
+            boolean hasImage = mediaList.stream().anyMatch(m -> "image".equals(m.get("type")));
+            boolean hasVoice = mediaList.stream().anyMatch(m -> "voice".equals(m.get("type")));
+            if (hasImage && hasVoice) return "[图片+语音]";
+            if (hasImage) return "[图片]";
+            if (hasVoice) return "[语音]";
+        } catch (Exception ignored) {}
+        return "";
     }
 
     /** 搜索视频 */
