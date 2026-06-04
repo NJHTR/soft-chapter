@@ -29,14 +29,14 @@
           <img src="../../../assets/img/icon/play-white.png" class="pause" />
         </div>
 
-        <div class="audio" v-if="message.type === MESSAGE_TYPE.AUDIO">
+        <div class="audio" v-if="message.type === MESSAGE_TYPE.AUDIO" @click="playAudio">
           <template v-if="isMe">
-            <div class="duration">{{ message.data.duration }}'</div>
+            <div class="duration">{{ audioPlaying ? '▶ ' : '' }}{{ message.data.duration }}'</div>
             <img src="../../../assets/img/icon/message/chat/rss2.png" alt="" class="audio-icon" />
           </template>
           <template v-else>
             <img src="../../../assets/img/icon/message/chat/rss.png" alt="" class="audio-icon" />
-            <div class="duration">{{ message.data.duration }}'</div>
+            <div class="duration">{{ audioPlaying ? '▶ ' : '' }}{{ message.data.duration }}'</div>
           </template>
         </div>
 
@@ -63,7 +63,11 @@
           </div>
         </div>
 
-        <div class="image" v-if="message.type === MESSAGE_TYPE.IMAGE">
+        <div class="image" v-if="message.type === MESSAGE_TYPE.IMAGE" @click="previewImage">
+          <img :src="message.data" alt="" />
+        </div>
+        <!-- 图片全屏预览 -->
+        <div class="image-preview" v-if="showPreview" @click="showPreview = false">
           <img :src="message.data" alt="" />
         </div>
 
@@ -160,7 +164,10 @@ export default {
     return {
       MESSAGE_TYPE,
       CALL_STATE,
-      RED_PACKET_MODE
+      RED_PACKET_MODE,
+      audioPlaying: false,
+      audioEl: null,
+      showPreview: false
     }
   },
   computed: {
@@ -171,7 +178,25 @@ export default {
   },
   created() {},
   methods: {
-    _checkImgUrl
+    _checkImgUrl,
+    playAudio() {
+      const url = this.message.data?.url || this.message.data
+      if (!url) return
+      if (this.audioEl) {
+        this.audioEl.pause()
+        this.audioEl = null
+        this.audioPlaying = false
+        return
+      }
+      this.audioEl = new Audio(url)
+      this.audioEl.play()
+      this.audioPlaying = true
+      this.audioEl.onended = () => { this.audioPlaying = false; this.audioEl = null }
+      this.audioEl.onerror = () => { this.audioPlaying = false; this.audioEl = null }
+    },
+    previewImage() {
+      this.showPreview = true
+    }
   }
 }
 </script>
@@ -294,8 +319,27 @@ export default {
   .image {
     img {
       border-radius: @border-radius;
-      //height: 30vh;
       max-width: 40vw;
+      cursor: pointer;
+    }
+  }
+
+  .image-preview {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: calc(var(--vh, 1vh) * 100);
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    img {
+      max-width: 100vw;
+      max-height: 100vh;
+      object-fit: contain;
     }
   }
 
@@ -352,6 +396,7 @@ export default {
     align-items: center;
     justify-content: space-between;
     font-size: 14rem;
+    cursor: pointer;
 
     .audio-icon {
       width: 15rem;
