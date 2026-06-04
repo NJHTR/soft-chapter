@@ -219,4 +219,10 @@ public class UserController {
         userService.updateCover(uid, url);
         return Result.ok();
     }
+
+    /** 搜索用户 */
+    @GetMapping("/search")
+    public Result<List<UserVO>> search(@RequestParam String keyword) {
+        return Result.ok(userService.searchUsers(keyword));
+    }
 }

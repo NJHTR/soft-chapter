@@ -63,3 +63,7 @@ export function getFollowings(uid: number) {
 export function getFollowers(uid: number) {
   return request({ url: '/user/followers', method: 'get', params: { uid } })
 }
+
+export function searchUsers(keyword: string) {
+  return request({ url: '/user/search', method: 'get', params: { keyword } })
+}

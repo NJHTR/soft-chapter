@@ -172,6 +172,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         return followerIds.stream().map(userMap::get).filter(Objects::nonNull).toList();
     }
 
+    @Override
+    public List<UserVO> searchUsers(String keyword) {
+        if (keyword == null || keyword.trim().isEmpty()) return List.of();
+        List<User> users = baseMapper.searchByKeyword(keyword.trim());
+        return users.stream().map(UserVO::from).toList();
+    }
+
     /** @param isFollowing true=更新自己的关注数, false=更新对方的粉丝数 */
     private void updateCount(Long uid, boolean isFollowing, int delta) {
         if (uid == null) return;

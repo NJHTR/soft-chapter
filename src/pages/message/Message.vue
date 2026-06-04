@@ -383,13 +383,17 @@
               <dy-back mode="gray" img="back" scale=".6" direction="right" />
             </div>
           </div>
-          <People
+          <div
             v-for="item in searchFriendsAll.slice(0, 3)"
             :key="item.id"
-            mode="search"
-            :searchKey="data.searchKey"
-            :people="item"
-          />
+            @click="data.searching = false; navToChat({ target_user: item })"
+          >
+            <People
+              mode="search"
+              :searchKey="data.searchKey"
+              :people="item"
+            />
+          </div>
           <div class="goto-search-page" @click="nav('/home/search', { key: data.searchKey })">
             <img class="icon" src="../../assets/img/icon/search-light.png" alt="" />
             <div class="right">
@@ -426,6 +430,7 @@ import { useNav } from '@/utils/hooks/useNav.js'
 import { _checkImgUrl, _sleep, cloneDeep } from '@/utils'
 import { useScroll } from '@/utils/hooks/useScroll'
 import { getConversations, getNotificationUnread } from '@/api/message'
+import { searchUsers } from '@/api/user'
 import { connectSocket, disconnectSocket, onSocketMsg } from '@/utils/socket'
 import bus from '@/utils/bus'
 
@@ -447,6 +452,7 @@ const data = reactive({
   isShowRightText: false,
   text: 'AAAAAAAAA、BBBBBBBBBBBBB、CCCCCCCC',
   searchFriends: [],
+  searchResults: [] as any[],
   recommend: [],
   moreChat: [],
   conversations: [] as any[],
@@ -534,25 +540,52 @@ const selectFriends = computed(() => {
 })
 
 const searchFriendsAll = computed(() => {
-  return store.friends.all.filter((v) => {
-    return v.name.search(data.searchKey) !== -1 || v.account.search(data.searchKey) !== -1
-  })
+  return data.searchResults
 })
 
 watch(
-  () => data.createChatSearchKey,
-  (newVal) => {
+  () => data.searchKey,
+  async (newVal) => {
     if (newVal) {
-      //TODO 搜索时仅仅判断是否包含了对应字符串，抖音做了拼音判断的
-      data.searchFriends = store.friends.all.filter((v) => {
-        if (v.name.includes(newVal)) return true
-        return v.account.includes(newVal)
-      })
+      try {
+        const res = await searchUsers(newVal)
+        if (res.success && res.data) {
+          data.searchResults = (res.data as any[]).map(normalizeSearchUser)
+        }
+      } catch { data.searchResults = [] }
+    } else {
+      data.searchResults = []
+    }
+  }
+)
+
+watch(
+  () => data.createChatSearchKey,
+  async (newVal) => {
+    if (newVal) {
+      try {
+        const res = await searchUsers(newVal)
+        if (res.success && res.data) {
+          data.searchFriends = (res.data as any[]).map(normalizeSearchUser)
+        }
+      } catch { data.searchFriends = [] }
     } else {
       data.searchFriends = []
     }
   }
 )
+
+function normalizeSearchUser(u: any): any {
+  const avatar168 = u.avatar_168x168?.url_list?.[0] || ''
+  return {
+    id: u.uid,
+    uid: u.uid,
+    name: u.nickname || '',
+    avatar: avatar168,
+    account: u.unique_id || '',
+    avatar_168x168: u.avatar_168x168 || { url_list: [avatar168] }
+  }
+}
 
 function handleClick(item) {
   data.createChatSearchKey = ''
