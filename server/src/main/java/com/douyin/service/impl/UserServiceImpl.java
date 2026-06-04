@@ -6,6 +6,8 @@ import com.douyin.entity.Follow;
 import com.douyin.entity.User;
 import com.douyin.mapper.FollowMapper;
 import com.douyin.mapper.UserMapper;
+import com.douyin.mapper.VideoMapper;
+import com.douyin.mapper.VisitorMapper;
 import com.douyin.service.UserService;
 import com.douyin.utils.JwtUtil;
 import com.douyin.vo.UserVO;
@@ -23,11 +25,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     private final JwtUtil jwtUtil;
     private final FollowMapper followMapper;
+    private final VideoMapper videoMapper;
+    private final VisitorMapper visitorMapper;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-    public UserServiceImpl(JwtUtil jwtUtil, FollowMapper followMapper) {
+    public UserServiceImpl(JwtUtil jwtUtil, FollowMapper followMapper, VideoMapper videoMapper,
+                           VisitorMapper visitorMapper) {
         this.jwtUtil = jwtUtil;
         this.followMapper = followMapper;
+        this.videoMapper = videoMapper;
+        this.visitorMapper = visitorMapper;
     }
 
     private static final String DEFAULT_AVATAR = "/images/default-avatar.svg";
@@ -177,6 +184,52 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (keyword == null || keyword.trim().isEmpty()) return List.of();
         List<User> users = baseMapper.searchByKeyword(keyword.trim());
         return users.stream().map(UserVO::from).toList();
+    }
+
+    @Override
+    public List<UserVO> getRecentAuthors(Long userId, int limit) {
+        if (userId == null) return List.of();
+        List<Long> authorIds = videoMapper.findRecentAuthorIds(userId, limit);
+        if (authorIds.isEmpty()) return List.of();
+        List<User> users = baseMapper.selectBatchIds(authorIds);
+        // 保持原顺序
+        return authorIds.stream()
+                .map(id -> users.stream().filter(u -> u.getUid().equals(id)).findFirst().orElse(null))
+                .filter(Objects::nonNull)
+                .map(UserVO::from)
+                .toList();
+    }
+
+    @Override
+    public void recordVisit(Long userId, Long visitorId) {
+        if (userId == null || visitorId == null || userId.equals(visitorId)) return;
+        try {
+            com.douyin.entity.Visitor v = new com.douyin.entity.Visitor();
+            v.setUserId(userId);
+            v.setVisitorId(visitorId);
+            visitorMapper.insert(v);
+        } catch (Exception ignored) { /* 重复记录忽略 */ }
+    }
+
+    @Override
+    public List<UserVO> getVisitors(Long userId, int limit) {
+        if (userId == null) return List.of();
+        List<java.util.Map<String, Object>> rows = visitorMapper.getRecentVisitors(userId, limit);
+        if (rows.isEmpty()) return List.of();
+        List<Long> visitorIds = rows.stream()
+                .map(r -> (Long) r.get("visitor_id"))
+                .distinct().toList();
+        List<User> users = baseMapper.selectBatchIds(visitorIds);
+        java.util.Map<Long, User> userMap = users.stream()
+                .collect(java.util.stream.Collectors.toMap(User::getUid, u -> u));
+        return rows.stream()
+                .map(r -> {
+                    Long vid = (Long) r.get("visitor_id");
+                    User u = userMap.get(vid);
+                    return u != null ? UserVO.from(u) : null;
+                })
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     /** @param isFollowing true=更新自己的关注数, false=更新对方的粉丝数 */

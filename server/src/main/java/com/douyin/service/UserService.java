@@ -40,4 +40,13 @@ public interface UserService extends IService<User> {
 
     /** 搜索用户（按昵称或抖音号） */
     java.util.List<com.douyin.vo.UserVO> searchUsers(String keyword);
+
+    /** 最近常看：根据互动历史获取最近关注的作者列表 */
+    java.util.List<com.douyin.vo.UserVO> getRecentAuthors(Long userId, int limit);
+
+    /** 记录访客 */
+    void recordVisit(Long userId, Long visitorId);
+
+    /** 获取访客列表 */
+    java.util.List<com.douyin.vo.UserVO> getVisitors(Long userId, int limit);
 }

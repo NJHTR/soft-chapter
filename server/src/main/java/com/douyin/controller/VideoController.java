@@ -385,6 +385,25 @@ public class VideoController {
         return "";
     }
 
+    /** 记录观看历史 */
+    @PostMapping("/watch/{videoId}")
+    public Result<?> recordWatch(@PathVariable Long videoId,
+                                 @RequestBody Map<String, Object> body,
+                                 HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        Video video = videoService.getById(videoId);
+        if (video == null) return Result.fail("视频不存在");
+        double watchDuration = body.get("watch_duration") != null
+                ? Double.parseDouble(body.get("watch_duration").toString()) : 0;
+        double videoDuration = body.get("video_duration") != null
+                ? Double.parseDouble(body.get("video_duration").toString()) : 0;
+        boolean finished = body.get("finished") != null && Boolean.parseBoolean(body.get("finished").toString());
+        videoService.recordWatch(userId, videoId, video.getAuthorUserId(),
+                watchDuration, videoDuration, finished);
+        return Result.ok();
+    }
+
     /** 搜索视频 */
     @GetMapping("/search")
     public Result<List<VideoVO>> search(@RequestParam String keyword) {

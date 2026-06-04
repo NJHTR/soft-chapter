@@ -47,4 +47,7 @@ public interface VideoService extends IService<Video> {
 
     /** 搜索视频 */
     List<VideoVO> searchVideos(String keyword);
+
+    /** 记录观看历史(INSERT 或 UPDATE 已有时长) */
+    void recordWatch(Long userId, Long videoId, Long authorUserId, double watchDuration, double videoDuration, boolean finished);
 }

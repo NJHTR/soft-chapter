@@ -10,11 +10,13 @@ import com.douyin.entity.Like;
 import com.douyin.entity.User;
 import com.douyin.entity.Video;
 import com.douyin.entity.VideoCollect;
+import com.douyin.entity.WatchHistory;
 import com.douyin.mapper.FollowMapper;
 import com.douyin.mapper.LikeMapper;
 import com.douyin.mapper.UserMapper;
 import com.douyin.mapper.VideoCollectMapper;
 import com.douyin.mapper.VideoMapper;
+import com.douyin.mapper.WatchHistoryMapper;
 import com.douyin.service.VideoService;
 import com.douyin.vo.UserVO;
 import com.douyin.vo.VideoVO;
@@ -33,13 +35,15 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     private final LikeMapper likeMapper;
     private final FollowMapper followMapper;
     private final VideoCollectMapper collectMapper;
+    private final WatchHistoryMapper watchHistoryMapper;
 
     public VideoServiceImpl(UserMapper userMapper, LikeMapper likeMapper, FollowMapper followMapper,
-                            VideoCollectMapper collectMapper) {
+                            VideoCollectMapper collectMapper, WatchHistoryMapper watchHistoryMapper) {
         this.userMapper = userMapper;
         this.likeMapper = likeMapper;
         this.followMapper = followMapper;
         this.collectMapper = collectMapper;
+        this.watchHistoryMapper = watchHistoryMapper;
     }
 
     @Override
@@ -102,7 +106,20 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
 
     @Override
     public PageDTO<VideoVO> getHistory(Long viewerUserId, int pageNo, int pageSize) {
-        return getLikedVideos(viewerUserId, pageNo, pageSize);
+        if (viewerUserId == null) return new PageDTO<>(0, pageNo, pageSize, List.of());
+        int offset = (pageNo - 1) * pageSize;
+        List<Long> videoIds = watchHistoryMapper.findHistoryVideoIds(viewerUserId, offset, pageSize);
+        if (videoIds.isEmpty()) return new PageDTO<>(0, pageNo, pageSize, List.of());
+        List<Video> videos = baseMapper.selectBatchIds(videoIds);
+        // 恢复原始顺序
+        Map<Long, Video> videoMap = videos.stream()
+                .collect(Collectors.toMap(Video::getId, v -> v));
+        List<Video> ordered = videoIds.stream()
+                .map(videoMap::get)
+                .filter(Objects::nonNull)
+                .toList();
+        List<VideoVO> voList = toVideoVOList(ordered, viewerUserId);
+        return new PageDTO<>((long) videoIds.size(), pageNo, pageSize, voList);
     }
 
     @Override
@@ -286,5 +303,33 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
         if (keyword == null || keyword.trim().isEmpty()) return List.of();
         List<Video> videos = baseMapper.searchByKeyword(keyword.trim());
         return toVideoVOList(videos, null);
+    }
+
+    @Override
+    @Transactional
+    public void recordWatch(Long userId, Long videoId, Long authorUserId,
+                            double watchDuration, double videoDuration, boolean finished) {
+        if (userId == null || videoId == null) return;
+        WatchHistory exist = watchHistoryMapper.selectOne(new LambdaQueryWrapper<WatchHistory>()
+                .eq(WatchHistory::getUserId, userId)
+                .eq(WatchHistory::getVideoId, videoId));
+        if (exist != null) {
+            // 更新：取最大观看时长
+            if (watchDuration > (exist.getWatchDuration() != null ? exist.getWatchDuration() : 0)) {
+                exist.setWatchDuration(watchDuration);
+            }
+            exist.setVideoDuration(videoDuration);
+            if (finished) exist.setFinished(1);
+            watchHistoryMapper.updateById(exist);
+        } else {
+            WatchHistory wh = new WatchHistory();
+            wh.setUserId(userId);
+            wh.setVideoId(videoId);
+            wh.setAuthorUserId(authorUserId);
+            wh.setWatchDuration(watchDuration);
+            wh.setVideoDuration(videoDuration);
+            wh.setFinished(finished ? 1 : 0);
+            watchHistoryMapper.insert(wh);
+        }
     }
 }

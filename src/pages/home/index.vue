@@ -46,11 +46,12 @@
             </div>
           </div>
           <div class="content">
-            <div class="item avatar" @click="_no" :key="i" v-for="i in 6">
-              <img
-                src="https://img.tol.vip/avatar/WEIXIN/3aSuTGYTzjHvcHy0y0tH1eiShKRk9Sgd.jpg?_upt=de4a5c251709635127"
-              />
-              <span>随机名字</span>
+            <div class="item avatar" @click="goUserHome(a.uid)" :key="a.uid" v-for="a in state.recentAuthors">
+              <img :src="_checkImgUrl(a.avatar_168x168?.url_list?.[0])" />
+              <span>{{ a.nickname }}</span>
+            </div>
+            <div class="no-data" v-if="!state.recentAuthors.length" style="grid-column:1/-1;text-align:center;color:gray;font-size:12rem">
+              暂无常看作者
             </div>
           </div>
         </div>
@@ -237,7 +238,8 @@ import Slide0 from '@/pages/home/slide/Slide0.vue'
 import Slide2 from '@/pages/home/slide/Slide2.vue'
 import Slide4 from '@/pages/home/slide/Slide4.vue'
 import { DefaultUser } from '@/utils/const_var'
-import { _no } from '@/utils'
+import { _checkImgUrl, _no } from '@/utils'
+import { getRecentAuthors } from '@/api/user'
 import LongVideo from '@/pages/home/slide/LongVideo.vue'
 import { useBaseStore } from '@/store/pinia'
 import BaseMask from '@/components/BaseMask.vue'
@@ -269,6 +271,7 @@ const state = reactive({
   shareToFriend: false,
 
   commentVisible: false,
+  recentAuthors: [] as any[],
   targetVideoId: '' as any,
   targetCommentId: '' as any,
   fullScreen: false,
@@ -323,6 +326,7 @@ handleNotificationNav()
 watch(() => route.query, () => handleNotificationNav(), { deep: true })
 
 onMounted(() => {
+  loadRecentAuthors()
   bus.on(EVENT_KEY.ENTER_FULLSCREEN, () => {
     if (!state.active) return
     state.fullScreen = true
@@ -374,6 +378,19 @@ function closeComments() {
   bus.emit(EVENT_KEY.CLOSE_COMMENTS)
   state.targetVideoId = ''
   state.targetCommentId = ''
+}
+
+async function loadRecentAuthors() {
+  try {
+    const res = await getRecentAuthors()
+    if (res.success && res.data) {
+      state.recentAuthors = res.data
+    }
+  } catch { /* ignore */ }
+}
+
+function goUserHome(uid: any) {
+  if (uid) nav('/people/user-home/' + uid)
 }
 
 function dislike() {

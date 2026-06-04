@@ -231,4 +231,29 @@ public class UserController {
     public Result<List<UserVO>> search(@RequestParam String keyword) {
         return Result.ok(userService.searchUsers(keyword));
     }
+
+    /** 最近常看：根据互动历史获取最近关注的作者 */
+    @GetMapping("/recent-authors")
+    public Result<List<UserVO>> recentAuthors(HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        return Result.ok(userService.getRecentAuthors(userId, 6));
+    }
+
+    /** 记录访客 */
+    @PostMapping("/visitors/{userId}")
+    public Result<?> recordVisit(@PathVariable Long userId, HttpServletRequest req) {
+        Long visitorId = getLoginUserId(req);
+        if (visitorId == null) return Result.fail("请先登录");
+        userService.recordVisit(userId, visitorId);
+        return Result.ok();
+    }
+
+    /** 获取我的访客 */
+    @GetMapping("/visitors")
+    public Result<List<UserVO>> visitors(HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        return Result.ok(userService.getVisitors(userId, 20));
+    }
 }

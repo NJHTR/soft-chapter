@@ -90,3 +90,15 @@ export function clearSearchHistory() {
 export function deleteSearchHistoryKeyword(keyword: string) {
   return request({ url: '/search-history/keyword', method: 'delete', data: { keyword } })
 }
+
+export function getRecentAuthors() {
+  return request({ url: '/user/recent-authors', method: 'get' })
+}
+
+export function recordVisit(userId: number) {
+  return request({ url: `/user/visitors/${userId}`, method: 'post' })
+}
+
+export function getVisitors() {
+  return request({ url: '/user/visitors', method: 'get' })
+}
