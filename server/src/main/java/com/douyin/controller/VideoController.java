@@ -337,14 +337,20 @@ public class VideoController {
         } catch (Exception e) {
             log.error("[NOTIF] DB save failed: userId={} type={} error={}", userId, type, e.getMessage(), e);
         }
-        // 同步发布到 Kafka，消费者负责 WebSocket 推送
-        try {
-            messagePublisher.publishNotification(new NotificationEvent(
-                    userId, fromUserId, type, videoId, commentId, content, System.currentTimeMillis()));
-            log.info("[NOTIF] Kafka published: toUser={} type={}", userId, type);
-        } catch (Exception e) {
-            log.error("[NOTIF] Kafka publish failed: toUser={} type={} error={}", userId, type, e.getMessage(), e);
-        }
+        // 异步发布到 Kafka，避免阻塞 HTTP 请求线程
+        final Long fUserId = userId, fFromUserId = fromUserId, fVideoId = videoId, fCommentId = commentId;
+        final Integer fType = type;
+        final String fContent = content;
+        final MessagePublisher pub = messagePublisher;
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                pub.publishNotification(new NotificationEvent(
+                        fUserId, fFromUserId, fType, fVideoId, fCommentId, fContent, System.currentTimeMillis()));
+                log.info("[NOTIF] Kafka published: toUser={} type={}", fUserId, fType);
+            } catch (Exception e) {
+                log.error("[NOTIF] Kafka publish failed: toUser={} type={} error={}", fUserId, fType, e.getMessage(), e);
+            }
+        });
     }
 
     /** 搜索视频 */
