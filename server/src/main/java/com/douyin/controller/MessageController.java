@@ -155,4 +155,20 @@ public class MessageController {
         messageService.markNotificationRead(userId, type);
         return Result.ok();
     }
+
+    /** 搜索聊天记录 */
+    @GetMapping("/search")
+    public Result<List<UserVO>> searchChats(@RequestParam String keyword, HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        return Result.ok(messageService.searchChats(userId, keyword));
+    }
+
+    /** 搜索通知记录 */
+    @GetMapping("/notifications/search")
+    public Result<List<UserVO>> searchNotifications(@RequestParam String keyword, HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        return Result.ok(messageService.searchNotifications(userId, keyword));
+    }
 }

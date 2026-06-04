@@ -3,7 +3,7 @@
     <BaseHeader @back="back">
       <template v-slot:center>
         <span v-if="data.type === 1" class="f16">修改名字</span>
-        <span v-if="data.type === 2" class="f16">修改抖音号</span>
+        <span v-if="data.type === 2" class="f16">修改SeekFlow号</span>
         <span v-if="data.type === 3" class="f16">修改简介</span>
       </template>
       <template v-slot:right>
@@ -30,7 +30,7 @@
         <div class="num">{{ data.localUserinfo.nickname.length }}/20</div>
       </div>
       <div class="l-row" v-if="data.type === 2">
-        <div class="notice">我的抖音号</div>
+        <div class="notice">我的SeekFlow号</div>
         <div class="input-ctn" style="margin-bottom: 10rem">
           <input type="text" v-model="data.localUserinfo.unique_id" />
           <img
@@ -123,8 +123,8 @@ async function save() {
       await updateProfile({ nickname: data.localUserinfo.nickname })
       store.setUserinfo({ nickname: data.localUserinfo.nickname })
     } else if (data.type === 2) {
-      // 抖音号暂不支持修改
-      _notice('抖音号30天内仅能修改一次，暂未开放')
+      // SeekFlow号暂不支持修改
+      _notice('SeekFlow号30天内仅能修改一次，暂未开放')
       _hideLoading()
       return
     } else if (data.type === 3) {

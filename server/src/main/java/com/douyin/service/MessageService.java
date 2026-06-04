@@ -6,6 +6,7 @@ import com.douyin.entity.Notification;
 import com.douyin.vo.MessageVO;
 import com.douyin.vo.NotificationVO;
 import com.douyin.vo.ConversationVO;
+import com.douyin.vo.UserVO;
 
 import java.util.List;
 
@@ -42,4 +43,10 @@ public interface MessageService extends IService<Message> {
 
     /** 获取未读通知总数 */
     long getUnreadNotificationCount(Long userId);
+
+    /** 搜索聊天记录：返回匹配关键词的会话用户列表 */
+    List<UserVO> searchChats(Long userId, String keyword);
+
+    /** 搜索通知记录：返回匹配关键词的通知发送者列表 */
+    List<UserVO> searchNotifications(Long userId, String keyword);
 }

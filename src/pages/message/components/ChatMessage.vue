@@ -95,7 +95,7 @@
               </div>
             </div>
           </div>
-          <span class="bottom">抖音红包</span>
+          <span class="bottom">SeekFlow红包</span>
         </div>
 
         <div class="loves" v-if="message.loved?.length">

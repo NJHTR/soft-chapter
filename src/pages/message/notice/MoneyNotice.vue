@@ -96,7 +96,7 @@ const data = reactive({
       title: '红色退款发起通知',
       time: '2021-10-12 12:12',
       money: 0.01,
-      desc: '抖音红包超过24小时未被领取',
+      desc: 'SeekFlow红包超过24小时未被领取',
       toAccountTime: '2021-10-15 12:12'
     },
     {

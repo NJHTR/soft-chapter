@@ -127,7 +127,7 @@
       <div class="row">
         <div class="left">
           <img src="@/assets/img/icon/newicon/left_menu/about.png" alt="" />
-          <span>关于抖音</span>
+          <span>关于SeekFlow</span>
         </div>
         <div class="right">
           <dy-back direction="right"></dy-back>
@@ -172,7 +172,7 @@
         </div>
       </div>
 
-      <div class="version">抖音 {{ gitLastCommitHash }}</div>
+      <div class="version">SeekFlow {{ gitLastCommitHash }}</div>
     </div>
   </div>
 </template>

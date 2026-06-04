@@ -67,3 +67,20 @@ export function getFollowers(uid: number) {
 export function searchUsers(keyword: string) {
   return request({ url: '/user/search', method: 'get', params: { keyword } })
 }
+
+// 搜索历史
+export function getSearchHistory() {
+  return request({ url: '/search-history', method: 'get' })
+}
+
+export function saveSearchHistory(keyword: string) {
+  return request({ url: '/search-history', method: 'post', data: { keyword } })
+}
+
+export function clearSearchHistory() {
+  return request({ url: '/search-history', method: 'delete' })
+}
+
+export function deleteSearchHistoryKeyword(keyword: string) {
+  return request({ url: '/search-history/keyword', method: 'delete', data: { keyword } })
+}

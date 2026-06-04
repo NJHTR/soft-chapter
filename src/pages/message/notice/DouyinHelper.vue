@@ -2,7 +2,7 @@
   <div id="DouyinHelper">
     <BaseHeader :isFixed="false">
       <template v-slot:center>
-        <span class="f16">抖音小助手</span>
+        <span class="f16">SeekFlow小助手</span>
       </template>
     </BaseHeader>
     <Loading v-if="data.loading" />
@@ -80,7 +80,7 @@ const data = reactive({
       title: '看美好奇妙夜，赢万元红包！',
       time: '2021-10-12 12:12',
       content:
-        '今天晚上8点，2021抖音美好奇妙夜直播开启！30多位艺人、100多位创作者齐聚一堂，为你带来全方位的视听盛宴，观看直播更有机会赢万元红包大奖，更多精彩，不容错过！快来直接间看看吧！ [本活动与Apple Inc.无关]'
+        '今天晚上8点，2021SeekFlow美好奇妙夜直播开启！30多位艺人、100多位创作者齐聚一堂，为你带来全方位的视听盛宴，观看直播更有机会赢万元红包大奖，更多精彩，不容错过！快来直接间看看吧！ [本活动与Apple Inc.无关]'
     }
   ]
 })

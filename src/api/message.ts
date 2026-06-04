@@ -39,3 +39,13 @@ export function getNotificationUnread() {
 export function markNotificationRead(params: { type?: number }) {
   return request({ url: '/message/notifications/read', method: 'post', params })
 }
+
+/** 搜索聊天记录 */
+export function searchChats(keyword: string) {
+  return request({ url: '/message/search', method: 'get', params: { keyword } })
+}
+
+/** 搜索通知记录 */
+export function searchNotifications(keyword: string) {
+  return request({ url: '/message/notifications/search', method: 'get', params: { keyword } })
+}

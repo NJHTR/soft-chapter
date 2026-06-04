@@ -24,13 +24,13 @@
         </div>
         <div class="right">
           我已阅读并同意
-          <span class="link" @click="nav('/service-protocol', { type: '&quot;抖音&quot;用户服务协议' })">用户协议</span>
+          <span class="link" @click="nav('/service-protocol', { type: '&quot;SeekFlow&quot;用户服务协议' })">用户协议</span>
           和
-          <span class="link" @click="nav('/service-protocol', { type: '&quot;抖音&quot;隐私政策' })">隐私政策</span>
+          <span class="link" @click="nav('/service-protocol', { type: '&quot;SeekFlow&quot;隐私政策' })">隐私政策</span>
           <div>
             以及
             <span class="link" @click="nav('/service-protocol', { type: '中国移动认证服务协议' })">《中国移动认证服务条款》</span>
-            ，同时登录并使用抖音火山版（原"火山小视频"）和抖音
+            ，同时登录并使用SeekFlow火山版（原"火山小视频"）和SeekFlow
           </div>
         </div>
       </div>

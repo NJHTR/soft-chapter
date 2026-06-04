@@ -56,7 +56,7 @@
               <span v-else>{{ item.name }}</span>
             </span>
             <span class="account" v-if="item.account">
-              抖音号：
+              SeekFlow号：
               <span v-if="item.account.indexOf(data.searchKey) > -1">
                 {{ item.account.substr(0, item.account.indexOf(data.searchKey))
                 }}<span style="color: #ffd800">{{ data.searchKey }}</span

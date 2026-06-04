@@ -2,7 +2,7 @@
   <div class="MusicRankList" @scroll="scroll">
     <dy-back mode="light" img="back" @click="router.back()" class="fixed-back" direction="left" />
     <div class="fixed-header" :style="fixedStyle">
-      <span class="f16">抖音音乐榜</span>
+      <span class="f16">SeekFlow音乐榜</span>
     </div>
     <!--    indicator没有像me页面那样做，应该那样做-->
     <div class="content">

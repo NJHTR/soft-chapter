@@ -88,7 +88,7 @@
               </div>
             </div>
           </div>
-          <!--      抖音小助手-->
+          <!--      SeekFlow小助手-->
           <div class="message" @click="nav('/message/douyin-helper')">
             <div class="avatar">
               <img src="../../assets/img/icon/msg-icon5.webp" alt="" class="head-image" />
@@ -96,7 +96,7 @@
             <div class="content">
               <div class="left">
                 <div class="name">
-                  <span>抖音小助手</span>
+                  <span>SeekFlow小助手</span>
                   <span class="tag">官方</span>
                 </div>
                 <div class="detail">
@@ -272,7 +272,7 @@
                 <div class="right">
                   <div class="info">
                     <span class="name">{{ item.name }}</span>
-                    <span class="account">{{ item.account ? '抖音号:' + item.account : '' }}</span>
+                    <span class="account">{{ item.account ? 'SeekFlow号:' + item.account : '' }}</span>
                   </div>
                 </div>
               </div>
@@ -298,7 +298,7 @@
                 <img class="left" :src="_checkImgUrl(item.avatar)" alt="" />
                 <div class="right">
                   <span>{{ item.name }}</span>
-                  <span class="account-tip" v-if="item.account">抖音号: {{ item.account }}</span>
+                  <span class="account-tip" v-if="item.account">SeekFlow号: {{ item.account }}</span>
                 </div>
               </div>
             </div>
@@ -372,35 +372,83 @@
       />
       <div class="more-chat">
         <template v-if="data.searchKey">
-          <div class="sub-title" v-if="searchFriendsAll.length">
-            <span>联系人</span>
+          <!-- 实时建议列表 -->
+          <div class="suggestions" v-if="data.suggestions.length">
             <div
-              class="right"
-              v-if="searchFriendsAll.length > 3"
-              @click="nav('/message/more-search', { key: data.searchKey })"
+              class="suggest-item"
+              v-for="(item, index) in data.suggestions"
+              :key="'s_' + index"
+              @click="data.searching = false; navToChat({ target_user: item })"
             >
-              <span>更多联系人</span>
-              <dy-back mode="gray" img="back" scale=".6" direction="right" />
+              <img class="avatar" :src="_checkImgUrl(item.avatar)" alt="" />
+              <div class="info">
+                <span class="name">{{ item.name }}</span>
+                <span class="source">{{ item.source }}</span>
+              </div>
             </div>
           </div>
-          <div
-            v-for="item in searchFriendsAll.slice(0, 3)"
-            :key="item.id"
-            @click="data.searching = false; navToChat({ target_user: item })"
-          >
-            <People
-              mode="search"
-              :searchKey="data.searchKey"
-              :people="item"
-            />
+          <!-- 聊天记录 -->
+          <div class="category" v-if="data.chatResults.length">
+            <div class="sub-title">聊天记录</div>
+            <div
+              v-for="item in data.chatResults.slice(0, 5)"
+              :key="'chat_' + item.uid"
+              @click="data.searching = false; navToChat({ target_user: item })"
+            >
+              <People mode="search" :searchKey="data.searchKey" :people="item" />
+            </div>
           </div>
-          <div class="goto-search-page" @click="nav('/home/search', { key: data.searchKey })">
+          <!-- 联系人 -->
+          <div class="category" v-if="data.contactResults.length">
+            <div class="sub-title">联系人</div>
+            <div
+              v-for="item in data.contactResults.slice(0, 5)"
+              :key="'contact_' + item.uid"
+              @click="data.searching = false; navToChat({ target_user: item })"
+            >
+              <People mode="search" :searchKey="data.searchKey" :people="item" />
+            </div>
+          </div>
+          <!-- 群聊 -->
+          <div class="category" v-if="data.groupResults.length">
+            <div class="sub-title">群聊</div>
+            <div
+              v-for="item in data.groupResults.slice(0, 5)"
+              :key="'group_' + item.id"
+              class="search-item"
+              @click="data.searching = false; _no()"
+            >
+              <img class="avatar" :src="item.avatar" alt="" />
+              <span class="name">{{ item.name }}</span>
+            </div>
+          </div>
+          <!-- 消息 -->
+          <div class="category" v-if="data.sysMsgResults.length">
+            <div class="sub-title">消息</div>
+            <div
+              v-for="item in data.sysMsgResults"
+              :key="'sys_' + item.id"
+              class="search-item"
+              @click="data.searching = false; nav(item.route)"
+            >
+              <img class="avatar" :src="item.avatar" alt="" />
+              <div class="info">
+                <span class="name">{{ item.name }}</span>
+                <span class="detail">{{ item.detail }}</span>
+              </div>
+            </div>
+          </div>
+          <!-- 空结果 -->
+          <div class="no-result" v-if="!data.chatResults.length && !data.contactResults.length && !data.groupResults.length && !data.sysMsgResults.length">
+            <div class="notice-h1">搜索结果为空</div>
+            <div class="notice-h2">没有找到相关的内容</div>
+          </div>
+          <!-- 直达全局搜索 -->
+          <div class="goto-search-page" @click="data.searching = false; nav('/home/search', { key: data.searchKey })">
             <img class="icon" src="../../assets/img/icon/search-light.png" alt="" />
             <div class="right">
               <div class="left">
-                <span
-                  >搜索 <span style="color: yellow">{{ data.searchKey }}</span></span
-                >
+                <span>搜索 <span style="color: yellow">{{ data.searchKey }}</span></span>
                 <span class="second-text-color f12">视频、用户、音乐、话题、地点等</span>
               </div>
               <dy-back mode="gray" img="back" direction="right" scale=".7" />
@@ -429,7 +477,7 @@ import { computed, onMounted, onUnmounted, reactive, watch } from 'vue'
 import { useNav } from '@/utils/hooks/useNav.js'
 import { _checkImgUrl, _sleep, cloneDeep } from '@/utils'
 import { useScroll } from '@/utils/hooks/useScroll'
-import { getConversations, getNotificationUnread } from '@/api/message'
+import { getConversations, getNotificationUnread, searchChats, searchNotifications } from '@/api/message'
 import { searchUsers } from '@/api/user'
 import { connectSocket, disconnectSocket, onSocketMsg } from '@/utils/socket'
 import bus from '@/utils/bus'
@@ -456,7 +504,13 @@ const data = reactive({
   recommend: [],
   moreChat: [],
   conversations: [] as any[],
-  unreadCounts: {} as Record<string, number>
+  unreadCounts: {} as Record<string, number>,
+  // 搜索分类结果
+  chatResults: [] as any[],
+  contactResults: [] as any[],
+  groupResults: [] as any[],
+  sysMsgResults: [] as any[],
+  suggestions: [] as any[]
 })
 
 let unsubConv: (() => void) | null = null
@@ -543,19 +597,127 @@ const searchFriendsAll = computed(() => {
   return data.searchResults
 })
 
+function localFilter(keyword: string): any[] {
+  const kw = keyword.toLowerCase()
+  return store.friends.all.filter((v: any) => {
+    return v.name.toLowerCase().includes(kw) || v.account.toLowerCase().includes(kw)
+  })
+}
+
+// 系统消息列表（用于搜索）
+const systemMessages = [
+  { id: 'fans', name: '新朋友', detail: '新的关注消息', avatar: new URL('../../assets/img/icon/msg-icon1.png', import.meta.url).href, route: '/message/fans' },
+  { id: 'all', name: '互动消息', detail: '赞、评论、@等互动消息', avatar: new URL('../../assets/img/icon/msg-icon2.png', import.meta.url).href, route: '/message/all' },
+  { id: 'helper', name: 'SeekFlow小助手', detail: '#今天谁请客呢', avatar: new URL('../../assets/img/icon/msg-icon5.webp', import.meta.url).href, route: '/message/douyin-helper' },
+  { id: 'system', name: '系统通知', detail: '协议修订通知', avatar: new URL('../../assets/img/icon/msg-icon4.png', import.meta.url).href, route: '/message/system-notice' },
+  { id: 'update', name: '求更新', detail: '你收到过1次求更新', avatar: new URL('../../assets/img/icon/msg-icon7.webp', import.meta.url).href, route: '/me/request-update' },
+  { id: 'task', name: '任务通知', detail: '发作品得流量', avatar: new URL('../../assets/img/icon/msg-icon6.webp', import.meta.url).href, route: '/message/task-notice' },
+  { id: 'live', name: '直播通知', detail: '举报结果通知', avatar: new URL('../../assets/img/icon/msg-icon8.webp', import.meta.url).href, route: '/message/live-notice' },
+  { id: 'money', name: '钱包通知', detail: '卡券发放提醒', avatar: new URL('../../assets/img/icon/msg-icon9.webp', import.meta.url).href, route: '/message/money-notice' }
+]
+
+// 群聊列表（mock）
+const groupChats = [
+  { id: 1, name: '技术交流群', avatar: '../../assets/img/icon/head-image.jpeg' },
+  { id: 2, name: '产品讨论组', avatar: '../../assets/img/icon/head-image.jpeg' },
+  { id: 3, name: '设计分享会', avatar: '../../assets/img/icon/head-image.jpeg' },
+  { id: 4, name: 'SeekFlow用户群', avatar: '../../assets/img/icon/head-image.jpeg' },
+  { id: 5, name: '周末约饭群', avatar: '../../assets/img/icon/head-image.jpeg' }
+]
+
 watch(
   () => data.searchKey,
   async (newVal) => {
-    if (newVal) {
-      try {
-        const res = await searchUsers(newVal)
-        if (res.success && res.data) {
-          data.searchResults = (res.data as any[]).map(normalizeSearchUser)
-        }
-      } catch { data.searchResults = [] }
-    } else {
-      data.searchResults = []
+    if (!newVal) {
+      data.suggestions = []
+      data.chatResults = []
+      data.contactResults = []
+      data.groupResults = []
+      data.sysMsgResults = []
+      return
     }
+    const kw = newVal.toLowerCase()
+
+    // ====== 本地即时搜索（先渲染，后端结果再增量补充） ======
+
+    // 聊天记录：从已加载的会话中匹配
+    const localChat: any[] = []
+    data.conversations.forEach(c => {
+      const name = (c.target_user?.nickname || '').toLowerCase()
+      const lastMsg = (c.last_message || '').toLowerCase()
+      if (name.includes(kw) || lastMsg.includes(kw)) {
+        localChat.push({
+          uid: c.target_user?.uid,
+          name: c.target_user?.nickname || '',
+          avatar: c.target_user?.avatar_168x168?.url_list?.[0] || '',
+          account: c.target_user?.unique_id || '',
+          avatar_168x168: c.target_user?.avatar_168x168 || {}
+        })
+      }
+    })
+    data.chatResults = localChat
+
+    // 联系人：从好友列表匹配
+    data.contactResults = localFilter(newVal)
+
+    // 群聊匹配
+    data.groupResults = groupChats.filter(g => g.name.toLowerCase().includes(kw))
+
+    // 系统消息匹配
+    data.sysMsgResults = systemMessages.filter(m =>
+      m.name.toLowerCase().includes(kw) || m.detail.toLowerCase().includes(kw)
+    )
+
+    // 建议列表：从上述本地结果聚合
+    const allSuggestions: any[] = []
+    localChat.forEach(c => allSuggestions.push({ ...c, source: '聊天' }))
+    data.contactResults.forEach((f: any) => {
+      if (!allSuggestions.find(s => s.uid === (f.uid || f.id))) {
+        allSuggestions.push({ ...f, source: '联系人', uid: f.uid || f.id })
+      }
+    })
+    data.groupResults.forEach(g => allSuggestions.push({ ...g, source: '群聊' }))
+    data.suggestions = allSuggestions.slice(0, 8)
+
+    // ====== 后端异步补充（不覆盖本地已显示的结果） ======
+
+    // 聊天记录：后端搜索消息内容，增量补充
+    searchChats(newVal).then(res => {
+      if (res.success && (res.data as any[])?.length) {
+        const existingUids = new Set(data.chatResults.map(r => r.uid))
+        const newItems = (res.data as any[])
+          .filter(u => u.uid && !existingUids.has(u.uid))
+          .map(u => ({
+            uid: u.uid,
+            name: u.nickname || '',
+            avatar: u.avatar_168x168?.url_list?.[0] || '',
+            account: u.unique_id || '',
+            avatar_168x168: u.avatar_168x168 || {}
+          }))
+        if (newItems.length) {
+          data.chatResults = [...data.chatResults, ...newItems]
+        }
+      }
+    }).catch(() => {})
+
+    // 通知：后端搜索通知内容，增量补充到聊天记录
+    searchNotifications(newVal).then(res => {
+      if (res.success && (res.data as any[])?.length) {
+        const existingUids = new Set(data.chatResults.map(r => r.uid))
+        const newItems = (res.data as any[])
+          .filter(u => u.uid && !existingUids.has(u.uid))
+          .map(u => ({
+            uid: u.uid,
+            name: u.nickname || '',
+            avatar: u.avatar_168x168?.url_list?.[0] || '',
+            account: u.unique_id || '',
+            avatar_168x168: u.avatar_168x168 || {}
+          }))
+        if (newItems.length) {
+          data.chatResults = [...data.chatResults, ...newItems]
+        }
+      }
+    }).catch(() => {})
   }
 )
 
@@ -563,12 +725,13 @@ watch(
   () => data.createChatSearchKey,
   async (newVal) => {
     if (newVal) {
+      data.searchFriends = localFilter(newVal)
       try {
         const res = await searchUsers(newVal)
-        if (res.success && res.data) {
+        if (res.success && (res.data as any[])?.length) {
           data.searchFriends = (res.data as any[]).map(normalizeSearchUser)
         }
-      } catch { data.searchFriends = [] }
+      } catch { /* 后端不可用时使用本地结果 */ }
     } else {
       data.searchFriends = []
     }
@@ -1153,6 +1316,95 @@ async function loadRecommendData() {
       .right {
         display: flex;
         align-items: center;
+      }
+    }
+
+    .suggestions {
+      margin-bottom: 10rem;
+
+      .suggest-item {
+        display: flex;
+        align-items: center;
+        padding: 12rem 0;
+        gap: 12rem;
+        border-bottom: 0.5px solid rgba(255, 255, 255, 0.05);
+
+        &:active {
+          opacity: 0.6;
+        }
+
+        .avatar {
+          width: 40rem;
+          height: 40rem;
+          border-radius: 50%;
+          object-fit: cover;
+        }
+
+        .info {
+          display: flex;
+          flex-direction: column;
+          gap: 2rem;
+
+          .name {
+            font-size: 15rem;
+            color: white;
+          }
+
+          .source {
+            font-size: 11rem;
+            color: var(--second-text-color);
+          }
+        }
+      }
+    }
+
+    .category {
+      margin-bottom: 10rem;
+    }
+
+    .search-item {
+      display: flex;
+      align-items: center;
+      padding: 12rem 0;
+      gap: 12rem;
+
+      .avatar {
+        width: 48rem;
+        height: 48rem;
+        border-radius: 50%;
+        object-fit: cover;
+      }
+
+      .name {
+        font-size: 15rem;
+        color: white;
+      }
+
+      .info {
+        display: flex;
+        flex-direction: column;
+        gap: 4rem;
+
+        .detail {
+          font-size: 12rem;
+          color: var(--second-text-color);
+        }
+      }
+    }
+
+    .no-result {
+      padding: 50rem 0;
+      text-align: center;
+
+      .notice-h1 {
+        font-size: 16rem;
+        color: white;
+      }
+
+      .notice-h2 {
+        margin-top: 10rem;
+        font-size: 14rem;
+        color: var(--second-text-color);
       }
     }
 

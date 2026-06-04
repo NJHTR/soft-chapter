@@ -120,7 +120,7 @@ watch(
   () => data.searchKey,
   (newVal) => {
     if (newVal) {
-      //TODO 搜索时仅仅判断是否包含了对应字符串，抖音做了拼音判断的
+      //TODO 搜索时仅仅判断是否包含了对应字符串，SeekFlow做了拼音判断的
       data.searchFriends = data.followings.filter((v) => {
         if (v.name.includes(newVal)) return true
         return v.account.includes(newVal)

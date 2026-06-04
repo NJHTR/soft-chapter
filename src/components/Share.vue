@@ -212,7 +212,7 @@ async function copyLink() {
   await _sleep(500)
   _hideLoading()
   _copy(props.item.share_info.share_link_desc + props.item.share_info.share_url)
-  //TODO 抖音样式改了
+  //TODO SeekFlow样式改了
   _notice('复制成功')
 }
 

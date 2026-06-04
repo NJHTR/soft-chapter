@@ -280,4 +280,11 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
         List<VideoVO> voList = toVideoVOList(ordered, userId);
         return new PageDTO<>(collectPage.getTotal(), pageNo, pageSize, voList);
     }
+
+    @Override
+    public List<VideoVO> searchVideos(String keyword) {
+        if (keyword == null || keyword.trim().isEmpty()) return List.of();
+        List<Video> videos = baseMapper.searchByKeyword(keyword.trim());
+        return toVideoVOList(videos, null);
+    }
 }
