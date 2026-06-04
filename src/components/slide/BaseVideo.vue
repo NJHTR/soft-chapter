@@ -69,7 +69,7 @@
 
 <script setup lang="ts">
 import { _checkImgUrl, _duration, _stopPropagation } from '@/utils'
-import { toggleVideoLike } from '@/api/videos'
+import { recordWatch, toggleVideoLike } from '@/api/videos'
 import Loading from '../Loading.vue'
 import ItemToolbar from './ItemToolbar.vue'
 import ItemDesc from './ItemDesc.vue'
@@ -158,6 +158,34 @@ let state = reactive({
   videoScreenHeight: 0,
   commentVisible: false
 })
+// 观看时长跟踪
+let watchSec = 0
+let watchTimer: any = null
+let watchReported = false
+const videoId = computed(() => props.item?.aweme_id ? Number(props.item.aweme_id) : 0)
+const authorUserId = computed(() => props.item?.author?.uid ? Number(props.item.author.uid) : 0)
+const videoDuration = computed(() => state.duration || 0)
+
+function tickWatch() {
+  watchSec++
+  // 每 5 秒上报一次
+  if (watchSec > 0 && watchSec % 5 === 0 && !watchReported) {
+    sendWatchProgress()
+  }
+}
+
+function sendWatchProgress(finished = false) {
+  if (!store.userinfo?.uid || !videoId.value) return
+  if (Number(store.userinfo.uid) === authorUserId.value) return // 不看自己的
+  const dur = watchSec
+  recordWatch(videoId.value, {
+    watch_duration: dur,
+    video_duration: videoDuration.value,
+    finished
+  }).catch(() => {})
+  if (finished) watchReported = true
+}
+
 const poster = $computed(() => {
   return _checkImgUrl(props.item.video.poster ?? props.item.video.cover.url_list[0])
 })
@@ -288,6 +316,20 @@ onMounted(() => {
   // eventTester("durationchange", '资源长度改变'); //资源长度改变
   // eventTester("volumechange", '音量改变'); //音量改变
 
+  // 观看时长跟踪 — 播放时启动计时器，暂停/结束时上报
+  videoEl.addEventListener('playing', () => {
+    if (watchTimer) clearInterval(watchTimer)
+    watchTimer = setInterval(tickWatch, 1000)
+  })
+  videoEl.addEventListener('pause', () => {
+    if (watchTimer) { clearInterval(watchTimer); watchTimer = null }
+    sendWatchProgress()
+  })
+  videoEl.addEventListener('ended', () => {
+    if (watchTimer) { clearInterval(watchTimer); watchTimer = null }
+    sendWatchProgress(true)
+  })
+
   // console.log('mounted')
   // bus.off('singleClickBroadcast')
   bus.on(EVENT_KEY.SINGLE_CLICK_BROADCAST, click)
@@ -305,6 +347,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   // console.log('unmounted')
+  if (watchTimer) { clearInterval(watchTimer); watchTimer = null }
+  sendWatchProgress()
+  watchSec = 0
   bus.off(EVENT_KEY.SINGLE_CLICK_BROADCAST, click)
   bus.off(EVENT_KEY.DIALOG_MOVE, onDialogMove)
   bus.off(EVENT_KEY.DIALOG_END, onDialogEnd)

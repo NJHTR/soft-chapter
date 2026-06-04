@@ -13,7 +13,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { panel } from '@/api/user'
+import { panel, recordVisit } from '@/api/user'
 import { _no } from '@/utils'
 import UserPanel from '@/components/UserPanel.vue'
 import Loading from '@/components/Loading.vue'
@@ -66,6 +66,8 @@ async function loadUser(uid: string) {
     }
   }
   data.loading = false
+  // 记录访客
+  try { recordVisit(Number(uid)) } catch { /* ignore */ }
 }
 
 onMounted(() => {

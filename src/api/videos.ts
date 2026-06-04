@@ -63,3 +63,7 @@ export function toggleCollect(videoId: number) {
 export function searchVideos(keyword: string) {
   return request({ url: '/video/search', method: 'get', params: { keyword } })
 }
+
+export function recordWatch(videoId: number, data: { watch_duration: number; video_duration: number; finished: boolean }) {
+  return request({ url: `/video/watch/${videoId}`, method: 'post', data })
+}
