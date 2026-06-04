@@ -31,12 +31,18 @@
 
         <div class="audio" v-if="message.type === MESSAGE_TYPE.AUDIO" @click="playAudio">
           <template v-if="isMe">
-            <div class="duration">{{ audioPlaying ? '▶ ' : '' }}{{ message.data.duration }}'</div>
+            <div class="duration">{{ message.data.duration }}″</div>
+            <div class="wave-bars" :class="{ playing: audioPlaying }">
+              <span class="bar" v-for="i in 4" :key="i" :style="{ animationDelay: (i * 0.15) + 's' }"></span>
+            </div>
             <img src="../../../assets/img/icon/message/chat/rss2.png" alt="" class="audio-icon" />
           </template>
           <template v-else>
             <img src="../../../assets/img/icon/message/chat/rss.png" alt="" class="audio-icon" />
-            <div class="duration">{{ audioPlaying ? '▶ ' : '' }}{{ message.data.duration }}'</div>
+            <div class="wave-bars" :class="{ playing: audioPlaying }">
+              <span class="bar" v-for="i in 4" :key="i" :style="{ animationDelay: (i * 0.15) + 's' }"></span>
+            </div>
+            <div class="duration">{{ message.data.duration }}″</div>
           </template>
         </div>
 
@@ -389,18 +395,56 @@ export default {
 
   .audio {
     max-width: 60vw;
-    padding: 10rem;
-    padding-right: 15rem;
+    min-width: 100rem;
+    padding: 10rem 12rem;
     border-radius: @border-radius;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     font-size: 14rem;
     cursor: pointer;
+    gap: 6rem;
 
     .audio-icon {
-      width: 15rem;
-      height: 15rem;
+      width: 18rem;
+      height: 18rem;
+      flex-shrink: 0;
+    }
+
+    .duration {
+      font-size: 13rem;
+      white-space: nowrap;
+      min-width: 24rem;
+    }
+
+    .wave-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 2rem;
+      height: 20rem;
+      flex: 1;
+      justify-content: center;
+
+      .bar {
+        width: 2.5rem;
+        border-radius: 2rem;
+        background: rgba(255,255,255,0.4);
+        height: 6rem;
+        transition: height 0.2s;
+      }
+
+      &.playing .bar {
+        animation: wave 0.8s ease-in-out infinite alternate;
+
+        &:nth-child(1) { height: 8rem; }
+        &:nth-child(2) { height: 14rem; }
+        &:nth-child(3) { height: 18rem; }
+        &:nth-child(4) { height: 10rem; }
+      }
+    }
+
+    @keyframes wave {
+      0% { transform: scaleY(0.4); }
+      100% { transform: scaleY(1); }
     }
   }
 
