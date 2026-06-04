@@ -173,6 +173,11 @@ export default defineConfig((): Promise<UserConfig> => {
             '/api': {
               target: 'http://localhost:9191',
               changeOrigin: true
+            },
+            '/ws': {
+              target: 'ws://localhost:9191',
+              changeOrigin: true,
+              ws: true
             }
           },
           fs: {

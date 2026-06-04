@@ -38,10 +38,14 @@
             type="text"
             placeholder="发送信息..."
           />
-          <!-- 有文字时显示发送按钮，没文字时显示语音/表情/加号 -->
+          <!-- 有文字: 表情包 + 发送按钮，隐藏语音和加号 -->
           <template v-if="data.inputText">
-            <img class="send-btn" src="../../../assets/img/icon/message/up.png" @click="handleSend" />
+            <img src="../../../assets/img/icon/message/emoji-white.png" alt="" class="emoji" />
+            <div class="send-btn" @click="handleSend">
+              <img src="../../../assets/img/icon/message/up.png" alt="" />
+            </div>
           </template>
+          <!-- 没文字: 语音 + 表情包 + 加号 -->
           <template v-else>
             <img @click="handleClick" src="../../../assets/img/icon/message/voice-white.png" alt="" />
             <img src="../../../assets/img/icon/message/emoji-white.png" alt="" />
@@ -192,14 +196,14 @@
 </template>
 <script setup lang="ts">
 import ChatMessage from '../components/ChatMessage.vue'
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import Loading from '@/components/Loading.vue'
 import { useBaseStore } from '@/store/pinia'
 import { _checkImgUrl, _no, _notice, _sleep } from '@/utils'
 import { useRouter, useRoute } from 'vue-router'
 import { useNav } from '@/utils/hooks/useNav'
 import bus, { EVENT_KEY } from '@/utils/bus'
-import { getChatHistory, sendMessage } from '@/api/message'
+import { getChatHistory, markRead, sendMessage } from '@/api/message'
 import { connectSocket, disconnectSocket, onSocketMsg } from '@/utils/socket'
 
 let CALL_STATE = {
@@ -248,10 +252,10 @@ const store = useBaseStore()
 const msgWrapper = ref<HTMLDivElement>()
 const inputRef = ref<HTMLInputElement>()
 
-// 聊天对象信息
-const targetUserId = Number(route.query.user_id || '0')
-const targetUserName = (route.query.name as string) || '聊天'
-const targetUserAvatar = (route.query.avatar as string) || ''
+// 聊天对象信息 — UID 必须保持字符串, JS Number 无法安全表示 19 位 Snowflake ID
+const targetUserId = ref<string>((route.query.user_id as string) || '')
+const targetUserName = ref((route.query.name as string) || '聊天')
+const targetUserAvatar = ref((route.query.avatar as string) || '')
 
 const data = reactive({
   previewImg: new URL('../../../assets/img/poster/3.jpg', import.meta.url).href,
@@ -269,6 +273,16 @@ const data = reactive({
   tooltipTopLocation: '',
   inputText: ''
 })
+
+watch(() => route.query, () => {
+  console.log('[Chat] route.query changed:', JSON.stringify(route.query))
+  targetUserId.value = (route.query.user_id as string) || ''
+  targetUserName.value = (route.query.name as string) || '聊天'
+  targetUserAvatar.value = (route.query.avatar as string) || ''
+  console.log('[Chat] targetUserId set to:', targetUserId.value, 'name:', targetUserName.value)
+  data.messages = []
+  loadHistory()
+}, { deep: true, immediate: true })
 
 let unsubChat: (() => void) | null = null
 
@@ -298,54 +312,80 @@ const MSG_TYPE_MAP: Record<number, number> = {
 // 映射后端消息到前端组件格式
 function mapMsgToChatItem(msg: any) {
   const myUid = store.userinfo.uid
+  const isMyMsg = msg.from_user_id === myUid
+  // REST API 返回的 Message 没有 from_user，WebSocket 推送有
+  const fromUserAvatar = msg.from_user?.avatar_168x168?.url_list?.[0]
+  const myAvatar = store.userinfo.avatar_168x168?.url_list?.[0] || ''
   return {
     type: MSG_TYPE_MAP[msg.msg_type] ?? MESSAGE_TYPE.TEXT,
     data: msg.content,
     time: msg.create_time,
     backendId: msg.id, // 用于去重
     user: {
-      id: msg.from_user_id === myUid ? myUid : targetUserId,
-      avatar: msg.from_user?.avatar_168x168?.url_list?.[0] || ''
+      id: isMyMsg ? myUid : targetUserId.value,
+      avatar: isMyMsg ? myAvatar : (fromUserAvatar || targetUserAvatar.value || '')
     }
   }
 }
 
 async function loadHistory() {
-  if (!targetUserId) return
+  if (!targetUserId.value) {
+    console.warn('[Chat] loadHistory skipped: targetUserId is', targetUserId.value)
+    return
+  }
   try {
-    const res = await getChatHistory({ with_user_id: targetUserId })
+    console.log('[Chat] loadHistory with_user_id:', targetUserId.value)
+    const res = await getChatHistory({ with_user_id: targetUserId.value })
+    console.log('[Chat] loadHistory response:', res.success, res.data?.length, 'messages')
     if (res.success && res.data) {
       data.messages = res.data.map(mapMsgToChatItem)
       scrollBottom()
     }
-  } catch { /* ignore */ }
+    // 标记已读并刷新底部徽章
+    await markRead(targetUserId.value)
+    bus.emit('REFRESH_UNREAD')
+  } catch (e) {
+    console.error('[Chat] loadHistory failed:', e)
+  }
+}
+
+function addMessageWithDedup(msg: any) {
+  if (msg.id && data.messages.some(m => m.backendId === msg.id)) {
+    console.log('[Chat] dup skipped, id=' + msg.id)
+    return false
+  }
+  data.messages.push(mapMsgToChatItem(msg))
+  scrollBottom()
+  return true
 }
 
 function handleWsMessage(msg: any) {
-  // 去重：已经存在的消息不重复添加
-  if (msg.id && data.messages.some(m => m.backendId === msg.id)) return
+  console.log('[Chat] WS message received:', { from: msg.from_user_id, to: msg.to_user_id, target: targetUserId.value, myUid: store.userinfo.uid, msgId: msg.id, msgIdType: typeof msg.id })
   // 检查是否是当前对话的消息
-  if (msg.from_user_id === targetUserId || (msg.to_user_id === targetUserId && msg.from_user_id === store.userinfo.uid)) {
-    data.messages.push(mapMsgToChatItem(msg))
-    scrollBottom()
+  if (msg.from_user_id === targetUserId.value || (msg.to_user_id === targetUserId.value && msg.from_user_id === store.userinfo.uid)) {
+    addMessageWithDedup(msg)
+    // 正在看对话，自动标记已读并刷新徽章
+    markRead(targetUserId.value).then(() => bus.emit('REFRESH_UNREAD'))
+  } else {
+    console.log('[Chat] WS message ignored: not current conversation')
   }
 }
 
 async function handleSend() {
   const text = data.inputText?.trim()
   if (!text) return
-  if (!targetUserId) {
+  if (!targetUserId.value) {
     _notice('聊天对象信息异常，请重新进入')
     return
   }
   // 通过 REST API 发送，后端会自动通过 WebSocket 推送给接收方
   try {
-    const res = await sendMessage({ to_user_id: targetUserId, content: text })
+    console.log('[Chat] handleSend to:', targetUserId.value, 'text:', text)
+    const res = await sendMessage({ to_user_id: targetUserId.value, content: text })
     if (res.success && res.data) {
-      data.messages.push(mapMsgToChatItem(res.data))
+      addMessageWithDedup(res.data)
       data.inputText = ''
       data.showOption = false
-      scrollBottom()
     } else {
       _notice((res as any).msg || '发送失败')
     }
@@ -521,12 +561,26 @@ function showTooltip(e) {
         }
 
         .send-btn {
-          width: 22rem;
-          height: 22rem;
+          width: 28rem;
+          height: 28rem;
           border-radius: 50%;
-          background: @chat-bg-color;
-          padding: 5rem;
+          background: #fe2c55;
+          display: flex;
+          align-items: center;
+          justify-content: center;
           cursor: pointer;
+          flex-shrink: 0;
+          margin-left: 12rem;
+
+          img {
+            width: 16rem;
+            height: 16rem;
+            margin-left: 0;
+          }
+        }
+
+        .emoji {
+          margin-left: 10rem !important;
         }
       }
 
