@@ -16,7 +16,7 @@
           <img
             src="../../../assets/img/icon/menu-white.png"
             alt=""
-            @click="nav('/message/chat/detail')"
+            @click="nav('/message/chat/detail', { user_id: targetUserId, name: targetUserName, avatar: targetUserAvatar })"
           />
         </div>
       </div>
@@ -59,19 +59,27 @@
             />
           </template>
         </div>
-        <div class="record" v-else
-          @touchstart.prevent="voiceStart"
-          @touchend.prevent="voiceEnd"
-          @touchcancel.prevent="voiceEnd"
-          @mousedown.prevent="voiceStart"
-          @mouseup.prevent="voiceEnd"
-          @mouseleave.prevent="voiceEnd">
-          <span>{{ data.recordingActive ? '松开 发送' : '按住 说话' }}</span>
-          <img
-            @click="cancelVoice"
-            src="../../../assets/img/icon/message/keyboard.png"
-            alt=""
-          />
+        <!-- 录音区域 -->
+        <div class="record" v-else>
+          <div class="record-hint" :class="{ cancel: voiceCancelled }">
+            <span v-if="!data.recordingActive">按住 说话</span>
+            <span v-else-if="voiceCancelled">松开 取消</span>
+            <span v-else>松开 发送</span>
+          </div>
+          <div class="record-bar"
+            @touchstart.prevent="voiceStart"
+            @touchmove.prevent="voiceMove"
+            @touchend.prevent="voiceEnd"
+            @mousedown.prevent="voiceStart"
+            @mousemove.prevent="voiceMove"
+            @mouseup.prevent="voiceEnd"
+            @mouseleave.prevent="voiceEnd">
+            <div class="record-wave" :class="{ active: data.recordingActive }">
+              <span class="bar" v-for="i in 6" :key="i" :style="{ animationDelay: (i * 0.12) + 's' }"></span>
+            </div>
+            <div class="record-duration" v-if="data.recordingActive">{{ voiceDuration }}″</div>
+            <img @click="cancelVoice" src="../../../assets/img/icon/message/keyboard.png" alt="" class="record-keyboard" />
+          </div>
         </div>
         <!-- 表情包面板 -->
         <div class="emoji-panel" v-if="data.showEmoji">
@@ -298,6 +306,9 @@ const emojiList = ['😀','😂','🤣','😍','🥰','😘','😜','😎','🤩
 let mediaRecorder: MediaRecorder | null = null
 let audioChunks: BlobPart[] = []
 let voiceStartTime = 0
+let voiceTimer: ReturnType<typeof setInterval> | null = null
+const voiceDuration = ref(0)
+const voiceCancelled = ref(false)
 
 function toggleEmoji() { data.showEmoji = !data.showEmoji; data.showOption = false }
 function insertEmoji(emoji: string) { data.inputText += emoji; data.showEmoji = false }
@@ -331,25 +342,35 @@ async function handleImagePicked(e: Event) {
 
 function startVoice() {
   data.recording = true
+  voiceDuration.value = 0
+  voiceCancelled.value = false
 }
 
 function cancelVoice() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop()
+  if (voiceTimer) { clearInterval(voiceTimer); voiceTimer = null }
+  if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.stop(); audioChunks = [] }
   data.recording = false
   data.recordingActive = false
+  voiceCancelled.value = false
 }
 
 function voiceStart() {
   if (!data.recording) return
   data.recordingActive = true
+  voiceCancelled.value = false
   audioChunks = []
   voiceStartTime = Date.now()
+  voiceDuration.value = 0
+  voiceTimer = setInterval(() => {
+    voiceDuration.value = Math.round((Date.now() - voiceStartTime) / 1000)
+  }, 200)
   navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
     mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
     mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data) }
     mediaRecorder.onstop = async () => {
+      if (voiceTimer) { clearInterval(voiceTimer); voiceTimer = null }
       stream.getTracks().forEach(t => t.stop())
-      if (audioChunks.length === 0) return
+      if (audioChunks.length === 0 || voiceCancelled.value) return
       const duration = Math.max(1, Math.round((Date.now() - voiceStartTime) / 1000))
       const blob = new Blob(audioChunks, { type: 'audio/webm' })
       const formData = new FormData()
@@ -371,12 +392,22 @@ function voiceStart() {
   }).catch(() => { _notice('无法访问麦克风'); data.recording = false; data.recordingActive = false })
 }
 
+let _voiceStartY = 0
+function voiceMove(e: TouchEvent | MouseEvent) {
+  if (!data.recordingActive) return
+  const y = 'touches' in e ? e.touches[0].clientY : e.clientY
+  if (!_voiceStartY) _voiceStartY = y
+  // 上滑超过 60px 判定为取消
+  voiceCancelled.value = (_voiceStartY - y) > 60
+}
+
 function voiceEnd() {
+  _voiceStartY = 0
   data.recordingActive = false
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop()
   }
-  data.recording = false
+  setTimeout(() => { data.recording = false; voiceCancelled.value = false }, 200)
 }
 
 watch(() => route.query, () => {
@@ -696,23 +727,53 @@ function showTooltip(e) {
       }
 
       .record {
-        box-sizing: border-box;
-        height: 44rem;
-        margin: 0 10rem;
-        padding: 10rem 5rem;
-        background: @normal-bg-color;
-        border-radius: 20rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
+        display: flex; flex-direction: column; align-items: center; user-select: none;
 
-        img {
-          right: 5rem;
-          position: absolute;
-          width: 24rem;
-          border-radius: 50%;
-          margin-left: 15rem;
+        .record-hint {
+          height: 36rem; display: flex; align-items: center; justify-content: center;
+          font-size: 13rem; color: var(--second-text-color);
+          &.cancel { color: #fe2c55; }
+        }
+
+        .record-bar {
+          box-sizing: border-box; height: 44rem; margin: 0 10rem; padding: 10rem 5rem;
+          background: @normal-bg-color; border-radius: 20rem;
+          display: flex; align-items: center; justify-content: center; position: relative;
+          cursor: pointer; width: calc(100% - 20rem);
+
+          .record-keyboard {
+            right: 5rem; position: absolute; width: 24rem;
+            border-radius: 50%; margin-left: 15rem;
+          }
+
+          .record-duration {
+            font-size: 14rem; color: white; margin-left: 8rem;
+          }
+        }
+
+        .record-wave {
+          display: flex; align-items: flex-end; gap: 2rem; height: 20rem;
+
+          .bar {
+            width: 2.5rem; border-radius: 2rem; background: rgba(255,255,255,0.3);
+            height: 6rem; transition: background 0.2s;
+          }
+
+          &.active .bar {
+            background: #fe2c55;
+            animation: wave 0.6s ease-in-out infinite alternate;
+            &:nth-child(1) { height: 10rem; }
+            &:nth-child(2) { height: 16rem; }
+            &:nth-child(3) { height: 20rem; }
+            &:nth-child(4) { height: 16rem; }
+            &:nth-child(5) { height: 10rem; }
+            &:nth-child(6) { height: 6rem; }
+          }
+        }
+
+        @keyframes wave {
+          0% { transform: scaleY(0.4); }
+          100% { transform: scaleY(1); }
         }
       }
 

@@ -8,7 +8,7 @@
       {{ message.time }}
     </div>
     <template v-else>
-      <img v-if="!isMe" :src="_checkImgUrl(message.user.avatar)" alt="" class="avatar" />
+      <img v-if="!isMe" :src="_checkImgUrl(message.user.avatar)" alt="" class="avatar" @click.stop="goUserHome" />
       <div class="chat-wrapper" @click="$emit('itemClick', message)">
         <div class="chat-text" v-if="message.type === MESSAGE_TYPE.TEXT">
           {{ message.data }}
@@ -109,7 +109,7 @@
           />
         </div>
       </div>
-      <img v-if="isMe" :src="_checkImgUrl(message.user.avatar)" alt="" class="avatar" />
+      <img v-if="isMe" :src="_checkImgUrl(message.user.avatar)" alt="" class="avatar" @click.stop="goUserHome" />
     </template>
   </div>
 </template>
@@ -185,6 +185,12 @@ export default {
   created() {},
   methods: {
     _checkImgUrl,
+    goUserHome() {
+      const uid = this.message.user?.id
+      if (uid && !isNaN(Number(uid))) {
+        this.$router.push('/people/user-home/' + uid)
+      }
+    },
     playAudio() {
       const url = this.message.data?.url || this.message.data
       if (!url) return
@@ -225,6 +231,7 @@ export default {
       margin-left: 10rem;
       height: 36rem;
       border-radius: 50%;
+      cursor: pointer;
     }
 
     .audio-icon {
@@ -245,6 +252,7 @@ export default {
       margin-right: 10rem;
       height: 36rem;
       border-radius: 50%;
+      cursor: pointer;
     }
 
     .audio-icon {

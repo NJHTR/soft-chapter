@@ -333,7 +333,8 @@ watch(
         state.videoLoaded = true
       }
     }
-  }
+  },
+  { immediate: true }
 )
 
 watch(
