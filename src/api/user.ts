@@ -34,7 +34,7 @@ export function uploadVideo(file: File) {
   return request({ url: '/upload/video', method: 'post', data: formData, headers: { 'Content-Type': 'multipart/form-data' } })
 }
 
-export function uploadImage(file: File) {
+export function uploadImage(file: Blob | File) {
   const formData = new FormData()
   formData.append('file', file)
   return request({ url: '/upload/image', method: 'post', data: formData, headers: { 'Content-Type': 'multipart/form-data' } })

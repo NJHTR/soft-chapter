@@ -496,9 +496,24 @@ async function loadConversations() {
   try {
     const res = await getConversations()
     if (res.success && res.data) {
-      data.conversations = res.data
+      data.conversations = (res.data as any[]).map(item => ({
+        ...item,
+        last_message: formatLastMsg(item.last_message, item.last_msg_type)
+      }))
     }
   } catch { /* ignore */ }
+}
+
+function formatLastMsg(content: string, msgType: number): string {
+  if (!content) return ''
+  switch (msgType) {
+    case 2: return '[图片]'
+    case 3: return '[语音]'
+    case 4: return '[视频]'
+    case 5: return '[红包]'
+    default:
+      return content.length > 20 ? content.slice(0, 20) + '...' : content
+  }
 }
 
 async function loadUnreadCounts() {

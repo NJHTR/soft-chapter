@@ -92,6 +92,13 @@
         <img class="resource" :src="data.previewImg" alt="" />
       </div>
     </transition>
+
+    <AvatarCropper
+      :visible="cropperVisible"
+      :image-url="cropperImageUrl"
+      @cancel="cropperVisible = false; URL.revokeObjectURL(cropperImageUrl)"
+      @confirm="onAvatarCropped"
+    />
   </div>
 </template>
 
@@ -110,6 +117,7 @@ import {
 } from '@/utils'
 import { computed, reactive, ref } from 'vue'
 import { useNav } from '@/utils/hooks/useNav'
+import AvatarCropper from '@/components/AvatarCropper.vue'
 import { updateProfile, updateAvatar, updateCover, uploadImage } from '@/api/user'
 
 defineOptions({ name: 'EditUserInfo' })
@@ -118,6 +126,9 @@ const store = useBaseStore()
 const nav = useNav()
 const avatarInput = ref<HTMLInputElement>()
 const coverInput = ref<HTMLInputElement>()
+
+const cropperVisible = ref(false)
+const cropperImageUrl = ref('')
 
 const data = reactive({
   sexList: [
@@ -196,9 +207,18 @@ function showCoverDialog() {
 async function onAvatarFile(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
+  ;(e.target as HTMLInputElement).value = ''
+  // 显示裁剪器
+  cropperImageUrl.value = URL.createObjectURL(file)
+  cropperVisible.value = true
+}
+
+async function onAvatarCropped(blob: Blob) {
+  cropperVisible.value = false
+  URL.revokeObjectURL(cropperImageUrl.value)
   _showLoading()
   try {
-    const res = await uploadImage(file)
+    const res = await uploadImage(blob)
     if (res.success && res.data.url) {
       await updateAvatar(res.data.url)
       store.setUserinfo({
@@ -213,8 +233,6 @@ async function onAvatarFile(e: Event) {
     _notice('上传失败，请重试')
   }
   _hideLoading()
-  // reset so same file can be re-selected
-  ;(e.target as HTMLInputElement).value = ''
 }
 
 async function onCoverFile(e: Event) {

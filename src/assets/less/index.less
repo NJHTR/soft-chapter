@@ -7,6 +7,12 @@
 //布局
 @import 'anim';
 
+// 全局：所有头像图片使用 cover 防止非正方形图片被拉伸变形
+.avatar img,
+.head-image {
+  object-fit: cover;
+}
+
 :root {
   --color-me: rgb(21, 23, 35);
   --color-user: rgb(22, 24, 36);
