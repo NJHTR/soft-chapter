@@ -268,18 +268,12 @@
                 v-for="(item, i) in data.searchFriends"
                 @click="handleClick(item)"
               >
-                <img class="left" src="../../assets/img/icon/head-image.jpeg" alt="" />
+                <img class="left" :src="_checkImgUrl(item.avatar)" alt="" />
                 <div class="right">
                   <div class="info">
                     <span class="name">{{ item.name }}</span>
                     <span class="account">{{ item.account ? '抖音号:' + item.account : '' }}</span>
                   </div>
-                  <img v-if="item.select" src="../../assets/img/icon/message/checked.png" alt="" />
-                  <img
-                    v-if="!item.select"
-                    src="../../assets/img/icon/message/no-check2.png"
-                    alt=""
-                  />
                 </div>
               </div>
             </div>
@@ -297,24 +291,18 @@
               </div>
             </div>
             <div class="friend-list">
-              <div class="index">Z</div>
-              <div
-                class="friend-item"
+              <div class="friend-item"
                 :key="i"
                 v-for="(item, i) in store.friends.all"
-                @click="item.select = !item.select"
-              >
+                @click="data.createChatDialog = false; navToChat({ target_user: item })">
                 <img class="left" :src="_checkImgUrl(item.avatar)" alt="" />
                 <div class="right">
                   <span>{{ item.name }}</span>
-                  <Check mode="red" style="height: 20rem; width: 20rem" v-model="item.select" />
+                  <span class="account-tip" v-if="item.account">抖音号: {{ item.account }}</span>
                 </div>
               </div>
             </div>
           </template>
-          <div class="btn-wrapper">
-            <div class="btn primary">发起群聊{{ selectFriends ? `(${selectFriends})` : '' }}</div>
-          </div>
         </div>
         <div class="joined-chat-wrapper" v-show="data.showJoinedChat">
           <div class="nav">
@@ -567,8 +555,9 @@ watch(
 )
 
 function handleClick(item) {
-  item.select = !item.select
   data.createChatSearchKey = ''
+  data.createChatDialog = false
+  navToChat({ target_user: item })
 }
 
 async function loadRecommendData() {
@@ -668,14 +657,22 @@ async function loadRecommendData() {
             height: 48rem;
             border-radius: 50%;
             margin-right: 10rem;
+            object-fit: cover;
           }
 
           .right {
             font-size: 14rem;
             flex: 1;
             display: flex;
-            align-items: center;
-            justify-content: space-between;
+            align-items: flex-start;
+            justify-content: center;
+            flex-direction: column;
+
+            .account-tip {
+              font-size: 11rem;
+              color: var(--second-text-color);
+              margin-top: 2rem;
+            }
 
             img {
               height: 20rem;

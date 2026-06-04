@@ -60,71 +60,78 @@
 import Switches from '../components/swtich/switches.vue'
 import People from '../../people/components/People.vue'
 import BlockDialog from '../components/BlockDialog.vue'
-import CONST_VAR from '../../../utils/const_var'
-import { onMounted, reactive } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { useNav } from '@/utils/hooks/useNav'
 import { _showConfirmDialog } from '@/utils'
-import { toggleFollowUser } from '@/api/user'
+import { toggleFollowUser, panel } from '@/api/user'
 
 defineOptions({
   name: 'ChatDetail'
 })
 
 const nav = useNav()
+const route = useRoute()
+const targetUserId = ref((route.query.user_id as string) || '')
+const targetUserName = ref((route.query.name as string) || '对方')
+const targetUserAvatar = ref((route.query.avatar as string) || '')
+
 const data = reactive({
   noMessage: false,
   top: false,
   blockDialog: false,
-  list: [
-    {
-      id: '224e9a00-ffa0-4bc1-bb07-c318c7b02fa5',
-      avatar: new URL('../../../assets/img/icon/avatar/1.png', import.meta.url).href,
-      name: '何以为家',
-      sex: '',
-      age: null,
-      idCard: null,
-      phone: '',
-      uid: 0,
-      address: null,
-      wechat: '',
-      password: null,
-      lastLoginTime: '1629993515',
-      createTime: '1630035089',
-      isDelete: 0,
-      account: '234',
-      pinyin: 'M',
-      select: false,
-      type: CONST_VAR.RELATE_ENUM.FOLLOW_EACH_OTHER
-    }
-  ]
+  list: [] as any[]
 })
 
-onMounted(() => {})
+onMounted(async () => {
+  let uid = targetUserId.value
+  if (uid) {
+    // 加载用户详细信息
+    try {
+      const res = await panel({ uid })
+      if (res.success && res.data) {
+        const u = res.data
+        data.list = [{
+          id: u.uid || uid,
+          uid: u.uid || uid,
+          avatar: targetUserAvatar.value || u.avatar_168x168?.url_list?.[0] || '',
+          name: targetUserName.value || u.nickname || '用户',
+          account: u.unique_id || '',
+          sex: u.gender === 1 ? '男' : u.gender === 2 ? '女' : '',
+          type: u.is_followed ? 2 : 0,
+          select: false
+        }]
+      }
+    } catch { /* ignore */ }
+  } else {
+    // 没有用户ID，显示占位
+    data.list = [{
+      uid: 0, name: '未知用户', avatar: '', sex: '', type: 0, select: false
+    }]
+  }
+})
 
 async function follow(index: number) {
   const uid = data.list[index]?.uid
-  if (uid) {
-    const res = await toggleFollowUser(uid)
+  if (uid && !isNaN(Number(uid))) {
+    const res = await toggleFollowUser(Number(uid))
     if (res.success && res.data.isAttention) {
-      if (data.list[index].type === CONST_VAR.RELATE_ENUM.FOLLOW_ME) {
-        data.list[index].type = CONST_VAR.RELATE_ENUM.FOLLOW_EACH_OTHER
-      }
+      data.list[index].type = 2 // follow each other
     }
   }
 }
 
 function unfollow(index: number) {
   const uid = data.list[index]?.uid
+  if (!uid || isNaN(Number(uid))) return
   _showConfirmDialog(
-    '正在与对方相互关注，是否不再关注该用户',
+    '是否不再关注该用户',
     null,
     'gray',
     async () => {
-      if (uid) {
-        const res = await toggleFollowUser(uid)
-        if (res.success && !res.data.isAttention) {
-          data.list[index].type = CONST_VAR.RELATE_ENUM.FOLLOW_ME
-        }
+      const res = await toggleFollowUser(Number(uid))
+      if (res.success && !res.data.isAttention) {
+        data.list[index].type = 0
       }
     },
     () => {},
