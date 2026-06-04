@@ -40,6 +40,12 @@ export function uploadImage(file: Blob | File) {
   return request({ url: '/upload/image', method: 'post', data: formData, headers: { 'Content-Type': 'multipart/form-data' } })
 }
 
+export function uploadVoice(file: Blob | File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request({ url: '/upload/voice', method: 'post', data: formData, headers: { 'Content-Type': 'multipart/form-data' } })
+}
+
 export function updateProfile(data: { nickname?: string; signature?: string; gender?: number; birthday?: string; province?: string; city?: string }) {
   return request({ url: '/user/profile', method: 'put', data })
 }

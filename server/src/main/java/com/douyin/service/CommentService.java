@@ -8,7 +8,7 @@ import java.util.Map;
 
 public interface CommentService extends IService<Comment> {
 
-    List<Map<String, Object>> getVideoComments(Long videoId, Long viewerUserId);
+    List<Map<String, Object>> getVideoComments(Long videoId, Long viewerUserId, int pageNo, int pageSize);
 
     Comment addComment(Comment comment);
 

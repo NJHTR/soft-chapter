@@ -32,11 +32,13 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     }
 
     @Override
-    public List<Map<String, Object>> getVideoComments(Long videoId, Long viewerUserId) {
+    public List<Map<String, Object>> getVideoComments(Long videoId, Long viewerUserId, int pageNo, int pageSize) {
+        int offset = (pageNo - 1) * pageSize;
         List<Comment> comments = list(new LambdaQueryWrapper<Comment>()
                 .eq(Comment::getVideoId, videoId)
                 .eq(Comment::getParentId, 0L)
-                .orderByDesc(Comment::getCreateTime));
+                .orderByDesc(Comment::getCreateTime)
+                .last("LIMIT " + offset + "," + pageSize));
 
         if (comments.isEmpty()) return List.of();
 
@@ -67,6 +69,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             item.put("comment_id", String.valueOf(c.getId()));
             item.put("user_id", String.valueOf(c.getUserId()));
             item.put("content", c.getContent());
+            item.put("extra", c.getExtra() != null ? c.getExtra() : "");
             item.put("digg_count", c.getLikeCount() != null ? c.getLikeCount() : 0);
             item.put("user_digged", finalLiked.contains(c.getId()));
             item.put("user_buried", false);
@@ -125,6 +128,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             child.put("comment_id", String.valueOf(r.getId()));
             child.put("user_id", String.valueOf(r.getUserId()));
             child.put("content", r.getContent());
+            child.put("extra", r.getExtra() != null ? r.getExtra() : "");
             child.put("digg_count", r.getLikeCount() != null ? r.getLikeCount() : 0);
             child.put("user_digged", finalReplyLiked.contains(r.getId()));
             child.put("user_buried", false);
