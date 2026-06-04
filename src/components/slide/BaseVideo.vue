@@ -33,29 +33,15 @@
       <template v-else>
         <div :style="{ opacity: state.isMove ? 0 : 1 }" class="normal">
           <template v-if="!state.commentVisible">
-            <ItemToolbar v-model:item="state.localItem" />
+            <ItemToolbar v-model:item="state.localItem" :is-my="isMy" />
             <ItemDesc v-model:item="state.localItem" />
           </template>
-          <div v-if="isMy" class="comment-status">
-            <div class="comment">
-              <div class="type-comment">
-                <img src="../../assets/img/icon/head-image.jpeg" alt="" class="avatar" />
-                <div class="right">
-                  <p>
-                    <span class="name">zzzzz</span>
-                    <span class="time">2020-01-20</span>
-                  </p>
-                  <p class="text">北京</p>
-                </div>
-              </div>
-              <transition-group name="comment-status" tag="div" class="loveds">
-                <div class="type-loved" :key="i" v-for="i in state.test">
-                  <img src="../../assets/img/icon/head-image.jpeg" alt="" class="avatar" />
-                  <img src="../../assets/img/icon/love.svg" alt="" class="loved" />
-                </div>
-              </transition-group>
+          <transition-group name="comment-status" tag="div" class="loveds">
+            <div class="type-loved" :key="i" v-for="i in state.test">
+              <img :src="store.userinfo?.avatar_168x168?.url_list?.[0] || ''" alt="" class="avatar" />
+              <img src="../../assets/img/icon/love.svg" alt="" class="loved" />
             </div>
-          </div>
+          </transition-group>
         </div>
         <div
           class="progress"
@@ -83,6 +69,7 @@
 
 <script setup lang="ts">
 import { _checkImgUrl, _duration, _stopPropagation } from '@/utils'
+import { toggleVideoLike } from '@/api/videos'
 import Loading from '../Loading.vue'
 import ItemToolbar from './ItemToolbar.vue'
 import ItemDesc from './ItemDesc.vue'
@@ -91,10 +78,13 @@ import { SlideItemPlayStatus } from '@/utils/const_var'
 import { computed, onMounted, onUnmounted, provide, reactive } from 'vue'
 import { Icon } from '@iconify/vue'
 import { _css } from '@/utils/dom'
+import { useBaseStore } from '@/store/pinia'
 
 defineOptions({
   name: 'BaseVideo'
 })
+
+const store = useBaseStore()
 
 const props = defineProps({
   item: {
@@ -114,12 +104,6 @@ const props = defineProps({
     type: Boolean,
     default: () => {
       return true
-    }
-  },
-  isMy: {
-    type: Boolean,
-    default: () => {
-      return false
     }
   },
   isLive: {
@@ -164,7 +148,8 @@ let state = reactive({
   width: 0,
   isMove: false,
   ignoreWaiting: false, //忽略waiting事件。因为改变进度会触发waiting事件，烦的一批
-  test: [1, 2],
+  test: [],
+  loveId: 0,
   localItem: props.item,
   progressBarRect: {
     height: 0,
@@ -192,6 +177,54 @@ const progressClass = $computed(() => {
     return isPlaying ? '' : 'stop'
   }
 })
+
+const isMy = $computed(() => {
+  const itemUid = String(props.item?.author?.uid || '')
+  const myUid = String(store.userinfo?.uid || '')
+  return itemUid !== '' && itemUid === myUid
+})
+
+function showLoveAnimation() {
+  const id = ++state.loveId
+  state.test.push(id)
+  setTimeout(() => {
+    const idx = state.test.indexOf(id)
+    if (idx > -1) state.test.splice(idx, 1)
+  }, 800)
+}
+
+let likingDoubleTap = false
+
+async function doDoubleTapLike() {
+  if (likingDoubleTap) return
+  if (props.item.is_loved) return
+  const awemeId = props.item.aweme_id
+  if (!awemeId) return
+
+  likingDoubleTap = true
+  const prevLoved = props.item.is_loved
+  const prevCount = props.item.statistics.digg_count
+  props.item.is_loved = true
+  props.item.statistics.digg_count += 1
+
+  try {
+    const res = await toggleVideoLike(awemeId)
+    if (res.success) {
+      props.item.is_loved = res.data.isLoved
+      props.item.statistics.digg_count = res.data.likeCount
+      bus.emit(EVENT_KEY.UPDATE_ITEM, { position: props.position, item: { ...props.item } })
+      bus.emit(EVENT_KEY.LIKE_UPDATED)
+    } else {
+      props.item.is_loved = prevLoved
+      props.item.statistics.digg_count = prevCount
+    }
+  } catch {
+    props.item.is_loved = prevLoved
+    props.item.statistics.digg_count = prevCount
+  } finally {
+    likingDoubleTap = false
+  }
+}
 
 onMounted(() => {
   // console.log('video', this.localItem.aweme_id)
@@ -266,6 +299,8 @@ onMounted(() => {
   bus.on(EVENT_KEY.CLOSE_SUB_TYPE, onCloseSubType)
 
   bus.on(EVENT_KEY.REMOVE_MUTED, removeMuted)
+  bus.on(EVENT_KEY.LIKE_UPDATED, onLikeUpdated)
+  bus.on(EVENT_KEY.DOUBLE_TAP, onDoubleTap)
 })
 
 onUnmounted(() => {
@@ -278,10 +313,22 @@ onUnmounted(() => {
   bus.off(EVENT_KEY.OPEN_SUB_TYPE, onOpenSubType)
   bus.off(EVENT_KEY.CLOSE_SUB_TYPE, onCloseSubType)
   bus.off(EVENT_KEY.REMOVE_MUTED, removeMuted)
+  bus.off(EVENT_KEY.LIKE_UPDATED, onLikeUpdated)
+  bus.off(EVENT_KEY.DOUBLE_TAP, onDoubleTap)
 })
 
 function removeMuted() {
   state.isMuted = false
+}
+
+function onLikeUpdated() {
+  if (props.item.is_loved) {
+    showLoveAnimation()
+  }
+}
+
+function onDoubleTap() {
+  doDoubleTapLike()
 }
 
 function onOpenSubType() {
@@ -431,77 +478,45 @@ function touchend(e) {
       width: 100%;
       transition: all 0.3s;
 
-      .comment-status {
-        display: flex;
-        align-items: center;
+      .loveds {
+        position: absolute;
+        bottom: 0;
+        left: 15rem;
 
-        .comment {
-          .type-comment {
-            display: flex;
-            background: rgb(130, 21, 44);
-            border-radius: 50px;
+        .type-loved {
+          width: 40px;
+          height: 40px;
+          position: relative;
+          margin-bottom: 20px;
+          animation: loveFloat 1s ease-out forwards;
+
+          .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+          }
+
+          .loved {
+            position: absolute;
+            bottom: 0;
+            left: 20px;
+            width: 10px;
+            height: 10px;
+            background: red;
             padding: 3px;
-            margin-bottom: 20px;
-
-            .avatar {
-              width: 36px;
-              height: 36px;
-              border-radius: 50%;
-            }
-
-            .right {
-              margin: 0 10px;
-              color: var(--second-text-color);
-
-              .name {
-                margin-right: 10px;
-              }
-
-              .text {
-                color: white;
-              }
-            }
+            border-radius: 50%;
+            border: 2px solid white;
           }
+        }
 
-          .loveds {
+        @keyframes loveFloat {
+          from {
+            opacity: 1;
+            transform: translate3d(0, 0, 0) scale(1);
           }
-
-          .type-loved {
-            width: 40px;
-            height: 40px;
-            position: relative;
-            margin-bottom: 20px;
-            animation: test 1s;
-            animation-delay: 0.5s;
-
-            .avatar {
-              width: 36px;
-              height: 36px;
-              border-radius: 50%;
-            }
-
-            .loved {
-              position: absolute;
-              bottom: 0;
-              left: 20px;
-              width: 10px;
-              height: 10px;
-              background: red;
-              padding: 3px;
-              border-radius: 50%;
-              border: 2px solid white;
-            }
-          }
-
-          @keyframes test {
-            from {
-              display: block;
-              transform: translate3d(0, 0, 0);
-            }
-            to {
-              display: none;
-              transform: translate3d(0, -60px, 0);
-            }
+          to {
+            opacity: 0;
+            transform: translate3d(0, -80px, 0) scale(0.5);
           }
         }
       }

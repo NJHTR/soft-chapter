@@ -116,6 +116,7 @@ export default {
 
         const dbClick = (e) => {
           // console.log('dbClick')
+          bus.emit(EVENT_KEY.DOUBLE_TAP)
           const id = 'a' + Date.now()
           const elWidth = 80
           const rotate = random(0, 1)

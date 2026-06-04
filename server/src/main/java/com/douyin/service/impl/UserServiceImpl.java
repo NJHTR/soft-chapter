@@ -9,13 +9,15 @@ import com.douyin.mapper.UserMapper;
 import com.douyin.service.UserService;
 import com.douyin.utils.JwtUtil;
 import com.douyin.vo.UserVO;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
+@Slf4j
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
 
@@ -28,6 +30,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         this.followMapper = followMapper;
     }
 
+    private static final String DEFAULT_AVATAR = "/images/default-avatar.svg";
+    private static final String DEFAULT_COVER = "/images/default-cover.svg";
+
     @Override
     public User register(String email, String password, String nickname) {
         User exist = getByEmail(email);
@@ -39,6 +44,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         user.setPassword(passwordEncoder.encode(password));
         user.setNickname(nickname != null ? nickname : email.split("@")[0]);
         user.setUniqueId(String.valueOf(System.currentTimeMillis()).substring(5));
+        user.setAvatar168Url(DEFAULT_AVATAR);
+        user.setAvatar300Url(DEFAULT_AVATAR);
+        user.setCoverUrl(DEFAULT_COVER);
         save(user);
         return user;
     }
@@ -66,6 +74,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         user.setEmail(email);
         user.setNickname(email.split("@")[0]);
         user.setUniqueId(String.valueOf(System.currentTimeMillis()).substring(5));
+        user.setAvatar168Url(DEFAULT_AVATAR);
+        user.setAvatar300Url(DEFAULT_AVATAR);
+        user.setCoverUrl(DEFAULT_COVER);
         save(user);
         return user;
     }
@@ -112,7 +123,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     @Override
-    @Transactional
     public boolean toggleFollow(Long userId, Long targetUserId) {
         if (userId.equals(targetUserId)) {
             throw new RuntimeException("不能关注自己");
@@ -123,22 +133,62 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         Follow exist = followMapper.selectOne(wrapper);
         if (exist != null) {
             followMapper.deleteById(exist.getId());
-            updateFollowersCount(targetUserId, -1);
+            updateCount(userId, true, -1);       // 自己的关注数-1
+            updateCount(targetUserId, false, -1); // 对方的粉丝数-1
             return false;
         }
         Follow f = new Follow();
         f.setUserId(userId);
         f.setFollowId(targetUserId);
         followMapper.insert(f);
-        updateFollowersCount(targetUserId, 1);
+        updateCount(userId, true, 1);       // 自己的关注数+1
+        updateCount(targetUserId, false, 1); // 对方的粉丝数+1
         return true;
     }
 
-    private void updateFollowersCount(Long uid, int delta) {
-        User user = getById(uid);
-        if (user != null) {
-            user.setFollowerCount(Math.max(0, (user.getFollowerCount() != null ? user.getFollowerCount() : 0) + delta));
-            updateById(user);
+    @Override
+    public List<UserVO> getFollowings(Long userId) {
+        List<Follow> follows = followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                .eq(Follow::getUserId, userId)
+                .orderByDesc(Follow::getCreateTime));
+        if (follows.isEmpty()) return List.of();
+        List<Long> followIds = follows.stream().map(Follow::getFollowId).toList();
+        List<User> users = listByIds(followIds);
+        Map<Long, UserVO> userMap = users.stream()
+                .collect(java.util.stream.Collectors.toMap(User::getUid, UserVO::from));
+        return followIds.stream().map(userMap::get).filter(Objects::nonNull).toList();
+    }
+
+    @Override
+    public List<UserVO> getFollowers(Long userId) {
+        List<Follow> follows = followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                .eq(Follow::getFollowId, userId)
+                .orderByDesc(Follow::getCreateTime));
+        if (follows.isEmpty()) return List.of();
+        List<Long> followerIds = follows.stream().map(Follow::getUserId).toList();
+        List<User> users = listByIds(followerIds);
+        Map<Long, UserVO> userMap = users.stream()
+                .collect(java.util.stream.Collectors.toMap(User::getUid, UserVO::from));
+        return followerIds.stream().map(userMap::get).filter(Objects::nonNull).toList();
+    }
+
+    /** @param isFollowing true=更新自己的关注数, false=更新对方的粉丝数 */
+    private void updateCount(Long uid, boolean isFollowing, int delta) {
+        if (uid == null) return;
+        try {
+            User user = getById(uid);
+            if (user != null) {
+                if (isFollowing) {
+                    user.setFollowingCount(Math.max(0,
+                            (user.getFollowingCount() != null ? user.getFollowingCount() : 0) + delta));
+                } else {
+                    user.setFollowerCount(Math.max(0,
+                            (user.getFollowerCount() != null ? user.getFollowerCount() : 0) + delta));
+                }
+                updateById(user);
+            }
+        } catch (Exception e) {
+            log.error("updateCount failed: uid={}, isFollowing={}, delta={}", uid, isFollowing, delta, e);
         }
     }
 }

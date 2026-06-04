@@ -171,7 +171,7 @@ export default defineConfig((): Promise<UserConfig> => {
           host: '0.0.0.0',
           proxy: {
             '/api': {
-              target: 'http://localhost:8080',
+              target: 'http://localhost:9191',
               changeOrigin: true
             }
           },

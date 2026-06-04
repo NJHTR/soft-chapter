@@ -51,3 +51,11 @@ export function postComment(data: { video_id: string; content: string; parent_id
 export function toggleCommentLike(commentId: string) {
   return request({ url: `/video/comment/like/${commentId}`, method: 'post' })
 }
+
+export function getCommentReplies(commentId: string) {
+  return request({ url: `/video/comment/replies/${commentId}`, method: 'get' })
+}
+
+export function toggleCollect(videoId: number) {
+  return request({ url: `/video/collect/${videoId}`, method: 'post' })
+}

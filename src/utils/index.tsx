@@ -120,10 +120,9 @@ export function _time(time) {
 }
 
 export function _checkImgUrl(url) {
-  // console.log(url)
   if (!url) return
-  //本地图片
   if (
+    url.startsWith('/') ||
     url.includes('assets/img') ||
     url.includes('file://') ||
     url.includes('data:image') ||

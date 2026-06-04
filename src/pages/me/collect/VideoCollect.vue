@@ -17,7 +17,7 @@
 <script setup lang="ts">
 import Posters from '@/components/Posters.vue'
 import Scroll from '@/components/Scroll.vue'
-import { myVideo } from '@/api/videos'
+import { userCollect } from '@/api/user'
 
 import { onMounted, reactive } from 'vue'
 
@@ -46,14 +46,15 @@ async function loadData(init = false) {
     data.pageNo++
   }
   data.loading = true
-  let res: any = await myVideo({
+  let res: any = await userCollect({
     pageNo: data.pageNo,
     pageSize: data.pageSize
   })
   data.loading = false
   if (res.success) {
-    data.videos = data.videos.concat(res.data.list)
-    data.total = res.data.total
+    const videoData = res.data.video
+    data.videos = data.videos.concat(videoData.list)
+    data.total = videoData.total
   }
 }
 </script>

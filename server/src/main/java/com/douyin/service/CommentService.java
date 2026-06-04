@@ -13,4 +13,6 @@ public interface CommentService extends IService<Comment> {
     Comment addComment(Comment comment);
 
     boolean toggleCommentLike(Long userId, Long commentId);
+
+    List<Map<String, Object>> getCommentReplies(Long commentId, Long viewerUserId);
 }

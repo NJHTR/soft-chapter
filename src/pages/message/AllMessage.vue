@@ -29,14 +29,20 @@
           </div>
           <div class="row" @click="toggleShowType(3)">
             <div class="left">
-              <img src="@/assets/img/icon/message/call-gray.png" alt="" />
-              <span>@我的</span>
+              <img src="@/assets/img/icon/message/comment-gray.png" alt="" />
+              <span>评论</span>
             </div>
           </div>
           <div class="row" @click="toggleShowType(4)">
             <div class="left">
-              <img src="@/assets/img/icon/message/comment-gray.png" alt="" />
-              <span>评论</span>
+              <img src="@/assets/img/icon/collect-gray.png" alt="" />
+              <span>收藏</span>
+            </div>
+          </div>
+          <div class="row" @click="toggleShowType(5)">
+            <div class="left">
+              <img src="@/assets/img/icon/message/call-gray.png" alt="" />
+              <span>@我的</span>
             </div>
           </div>
         </div>
@@ -47,27 +53,25 @@
       <div class="messages">
         <div
           class="message"
-          v-for="(item, i) in store.friends.all"
+          v-for="(item, i) in data.notifications"
           :key="i"
-          @click="nav('/message/visitors')"
+          @click="handleNotificationClick(item)"
         >
           <div class="left">
-            <img v-lazy="_checkImgUrl(item.avatar)" alt="" class="avatar" />
+            <img v-lazy="_checkImgUrl(item.from_user?.avatar_168x168?.url_list?.[0])" alt="" class="avatar" />
           </div>
           <div class="right">
             <div class="desc">
-              <div class="name">{{ item.name }}</div>
+              <div class="name">{{ item.from_user?.nickname || '用户' }}</div>
               <div class="bottom">
-                <div class="desc-content">近期访问过你的主页</div>
-                <div class="time">01-11</div>
+                <div class="desc-content">{{ item.content }}</div>
+                <div class="time">{{ formatTime(item.create_time) }}</div>
               </div>
             </div>
-            <img
-              v-lazy="_checkImgUrl(store.userinfo.cover_url[0].url_list[0])"
-              alt=""
-              class="poster"
-            />
           </div>
+        </div>
+        <div class="no-data" v-if="!data.loading && !data.notifications.length">
+          暂无消息
         </div>
       </div>
     </Scroll>
@@ -78,8 +82,10 @@ import Scroll from '@/components/Scroll.vue'
 import { useBaseStore } from '@/store/pinia'
 import { _checkImgUrl } from '@/utils'
 
-import { computed, reactive } from 'vue'
+import { computed, onMounted, onUnmounted, reactive } from 'vue'
 import { useNav } from '@/utils/hooks/useNav.js'
+import { getNotifications, markNotificationRead } from '@/api/message'
+import bus from '@/utils/bus'
 
 defineOptions({
   name: 'AllMessage'
@@ -89,8 +95,20 @@ const store = useBaseStore()
 const nav = useNav()
 const data = reactive({
   isShowType: false,
-  selectShowType: 1
+  selectShowType: 1,
+  notifications: [] as any[],
+  loading: false
 })
+
+// 前端筛选索引 → 后端 NotificationVO type 常量映射
+// 后端: 1关注 2点赞 3评论 4收藏 5@提及
+const NOTIFICATION_TYPE: Record<number, number | undefined> = {
+  1: undefined, // 全部
+  2: 2,         // 赞
+  3: 3,         // 评论
+  4: 4,         // 收藏
+  5: 5          // @我的
+}
 
 const showTypeText = computed(() => {
   switch (data.selectShowType) {
@@ -99,17 +117,65 @@ const showTypeText = computed(() => {
     case 2:
       return '赞'
     case 3:
-      return '@我的'
-    case 4:
       return '评论'
+    case 4:
+      return '收藏'
+    case 5:
+      return '@我的'
     default:
       return ''
   }
 })
 
-function toggleShowType(index) {
+onMounted(() => {
+  loadNotifications()
+  bus.on('NEW_NOTIFICATION', loadNotifications)
+})
+
+onUnmounted(() => {
+  bus.off('NEW_NOTIFICATION', loadNotifications)
+})
+
+async function loadNotifications() {
+  if (!store.userinfo?.uid) return
+  data.loading = true
+  try {
+    const typeFilter = NOTIFICATION_TYPE[data.selectShowType]
+    const res = await getNotifications({ type: typeFilter })
+    if (res.success && res.data) {
+      data.notifications = res.data
+    }
+  } catch { /* ignore */ }
+  data.loading = false
+}
+
+async function toggleShowType(index: number) {
   data.selectShowType = index
   data.isShowType = false
+  await loadNotifications()
+  // 标记此类通知为已读
+  const type = NOTIFICATION_TYPE[index]
+  try { await markNotificationRead({ type }) } catch { /* ignore */ }
+}
+
+function formatTime(timeStr: string) {
+  if (!timeStr) return ''
+  try {
+    const date = new Date(timeStr)
+    return `${date.getMonth() + 1}-${date.getDate()}`
+  } catch { return '' }
+}
+
+function handleNotificationClick(item: any) {
+  // 关注 → 跳转用户主页
+  if (item.type === 1 && item.from_user_id) {
+    nav('/people/user-home/' + item.from_user_id)
+    return
+  }
+  // 点赞/评论/收藏/@提及 → 跳转对应视频
+  if (item.video_id) {
+    nav('/slide', { id: item.video_id })
+  }
 }
 </script>
 
@@ -246,6 +312,13 @@ function toggleShowType(index) {
         width: 12rem;
         height: 12rem;
       }
+    }
+
+    .no-data {
+      text-align: center;
+      color: var(--second-text-color);
+      padding: 100rem 0;
+      font-size: 14rem;
     }
   }
 }

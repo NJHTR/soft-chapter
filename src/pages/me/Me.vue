@@ -94,7 +94,7 @@
               <div class="head">
                 <div class="heat">
                   <div class="text" @click="isShowStarCount = true">
-                    <span class="num">{{ _formatNumber(userinfo.aweme_count) }}</span>
+                    <span class="num">{{ _formatNumber(userinfo.total_favorited) }}</span>
                     <span>获赞</span>
                   </div>
                   <div class="text" @click="$nav('/people/follow-and-fans', { type: 0 })">
@@ -120,7 +120,7 @@
                 <div v-else class="text" v-html="userinfo.signature"></div>
               </div>
               <div class="more" @click="$nav('/me/edit-userinfo')">
-                <div class="age item" v-if="userinfo.user_age !== -1">
+                <div class="age item" v-if="userinfo.user_age > 0">
                   <img v-if="userinfo.gender == 2" src="../../assets/img/icon/me/woman.png" alt="" />
                   <img v-if="userinfo.gender == 1" src="../../assets/img/icon/me/man.png" alt="" />
                   <span>{{ userinfo.user_age }}岁</span>
@@ -376,7 +376,7 @@
 
     <ConfirmDialog
       v-model:visible="isShowStarCount"
-      :subtitle="`&quot;${userinfo.nickname}&quot;共获得${_formatNumber(userinfo.aweme_count)}个赞`"
+      :subtitle="`&quot;${userinfo.nickname}&quot;共获得${_formatNumber(userinfo.total_favorited)}个赞`"
       okText="确认"
       cancelText="取消"
       @ok="isShowStarCount = false"
@@ -399,7 +399,7 @@ import ConfirmDialog from '../../components/dialog/ConfirmDialog'
 import { _checkImgUrl, _formatNumber, _getUserDouyinId, _no, _stopPropagation } from '@/utils'
 import { likeVideo, myVideo, privateVideo } from '@/api/videos'
 import { useBaseStore } from '@/store/pinia'
-import { userCollect } from '@/api/user'
+import { panel, userCollect } from '@/api/user'
 import SlideRowList from '@/components/slide/SlideRowList.vue'
 
 export default {
@@ -508,21 +508,39 @@ export default {
     bus.on(EVENT_KEY.LIKE_UPDATED, () => {
       this.videos.like.total = -1
     })
+    bus.on(EVENT_KEY.COLLECT_UPDATED, () => {
+      this.videos.collect.video.total = -1
+    })
+  },
+  activated() {
+    this.refreshUserinfo()
   },
   beforeUnmount() {
     bus.off(EVENT_KEY.LIKE_UPDATED)
+    bus.off(EVENT_KEY.COLLECT_UPDATED)
   },
   methods: {
     _no,
     _getUserDouyinId,
     _checkImgUrl,
     _formatNumber,
+    async refreshUserinfo() {
+      const r = await panel()
+      if (r.success) {
+        const store = useBaseStore()
+        store.userinfo = Object.assign(store.userinfo, r.data)
+      }
+    },
     doLogout() {
       this.logout()
       this.baseActiveIndex = 0
+      this.videos.my = { list: [], total: -1, pageNo: 0 }
+      this.videos.private = { list: [], total: -1, pageNo: 0 }
+      this.videos.like = { list: [], total: -1, pageNo: 0 }
+      this.videos.collect = { video: { list: [], total: -1 }, music: { list: [], total: -1 } }
     },
-    $nav(path) {
-      this.$router.push(path)
+    $nav(path, query) {
+      this.$router.push({ path, query })
     },
     setLoadingFalse() {
       this.loadings.loading0 = false

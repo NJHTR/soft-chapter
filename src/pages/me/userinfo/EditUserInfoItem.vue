@@ -93,8 +93,8 @@ const data = reactive({
 })
 const isChanged = computed(() => {
   if (data.type === 1) if (!data.localUserinfo.nickname) return false
-  if (data.type === 2) if (!data.localUserinfo.desc) return false
   if (store.userinfo.nickname !== data.localUserinfo.nickname) return true
+  if (store.userinfo.signature !== data.localUserinfo.signature) return true
   if (store.userinfo.desc !== data.localUserinfo.desc) return true
   return store.userinfo.unique_id !== data.localUserinfo.unique_id
 })

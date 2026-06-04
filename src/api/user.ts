@@ -55,3 +55,11 @@ export function updateCover(url: string) {
 export function toggleFollowUser(userId: number) {
   return request({ url: `/user/follow/${userId}`, method: 'post' })
 }
+
+export function getFollowings(uid: number) {
+  return request({ url: '/user/followings', method: 'get', params: { uid } })
+}
+
+export function getFollowers(uid: number) {
+  return request({ url: '/user/followers', method: 'get', params: { uid } })
+}

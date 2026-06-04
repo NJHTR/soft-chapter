@@ -4,8 +4,7 @@
       <div class="header">
         <div class="left">
           <dy-back @click="router.back"></dy-back>
-          <div class="badge">12</div>
-          <span>zzzz</span>
+          <span>{{ targetUserName }}</span>
         </div>
         <div class="right">
           <img
@@ -34,8 +33,8 @@
         <div class="toolbar" v-if="!data.recording">
           <img src="../../../assets/img/icon/message/camera.png" alt="" class="camera" />
           <input
-            @click="data.typing = true"
-            @blur="data.typing = false"
+            v-model="data.inputText"
+            @keyup.enter="handleSend"
             type="text"
             placeholder="发送信息..."
           />
@@ -191,9 +190,11 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import Loading from '@/components/Loading.vue'
 import { useBaseStore } from '@/store/pinia'
 import { _checkImgUrl, _no, _sleep } from '@/utils'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useNav } from '@/utils/hooks/useNav'
 import bus, { EVENT_KEY } from '@/utils/bus'
+import { getChatHistory, sendMessage } from '@/api/message'
+import { connectSocket, disconnectSocket, onSocketMsg } from '@/utils/socket'
 
 let CALL_STATE = {
   REJECT: 0,
@@ -235,247 +236,22 @@ defineOptions({
 })
 
 const router = useRouter()
+const route = useRoute()
 const nav = useNav()
 const store = useBaseStore()
 const msgWrapper = ref<HTMLDivElement>()
+const inputRef = ref<HTMLInputElement>()
+
+// 聊天对象信息
+const targetUserId = Number(route.query.user_id || '0')
+const targetUserName = (route.query.name as string) || '聊天'
+const targetUserAvatar = (route.query.avatar as string) || ''
+
 const data = reactive({
   previewImg: new URL('../../../assets/img/poster/3.jpg', import.meta.url).href,
   videoCall: [],
   MESSAGE_TYPE,
-  messages: [
-    {
-      type: MESSAGE_TYPE.TIME,
-      data: '',
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-
-    {
-      type: MESSAGE_TYPE.MEME,
-      state: AUDIO_STATE.NORMAL,
-      data: new URL('../../../assets/img/poster/1.jpg', import.meta.url).href,
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      },
-      loved: [
-        {
-          id: 2,
-          avatar: '../../assets/img/icon/head-image.jpg'
-        },
-        {
-          id: 2,
-          avatar: '../../assets/img/icon/head-image.jpg'
-        }
-      ]
-    },
-    {
-      type: MESSAGE_TYPE.IMAGE,
-      state: AUDIO_STATE.NORMAL,
-      data: new URL('../../../assets/img/poster/1.jpg', import.meta.url).href,
-      time: '2021-01-02 21:21',
-      user: {
-        id: 1,
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.IMAGE,
-      state: AUDIO_STATE.NORMAL,
-      data: new URL('../../../assets/img/poster/1.jpg', import.meta.url).href,
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      },
-      readState: READ_STATE.ARRIVED
-    },
-    {
-      type: MESSAGE_TYPE.VIDEO_CALL,
-      state: CALL_STATE.REJECT,
-      data: '2021-01-02 21:44',
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.VIDEO_CALL,
-      state: CALL_STATE.RESOLVE,
-      data: '2021-01-02 21:44',
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.VIDEO_CALL,
-      state: CALL_STATE.NONE,
-      data: '2021-01-02 21:44',
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.AUDIO_CALL,
-      state: CALL_STATE.REJECT,
-      data: '2021-01-02 21:44',
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.AUDIO_CALL,
-      state: CALL_STATE.RESOLVE,
-      data: '2021-01-02 21:44',
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.AUDIO_CALL,
-      state: CALL_STATE.NONE,
-      data: '2021-01-02 21:44',
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.AUDIO,
-      state: AUDIO_STATE.NORMAL,
-      data: {
-        duration: 5,
-        src: ''
-      },
-      time: '2021-01-02 21:21',
-      user: {
-        id: '1',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.AUDIO,
-      state: AUDIO_STATE.NORMAL,
-      data: {
-        duration: 10,
-        src: ''
-      },
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.TEXT,
-      data: '又在刷抖音',
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.TEXT,
-      data: '我昨天@你那个视频发给我下',
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.TEXT,
-      data: '我找不到了',
-      time: '2021-01-02 21:21',
-      user: {
-        id: '1',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.TEXT,
-      data: '我也找不到了我也找不到了我也找不到了我也找不到了我也找不到了我也找不到了我也找不到了我也找不到了',
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.DOUYIN_VIDEO,
-      state: VIDEO_STATE.VALID,
-      data: {
-        poster: new URL('../../../assets/img/poster/3.jpg', import.meta.url).href,
-        author: {
-          name: 'safasdfassafasdfassafasdfassafasdfas',
-          avatar: new URL('../../../assets/img/icon/head-image.jpeg', import.meta.url).href
-        },
-        title: '服了asd'
-      },
-      time: '2021-01-02 21:21',
-      user: {
-        id: '1',
-        avatar: '../../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.VIDEO,
-      state: VIDEO_STATE.VALID,
-      data: {
-        poster: new URL('../../../assets/img/poster/3.jpg', import.meta.url).href
-      },
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.RED_PACKET,
-      state: AUDIO_STATE.NORMAL,
-      mode: RED_PACKET_MODE.MULTIPLE,
-      data: {
-        money: 5.11,
-        title: '大吉大利',
-        state: '未领取'
-      },
-      time: '2021-01-02 21:21',
-      user: {
-        id: '2739632844317827',
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    },
-    {
-      type: MESSAGE_TYPE.RED_PACKET,
-      state: AUDIO_STATE.NORMAL,
-      mode: RED_PACKET_MODE.SINGLE,
-      data: {
-        money: 5.11,
-        title: '大吉大利',
-        state: '已过期'
-      },
-      time: '2021-01-02 21:21',
-      user: {
-        id: 1,
-        avatar: '../../assets/img/icon/head-image.jpg'
-      }
-    }
-  ],
+  messages: [] as any[],
   typing: false,
   loading: false,
   opening: false,
@@ -484,25 +260,85 @@ const data = reactive({
   showOption: false,
   isShowOpenRedPacket: false,
   tooltipTop: -1,
-  tooltipTopLocation: ''
+  tooltipTopLocation: '',
+  inputText: ''
 })
 
-onMounted(() => {
-  msgWrapper.value
-    .querySelectorAll('img')
-    .forEach((item) => item.addEventListener('load', scrollBottom))
-  scrollBottom()
+let unsubChat: (() => void) | null = null
+
+onMounted(async () => {
+  await loadHistory()
+  connectSocket()
+  unsubChat = onSocketMsg('chat', handleWsMessage)
 })
 
 onUnmounted(() => {
-  msgWrapper.value
-    .querySelectorAll('img')
-    .forEach((item) => item.removeEventListener('load', scrollBottom))
+  if (unsubChat) { unsubChat(); unsubChat = null }
 })
 
 const isExpand = computed(() => {
   return data.showOption
 })
+
+// 后端 msg_type → 前端 MESSAGE_TYPE 映射
+const MSG_TYPE_MAP: Record<number, number> = {
+  1: MESSAGE_TYPE.TEXT,
+  2: MESSAGE_TYPE.IMAGE,
+  3: MESSAGE_TYPE.AUDIO,
+  4: MESSAGE_TYPE.VIDEO,
+  5: MESSAGE_TYPE.RED_PACKET
+}
+
+// 映射后端消息到前端组件格式
+function mapMsgToChatItem(msg: any) {
+  const myUid = store.userinfo.uid
+  return {
+    type: MSG_TYPE_MAP[msg.msg_type] ?? MESSAGE_TYPE.TEXT,
+    data: msg.content,
+    time: msg.create_time,
+    backendId: msg.id, // 用于去重
+    user: {
+      id: msg.from_user_id === myUid ? myUid : targetUserId,
+      avatar: msg.from_user?.avatar_168x168?.url_list?.[0] || ''
+    }
+  }
+}
+
+async function loadHistory() {
+  if (!targetUserId) return
+  try {
+    const res = await getChatHistory({ with_user_id: targetUserId })
+    if (res.success && res.data) {
+      data.messages = res.data.map(mapMsgToChatItem)
+      scrollBottom()
+    }
+  } catch { /* ignore */ }
+}
+
+function handleWsMessage(msg: any) {
+  // 去重：已经存在的消息不重复添加
+  if (msg.id && data.messages.some(m => m.backendId === msg.id)) return
+  // 检查是否是当前对话的消息
+  if (msg.from_user_id === targetUserId || (msg.to_user_id === targetUserId && msg.from_user_id === store.userinfo.uid)) {
+    data.messages.push(mapMsgToChatItem(msg))
+    scrollBottom()
+  }
+}
+
+async function handleSend() {
+  const text = data.inputText?.trim()
+  if (!text || !targetUserId) return
+
+  // 通过 REST API 发送，后端会自动通过 WebSocket 推送给接收方
+  try {
+    const res = await sendMessage({ to_user_id: targetUserId, content: text })
+    if (res.success && res.data) {
+      data.messages.push(mapMsgToChatItem(res.data))
+      data.inputText = ''
+      scrollBottom()
+    }
+  } catch { /* ignore */ }
+}
 
 function handleClick() {
   data.recording = true
@@ -511,10 +347,10 @@ function handleClick() {
 
 function scrollBottom() {
   nextTick(() => {
-    let wrapper = msgWrapper.value
-    // console.log('wrapper.clientHeight', wrapper.clientHeight)
-    // console.log('wrapper.scrollHeight', wrapper.scrollHeight)
-    wrapper.scrollTo({ top: wrapper.scrollHeight - wrapper.clientHeight })
+    const wrapper = msgWrapper.value
+    if (wrapper) {
+      wrapper.scrollTo({ top: wrapper.scrollHeight - wrapper.clientHeight })
+    }
   })
 }
 
@@ -539,7 +375,7 @@ async function clickItem(e) {
 function showTooltip(e) {
   console.log(e)
   let wrapper = null
-  e.path.map((v) => {
+  e.path.map((v: any) => {
     if (v && v.classList) {
       if (v.classList.value === 'chat-wrapper') {
         wrapper = v
@@ -547,7 +383,6 @@ function showTooltip(e) {
     }
   })
   if (wrapper) {
-    // console.log(wrapper.getBoundingClientRect())
     if (wrapper.getBoundingClientRect().y - 61 > 70) {
       data.tooltipTopLocation = 'top'
       data.tooltipTop = wrapper.getBoundingClientRect().y - 70

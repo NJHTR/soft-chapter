@@ -77,6 +77,10 @@ onMounted(() => {
   user-select: none;
 }
 
+input, textarea {
+  user-select: auto;
+}
+
 #app {
   height: 100%;
   width: 100%;

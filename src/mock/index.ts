@@ -302,12 +302,17 @@ export async function startMock() {
     return [200, { code: 500 }]
   })
 
-  mock.onGet(/user\/panel/).reply(async () => {
+  mock.onGet(/user\/panel/).reply(async (config) => {
     const r2 = await _fetch(BASE_URL + '/data/users.md')
     const v = await r2.json()
-    // let item = v.find(a => a.uid === '68310389333')
-    // let item = v.find(a => a.uid === '59054327754')
-    const item = v.find((a) => a.uid === '2739632844317827')
+    const uid = config.params?.uid
+    let item
+    if (uid) {
+      item = v.find((a) => String(a.uid) === String(uid))
+    } else {
+      // 未传 uid：返回一个默认登录用户
+      item = v.find((a) => a.uid === '2739632844317827')
+    }
     if (item) {
       return [200, { data: item, code: 200 }]
     }

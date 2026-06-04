@@ -64,6 +64,7 @@ import CONST_VAR from '../../../utils/const_var'
 import { onMounted, reactive } from 'vue'
 import { useNav } from '@/utils/hooks/useNav'
 import { _showConfirmDialog } from '@/utils'
+import { toggleFollowUser } from '@/api/user'
 
 defineOptions({
   name: 'ChatDetail'
@@ -83,6 +84,7 @@ const data = reactive({
       age: null,
       idCard: null,
       phone: '',
+      uid: 0,
       address: null,
       wechat: '',
       password: null,
@@ -99,19 +101,31 @@ const data = reactive({
 
 onMounted(() => {})
 
-function follow(index) {
-  if (data.list[index].type === CONST_VAR.RELATE_ENUM.FOLLOW_ME) {
-    data.list[index].type = CONST_VAR.RELATE_ENUM.FOLLOW_EACH_OTHER
+async function follow(index: number) {
+  const uid = data.list[index]?.uid
+  if (uid) {
+    const res = await toggleFollowUser(uid)
+    if (res.success && res.data.isAttention) {
+      if (data.list[index].type === CONST_VAR.RELATE_ENUM.FOLLOW_ME) {
+        data.list[index].type = CONST_VAR.RELATE_ENUM.FOLLOW_EACH_OTHER
+      }
+    }
   }
 }
 
-function unfollow(index) {
+function unfollow(index: number) {
+  const uid = data.list[index]?.uid
   _showConfirmDialog(
     '正在与对方相互关注，是否不再关注该用户',
     null,
     'gray',
-    () => {
-      data.list[index].type = CONST_VAR.RELATE_ENUM.FOLLOW_ME
+    async () => {
+      if (uid) {
+        const res = await toggleFollowUser(uid)
+        if (res.success && !res.data.isAttention) {
+          data.list[index].type = CONST_VAR.RELATE_ENUM.FOLLOW_ME
+        }
+      }
     },
     () => {},
     '取消关注',
