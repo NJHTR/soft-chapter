@@ -199,11 +199,17 @@ public class UserController {
         if (loginUserId == null) return Result.fail("请先登录");
         boolean followed = userService.toggleFollow(loginUserId, userId);
 
-        // 关注通知 → Kafka / 直写 DB
+        // 关注通知 → 异步发 Kafka，避免阻塞 HTTP 请求
         if (followed) {
-            messagePublisher.publishNotification(new NotificationEvent(
-                    userId, loginUserId, NotificationVO.TYPE_FOLLOW,
-                    null, null, "关注了你", System.currentTimeMillis()));
+            final Long fUserId = userId, fLoginUserId = loginUserId;
+            final com.douyin.kafka.MessagePublisher pub = messagePublisher;
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    pub.publishNotification(new NotificationEvent(
+                            fUserId, fLoginUserId, NotificationVO.TYPE_FOLLOW,
+                            null, null, "关注了你", System.currentTimeMillis()));
+                } catch (Exception ignored) {}
+            });
         }
 
         return Result.ok(Map.of("isAttention", followed));

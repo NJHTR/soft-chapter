@@ -21,7 +21,7 @@
       </div>
     </template>
     <div class="comment">
-      <div class="wrapper" v-if="comments.length">
+      <div class="wrapper" v-if="!forceLoading && comments.length">
         <div class="items">
           <div class="item" :key="i" :data-comment-id="item.comment_id" v-for="(item, i) in comments">
             <div class="main">
@@ -146,7 +146,7 @@
         </div>
         <no-more />
       </div>
-      <Loading v-else style="position: absolute" />
+      <Loading v-if="forceLoading || !comments.length" style="position: absolute" />
       <transition name="fade">
         <BaseMask v-if="isCall" mode="lightgray" @click="isCall = false" />
       </transition>
@@ -339,6 +339,7 @@ export default {
       replyingTo: null as any,
       replyingToParentId: null as any,
       sending: false,
+      forceLoading: false,
       previewUrl: '',
       mediaRecorder: null as any,
       audioChunks: [] as Blob[]
@@ -539,6 +540,7 @@ export default {
       const content = this.comment.trim()
       if (!content && !this.mediaList.length) return
       this.sending = true
+      this.forceLoading = true
       const payload: any = {
         video_id: this.videoId,
         content: content,
@@ -570,12 +572,15 @@ export default {
           // 强制渲染 Loading，等待 DOM 更新后再请求
           await this.$nextTick()
           await this.loadComments()
+          this.forceLoading = false
         } else {
+          this.forceLoading = false
           this.comment = content
           this.mediaList = sentMedia
           _notice((res as any).msg || '评论失败')
         }
       } catch (e) {
+        this.forceLoading = false
         this.comment = content
         this.mediaList = sentMedia
         _notice('评论发送失败，请重试')
