@@ -101,6 +101,24 @@
                         </template>
                       </div>
                       <div class="detail">{{ renderContent(child.content) }}</div>
+                      <!-- 子回复语音 -->
+                      <div class="comment-voice-bubble" v-for="(m, mi) in (child.mediaList || []).filter((x: any) => x.type === 'voice')" :key="'cv'+mi" @click.stop="playVoice(m, child)" :style="{ width: voiceBubbleWidth(m.duration) }">
+                        <img src="../assets/img/icon/message/chat/rss.png" alt="" class="voice-rss-icon" :class="{ playing: m._playing }" />
+                        <div class="voice-wave-bars" :class="{ playing: m._playing }">
+                          <span class="bar" v-for="j in 4" :key="j" :style="{ animationDelay: (j * 0.15) + 's' }"></span>
+                        </div>
+                        <span class="voice-dur">{{ m.duration || 0 }}″</span>
+                      </div>
+                      <!-- 子回复图片 -->
+                      <div class="comment-images" v-if="(child.mediaList || []).some((x: any) => x.type === 'image')">
+                        <img
+                          v-for="(m, mi) in (child.mediaList || []).filter((x: any) => x.type === 'image')"
+                          :key="'cimg'+mi"
+                          :src="m.url"
+                          class="comment-image-item"
+                          @click.stop="previewImage(m.url)"
+                        />
+                      </div>
                       <div class="time-wrapper">
                         <div class="left">
                           <div class="time">
@@ -380,7 +398,12 @@ export default {
         const res = await getCommentReplies(item.comment_id)
         item._loadingChildren = false
         if (res.success) {
-          item.children = res.data
+          item.children = (res.data || []).map((c: any) => {
+            if (c.extra) {
+              try { c.mediaList = JSON.parse(c.extra) } catch { c.mediaList = [] }
+            }
+            return c
+          })
         }
       }
       item.showChildren = true
