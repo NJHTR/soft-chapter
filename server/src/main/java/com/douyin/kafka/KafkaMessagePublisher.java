@@ -24,19 +24,35 @@ public class KafkaMessagePublisher implements MessagePublisher {
 
     @Override
     public void publishChat(ChatMessageEvent event) {
+        log.info("[KAFKA-PUB] send chat: from={} to={}", event.getFromUserId(), event.getToUserId());
         kafkaTemplate.send(KafkaTopicConfig.TOPIC_CHAT_MESSAGE,
                 String.valueOf(event.getFromUserId()), event)
                 .whenComplete((result, ex) -> {
-                    if (ex != null) log.error("Kafka send chat failed: {}", ex.getMessage());
+                    if (ex != null) {
+                        log.error("[KAFKA-PUB] chat send FAILED: from={} to={} error={}",
+                                event.getFromUserId(), event.getToUserId(), ex.getMessage(), ex);
+                    } else {
+                        log.info("[KAFKA-PUB] chat send OK: from={} to={} offset={}",
+                                event.getFromUserId(), event.getToUserId(),
+                                result != null ? result.getRecordMetadata().offset() : -1);
+                    }
                 });
     }
 
     @Override
     public void publishNotification(NotificationEvent event) {
+        log.info("[KAFKA-PUB] send notify: toUser={} type={}", event.getUserId(), event.getType());
         kafkaTemplate.send(KafkaTopicConfig.TOPIC_NOTIFICATION,
                 String.valueOf(event.getUserId()), event)
                 .whenComplete((result, ex) -> {
-                    if (ex != null) log.error("Kafka send notify failed: {}", ex.getMessage());
+                    if (ex != null) {
+                        log.error("[KAFKA-PUB] notify send FAILED: toUser={} type={} error={}",
+                                event.getUserId(), event.getType(), ex.getMessage(), ex);
+                    } else {
+                        log.info("[KAFKA-PUB] notify send OK: toUser={} type={} offset={}",
+                                event.getUserId(), event.getType(),
+                                result != null ? result.getRecordMetadata().offset() : -1);
+                    }
                 });
     }
 }

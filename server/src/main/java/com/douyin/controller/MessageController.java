@@ -134,7 +134,9 @@ public class MessageController {
             HttpServletRequest req) {
         Long userId = getLoginUserId(req);
         if (userId == null) return Result.fail("请先登录");
-        return Result.ok(messageService.getNotifications(userId, type, pageSize, beforeId));
+        List<NotificationVO> list = messageService.getNotifications(userId, type, pageSize, beforeId);
+        log.info("[NOTIF-API] query: userId={} type={} resultSize={}", userId, type, list.size());
+        return Result.ok(list);
     }
 
     /** 获取各类通知的未读数 */

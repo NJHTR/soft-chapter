@@ -115,7 +115,7 @@
           <div class="detail">4小时之内在线</div>
         </div>
         <div class="right">
-          <div class="l-button">发私信</div>
+          <div class="l-button" @click.stop="sendPrivateMsg">发私信</div>
           <img
             src="../../../assets/img/icon/menu-white.png"
             alt=""
@@ -188,7 +188,15 @@ export default {
   },
   computed: {},
   created() {},
-  methods: { _checkImgUrl }
+  methods: {
+    _checkImgUrl,
+    sendPrivateMsg() {
+      const uid = this.people.uid || this.people.id
+      const name = this.people.nickname || this.people.name
+      const avatar = this.people.avatar_168x168?.url_list?.[0] || this.people.avatar || ''
+      this.$router.push({ path: '/message/chat', query: { user_id: uid, name, avatar } })
+    }
+  }
 }
 </script>
 

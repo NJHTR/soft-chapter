@@ -3,6 +3,7 @@ package com.douyin.controller;
 import com.douyin.common.PageDTO;
 import com.douyin.common.Result;
 import com.douyin.entity.Comment;
+import com.douyin.entity.Notification;
 import com.douyin.entity.User;
 import com.douyin.entity.Video;
 import com.douyin.kafka.MessagePublisher;
@@ -10,6 +11,7 @@ import com.douyin.kafka.dto.NotificationEvent;
 import com.douyin.mapper.UserMapper;
 import com.douyin.service.CommentService;
 import com.douyin.service.CoverService;
+import com.douyin.service.MessageService;
 import com.douyin.service.VideoService;
 import com.douyin.utils.JwtUtil;
 import com.douyin.vo.NotificationVO;
@@ -32,16 +34,19 @@ public class VideoController {
     private final CoverService coverService;
     private final JwtUtil jwtUtil;
     private final MessagePublisher messagePublisher;
+    private final MessageService messageService;
     private final UserMapper userMapper;
 
     public VideoController(VideoService videoService, CommentService commentService,
                            CoverService coverService, JwtUtil jwtUtil,
-                           MessagePublisher messagePublisher, UserMapper userMapper) {
+                           MessagePublisher messagePublisher, MessageService messageService,
+                           UserMapper userMapper) {
         this.videoService = videoService;
         this.commentService = commentService;
         this.coverService = coverService;
         this.jwtUtil = jwtUtil;
         this.messagePublisher = messagePublisher;
+        this.messageService = messageService;
         this.userMapper = userMapper;
     }
 
@@ -195,11 +200,11 @@ public class VideoController {
         log.info("toggleLike response: liked={}, likeCount={}, videoExists={}", liked,
                 video != null ? video.getLikeCount() : null, video != null);
 
-        // 点赞通知 → Kafka
+        // 点赞通知
         if (liked && video != null && !userId.equals(video.getAuthorUserId())) {
-            messagePublisher.publishNotification(new NotificationEvent(
-                    video.getAuthorUserId(), userId, NotificationVO.TYPE_LIKE,
-                    videoId, null, "赞了你的作品", System.currentTimeMillis()));
+            log.info("[NOTIF] like notify: author={} liker={}", video.getAuthorUserId(), userId);
+            pubNotif(video.getAuthorUserId(), userId, NotificationVO.TYPE_LIKE,
+                    videoId, null, "赞了你的作品");
         }
 
         return Result.ok(Map.of("isLoved", liked, "likeCount", video != null ? video.getLikeCount() : 0));
@@ -220,11 +225,11 @@ public class VideoController {
         boolean collected = videoService.toggleCollect(userId, videoId);
         Video video = videoService.getById(videoId);
 
-        // 收藏通知 → Kafka
+        // 收藏通知
         if (collected && video != null && !userId.equals(video.getAuthorUserId())) {
-            messagePublisher.publishNotification(new NotificationEvent(
-                    video.getAuthorUserId(), userId, NotificationVO.TYPE_COLLECT,
-                    videoId, null, "收藏了你的作品", System.currentTimeMillis()));
+            log.info("[NOTIF] collect notify: author={} collector={}", video.getAuthorUserId(), userId);
+            pubNotif(video.getAuthorUserId(), userId, NotificationVO.TYPE_COLLECT,
+                    videoId, null, "收藏了你的作品");
         }
 
         return Result.ok(Map.of("isCollected", collected, "collectCount",
@@ -236,47 +241,54 @@ public class VideoController {
     public Result<Comment> addComment(@RequestBody Comment comment, HttpServletRequest req) {
         Long userId = getLoginUserId(req);
         if (userId == null) return Result.fail("请先登录");
+        log.info("[NOTIF] addComment: userId={} videoId={} parentId={} content={}",
+                userId, comment.getVideoId(), comment.getParentId(),
+                comment.getContent() != null ? comment.getContent().substring(0, Math.min(comment.getContent().length(), 50)) : null);
         comment.setUserId(userId);
         Comment saved = commentService.addComment(comment);
         Video video = videoService.getById(comment.getVideoId());
+        log.info("[NOTIF] video found: id={} authorUserId={}", video != null ? video.getId() : null,
+                video != null ? video.getAuthorUserId() : null);
 
         // 评论通知 → 视频作者
         if (video != null && !userId.equals(video.getAuthorUserId())) {
-            messagePublisher.publishNotification(new NotificationEvent(
-                    video.getAuthorUserId(), userId, NotificationVO.TYPE_COMMENT,
+            log.info("[NOTIF] comment notify: author={} commenter={}", video.getAuthorUserId(), userId);
+            pubNotif(video.getAuthorUserId(), userId, NotificationVO.TYPE_COMMENT,
                     comment.getVideoId(), saved.getId(),
-                    comment.getContent() != null ? comment.getContent() : "评论了你的作品",
-                    System.currentTimeMillis()));
+                    comment.getContent() != null ? comment.getContent() : "评论了你的作品");
+        } else {
+            log.info("[NOTIF] skip comment self-notify: videoAuthor={} commenter={}",
+                    video != null ? video.getAuthorUserId() : null, userId);
         }
 
         // 回复通知 → 被回复的评论作者（如果是回复，且不是回复自己或视频作者）
         if (comment.getParentId() != null && comment.getParentId() != 0) {
             Comment parentComment = commentService.getById(comment.getParentId());
+            log.info("[NOTIF] reply check: parentId={} parentExists={} parentAuthor={}",
+                    comment.getParentId(), parentComment != null,
+                    parentComment != null ? parentComment.getUserId() : null);
             if (parentComment != null
                     && !parentComment.getUserId().equals(userId)
                     && (video == null || !parentComment.getUserId().equals(video.getAuthorUserId()))) {
-                messagePublisher.publishNotification(new NotificationEvent(
-                        parentComment.getUserId(), userId, NotificationVO.TYPE_COMMENT,
-                        comment.getVideoId(), saved.getId(),
-                        "回复了你的评论",
-                        System.currentTimeMillis()));
+                log.info("[NOTIF] reply notify: to={} from={}", parentComment.getUserId(), userId);
+                pubNotif(parentComment.getUserId(), userId, NotificationVO.TYPE_COMMENT,
+                        comment.getVideoId(), saved.getId(), "回复了你的评论");
             }
         }
 
-        // @提及通知 → Kafka（支持两种格式: @[uid:name] 精确指定 / @name 昵称匹配）
+        // @提及通知（支持两种格式: @[uid:name] 精确指定 / @name 昵称匹配）
         String content = comment.getContent();
         if (content != null && content.contains("@")) {
             java.util.regex.Pattern mentionPattern = java.util.regex.Pattern
                     .compile("@(?:\\[([^\\]:]+):([^\\]]+)\\]|([^@\\s]+))");
             java.util.regex.Matcher matcher = mentionPattern.matcher(content);
             while (matcher.find()) {
-                String explicitId = matcher.group(1);  // @[uid:name] 中的 uid
-                String displayName = matcher.group(2);  // @[uid:name] 中的 name
-                String nickname = matcher.group(3);     // @name 旧格式
+                String explicitId = matcher.group(1);
+                String displayName = matcher.group(2);
+                String nickname = matcher.group(3);
 
                 User mentionedUser = null;
                 if (explicitId != null) {
-                    // 新格式 @[uid:name] — 直接用ID查找，精准无歧义
                     try {
                         mentionedUser = userMapper.selectById(Long.parseLong(explicitId));
                     } catch (NumberFormatException e) {
@@ -285,7 +297,6 @@ public class VideoController {
                                         .eq(User::getNickname, displayName != null ? displayName : explicitId));
                     }
                 } else if (nickname != null) {
-                    // 旧格式 @name — 昵称匹配（向后兼容）
                     mentionedUser = userMapper.selectOne(
                             new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<User>()
                                     .eq(User::getNickname, nickname));
@@ -294,14 +305,41 @@ public class VideoController {
                 if (mentionedUser != null
                         && !mentionedUser.getUid().equals(userId)
                         && (video == null || !mentionedUser.getUid().equals(video.getAuthorUserId()))) {
-                    messagePublisher.publishNotification(new NotificationEvent(
-                            mentionedUser.getUid(), userId, NotificationVO.TYPE_AT,
-                            comment.getVideoId(), saved.getId(), "在评论中@了你",
-                            System.currentTimeMillis()));
+                    log.info("[NOTIF] at notify: to={} from={}", mentionedUser.getUid(), userId);
+                    pubNotif(mentionedUser.getUid(), userId, NotificationVO.TYPE_AT,
+                            comment.getVideoId(), saved.getId(), "在评论中@了你");
                 }
             }
         }
 
         return Result.ok(saved);
+    }
+
+    /** 直接落库通知 + 发布到 Kafka（用于 WebSocket 实时推送） */
+    private void pubNotif(Long userId, Long fromUserId, Integer type,
+                          Long videoId, Long commentId, String content) {
+        log.info("[NOTIF] pubNotif: toUser={} fromUser={} type={} videoId={} commentId={} content={}",
+                userId, fromUserId, type, videoId, commentId, content);
+        Notification n = new Notification();
+        n.setUserId(userId);
+        n.setFromUserId(fromUserId);
+        n.setType(type);
+        n.setVideoId(videoId);
+        n.setCommentId(commentId);
+        n.setContent(content);
+        try {
+            Notification saved = messageService.createNotification(n);
+            log.info("[NOTIF] DB saved: id={} userId={} type={}", saved != null ? saved.getId() : "FAILED", userId, type);
+        } catch (Exception e) {
+            log.error("[NOTIF] DB save failed: userId={} type={} error={}", userId, type, e.getMessage(), e);
+        }
+        // 同步发布到 Kafka，消费者负责 WebSocket 推送
+        try {
+            messagePublisher.publishNotification(new NotificationEvent(
+                    userId, fromUserId, type, videoId, commentId, content, System.currentTimeMillis()));
+            log.info("[NOTIF] Kafka published: toUser={} type={}", userId, type);
+        } catch (Exception e) {
+            log.error("[NOTIF] Kafka publish failed: toUser={} type={} error={}", userId, type, e.getMessage(), e);
+        }
     }
 }

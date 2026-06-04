@@ -154,10 +154,14 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
     public Notification createNotification(Notification notification) {
         // 自己不给自己发通知
         if (notification.getUserId().equals(notification.getFromUserId())) {
+            log.info("[NOTIF-DB] skip self-notify: userId={} fromUserId={}", notification.getUserId(), notification.getFromUserId());
             return null;
         }
         notification.setIsRead(0);
-        notificationMapper.insert(notification);
+        int rows = notificationMapper.insert(notification);
+        log.info("[NOTIF-DB] inserted: id={} userId={} fromUserId={} type={} rows={}",
+                notification.getId(), notification.getUserId(), notification.getFromUserId(),
+                notification.getType(), rows);
         return notification;
     }
 
