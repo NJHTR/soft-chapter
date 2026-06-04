@@ -23,7 +23,7 @@
     <div class="comment">
       <div class="wrapper" v-if="comments.length">
         <div class="items">
-          <div class="item" :key="i" v-for="(item, i) in comments">
+          <div class="item" :key="i" :data-comment-id="item.comment_id" v-for="(item, i) in comments">
             <!--            v-longpress="(e) => showOptions(item)"-->
             <div class="main">
               <div class="content">
@@ -70,7 +70,7 @@
             </div>
             <div class="replies" v-if="Number(item.sub_comment_count)">
               <template v-if="item.showChildren">
-                <div class="reply" :key="i" v-for="(child, i) in item.children">
+                <div class="reply" :key="i" :data-comment-id="child.comment_id" v-for="(child, i) in item.children">
                   <div class="content">
                     <img :src="_checkImgUrl(child.avatar)" alt="" class="head-image" />
                     <div class="comment-container">
@@ -184,6 +184,7 @@ import {
   _checkImgUrl,
   _formatNumber,
   _no,
+  _notice,
   _showSelectDialog,
   _time
 } from '@/utils'
@@ -218,6 +219,10 @@ export default {
     height: {
       type: String,
       default: 'calc(var(--vh, 1vh) * 70)'
+    },
+    scrollToCommentId: {
+      type: [String, Number],
+      default: ''
     }
   },
   computed: {
@@ -226,7 +231,7 @@ export default {
   watch: {
     modelValue(newVale) {
       if (newVale) {
-        this.getData()
+        this.getData().then(() => this.$nextTick(() => this.scrollToTargetComment()))
       } else {
         this.comments = []
       }
@@ -294,22 +299,27 @@ export default {
         content: this.comment,
       }
       if (this.replyingTo) {
-        // 子评论的回复挂到主评论下（同级），reply_to_user_id 指向被回复的用户
         payload.parent_id = this.replyingToParentId || this.replyingTo.comment_id
         payload.reply_to_user_id = this.replyingTo.user_id || this.replyingTo.id
       }
-      const res = await postComment(payload)
-      if (res.success) {
-        bus.emit(EVENT_KEY.COMMENT_ADDED, this.videoId)
-        this.comment = ''
-        this.replyingTo = null
-        this.isCall = false
-        this.resetSelectStatus()
-        this.getData()
-      } else {
-        _notice(res.msg || '评论失败')
+      try {
+        const res = await postComment(payload)
+        if (res.success) {
+          bus.emit(EVENT_KEY.COMMENT_ADDED, this.videoId)
+          this.comment = ''
+          this.replyingTo = null
+          this.isCall = false
+          this.resetSelectStatus()
+          this.getData()
+        } else {
+          _notice(res.msg || '评论失败')
+        }
+      } catch (e) {
+        _notice('评论发送失败，请重试')
+        console.error('send comment error:', e)
+      } finally {
+        this.sending = false
       }
-      this.sending = false
     },
     startReply(comment, parentCommentId) {
       this.replyingTo = comment
@@ -353,6 +363,16 @@ export default {
       if (res.success) {
         row.user_digged = res.data.isLoved
         row.digg_count = res.data.likeCount
+      }
+    },
+    scrollToTargetComment() {
+      const targetId = this.scrollToCommentId
+      if (!targetId) return
+      const el = this.$el.querySelector(`.item[data-comment-id="${targetId}"]`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.classList.add('highlight-comment')
+        setTimeout(() => el.classList.remove('highlight-comment'), 2000)
       }
     },
     showOptions(row) {
@@ -675,6 +695,14 @@ export default {
       }
     }
   }
+}
+
+.highlight-comment {
+  animation: highlightFade 2s ease;
+}
+@keyframes highlightFade {
+  0% { background: rgba(254, 44, 85, 0.3); }
+  100% { background: transparent; }
 }
 
 .comment-enter-active,

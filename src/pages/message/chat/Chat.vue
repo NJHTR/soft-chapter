@@ -38,13 +38,19 @@
             type="text"
             placeholder="发送信息..."
           />
-          <img @click="handleClick" src="../../../assets/img/icon/message/voice-white.png" alt="" />
-          <img src="../../../assets/img/icon/message/emoji-white.png" alt="" />
-          <img
-            @click="data.showOption = !data.showOption"
-            src="../../../assets/img/icon/message/add-white.png"
-            alt=""
-          />
+          <!-- 有文字时显示发送按钮，没文字时显示语音/表情/加号 -->
+          <template v-if="data.inputText">
+            <img class="send-btn" src="../../../assets/img/icon/message/up.png" @click="handleSend" />
+          </template>
+          <template v-else>
+            <img @click="handleClick" src="../../../assets/img/icon/message/voice-white.png" alt="" />
+            <img src="../../../assets/img/icon/message/emoji-white.png" alt="" />
+            <img
+              @click="data.showOption = !data.showOption"
+              src="../../../assets/img/icon/message/add-white.png"
+              alt=""
+            />
+          </template>
         </div>
         <div class="record" v-else>
           <span>按住 说话</span>
@@ -189,7 +195,7 @@ import ChatMessage from '../components/ChatMessage.vue'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import Loading from '@/components/Loading.vue'
 import { useBaseStore } from '@/store/pinia'
-import { _checkImgUrl, _no, _sleep } from '@/utils'
+import { _checkImgUrl, _no, _notice, _sleep } from '@/utils'
 import { useRouter, useRoute } from 'vue-router'
 import { useNav } from '@/utils/hooks/useNav'
 import bus, { EVENT_KEY } from '@/utils/bus'
@@ -327,17 +333,26 @@ function handleWsMessage(msg: any) {
 
 async function handleSend() {
   const text = data.inputText?.trim()
-  if (!text || !targetUserId) return
-
+  if (!text) return
+  if (!targetUserId) {
+    _notice('聊天对象信息异常，请重新进入')
+    return
+  }
   // 通过 REST API 发送，后端会自动通过 WebSocket 推送给接收方
   try {
     const res = await sendMessage({ to_user_id: targetUserId, content: text })
     if (res.success && res.data) {
       data.messages.push(mapMsgToChatItem(res.data))
       data.inputText = ''
+      data.showOption = false
       scrollBottom()
+    } else {
+      _notice((res as any).msg || '发送失败')
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    _notice('消息发送失败，请重试')
+    console.error('send msg error:', e)
+  }
 }
 
 function handleClick() {
@@ -503,6 +518,15 @@ function showTooltip(e) {
           padding: 5rem;
           border-radius: 50%;
           background: @chat-bg-color;
+        }
+
+        .send-btn {
+          width: 22rem;
+          height: 22rem;
+          border-radius: 50%;
+          background: @chat-bg-color;
+          padding: 5rem;
+          cursor: pointer;
         }
       }
 

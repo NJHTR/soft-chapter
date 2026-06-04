@@ -161,7 +161,7 @@
   </div>
 </template>
 <script>
-import { _checkImgUrl } from '@/utils'
+import { _checkImgUrl, _notice } from '@/utils'
 
 export default {
   name: 'People',
@@ -192,7 +192,11 @@ export default {
     _checkImgUrl,
     sendPrivateMsg() {
       const uid = this.people.uid || this.people.id
-      const name = this.people.nickname || this.people.name
+      if (!uid || isNaN(Number(uid))) {
+        _notice('用户信息异常，请刷新后重试')
+        return
+      }
+      const name = this.people.nickname || this.people.name || ''
       const avatar = this.people.avatar_168x168?.url_list?.[0] || this.people.avatar || ''
       this.$router.push({ path: '/message/chat', query: { user_id: uid, name, avatar } })
     }

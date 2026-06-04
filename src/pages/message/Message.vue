@@ -11,7 +11,7 @@
         <div class="friends">
           <div
             class="friend"
-            @click="nav('/message/chat')"
+            @click="navToChat({ target_user: item })"
             :key="index"
             v-for="(item, index) in store.friends.all"
           >
@@ -511,11 +511,13 @@ async function loadUnreadCounts() {
 }
 
 function navToChat(item: any) {
-  if (item.target_user) {
+  const u = item.target_user || item
+  const uid = u?.uid || u?.id
+  if (u && uid && !isNaN(Number(uid))) {
     nav('/message/chat', {
-      user_id: item.target_user.uid,
-      name: item.target_user.nickname,
-      avatar: item.target_user.avatar_168x168?.url_list?.[0] || ''
+      user_id: uid,
+      name: u.nickname || u.name || '',
+      avatar: u.avatar_168x168?.url_list?.[0] || u.avatar || ''
     })
   }
 }

@@ -11,7 +11,7 @@ const routes: RouteRecordRaw[] = [
 
   { path: '/publish', component: () => import('@/pages/home/Publish.vue') },
 
-  { path: '/home', component: Home },
+  { path: '/home', component: Home, alias: '/slide' },
   { path: '/home/music', component: () => import('@/pages/home/Music.vue') },
   {
     path: '/home/music-rank-list',
