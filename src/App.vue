@@ -21,6 +21,7 @@ import { useRoute } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import BaseMask from '@/components/BaseMask.vue'
 import { BASE_URL } from '@/config'
+import { connectSocket } from '@/utils/socket'
 
 const store = useBaseStore()
 const route = useRoute()
@@ -61,6 +62,7 @@ function resetVhAndPx() {
 
 onMounted(() => {
   store.init()
+  connectSocket()
   resetVhAndPx()
   // 监听resize事件 视图大小发生变化就重新计算1vh的值
   window.addEventListener('resize', () => {

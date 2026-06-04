@@ -4,6 +4,7 @@ import { login as loginApi, register as registerApi } from '@/api/auth'
 import enums from '@/utils/enums'
 import resource from '@/assets/data/resource'
 import { _notice } from '@/utils'
+import { connectSocket, disconnectSocket } from '@/utils/socket'
 
 export const useBaseStore = defineStore('base', {
   state: () => {
@@ -85,6 +86,7 @@ export const useBaseStore = defineStore('base', {
           this.token = token
           this.isLoggedIn = true
           localStorage.setItem('token', token)
+          connectSocket()
           const p = await panel()
           if (p.success) {
             this.userinfo = Object.assign(this.userinfo, p.data)
@@ -103,6 +105,7 @@ export const useBaseStore = defineStore('base', {
       return { success: false, msg: (r.data as any)?.msg || '注册失败' }
     },
     logout() {
+      disconnectSocket()
       this.token = ''
       this.isLoggedIn = false
       localStorage.removeItem('token')

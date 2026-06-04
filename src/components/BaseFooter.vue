@@ -15,7 +15,7 @@
     </div>
     <div class="l-button" @click="tab(4)">
       <span :class="{ active: currentTab === 4 }">消息</span>
-      <div class="badge">2</div>
+      <div class="badge" v-if="unreadCount > 0">{{ unreadCount > 99 ? '99+' : unreadCount }}</div>
     </div>
     <div class="l-button" @click="tab(5)">
       <span :class="{ active: currentTab === 5 }">我</span>
@@ -25,6 +25,8 @@
 
 <script>
 import bus, { EVENT_KEY } from '../utils/bus'
+import { getNotificationUnread, getUnreadMessageCount } from '../api/message'
+import { useBaseStore } from '../store/pinia'
 
 export default {
   name: 'BaseFooter',
@@ -34,17 +36,23 @@ export default {
       isRefresh1: false,
       isRefresh2: false,
       currentTab: this.initTab,
-      visible: true
+      visible: true,
+      unreadCount: 0,
+      _onNotify: null
     }
   },
   created() {
+    this._onNotify = () => this.loadUnreadCount()
     bus.on('setFooterVisible', (e) => (this.visible = e))
     bus.on(EVENT_KEY.ENTER_FULLSCREEN, () => (this.visible = false))
     bus.on(EVENT_KEY.EXIT_FULLSCREEN, () => (this.visible = true))
+    bus.on('NEW_NOTIFICATION', this._onNotify)
+    this.loadUnreadCount()
   },
   unmounted() {
     bus.off(EVENT_KEY.ENTER_FULLSCREEN)
     bus.off(EVENT_KEY.EXIT_FULLSCREEN)
+    if (this._onNotify) bus.off('NEW_NOTIFICATION', this._onNotify)
   },
   methods: {
     $nav(path) {
@@ -78,6 +86,24 @@ export default {
       } else {
         this.tab(index)
       }
+    },
+    async loadUnreadCount() {
+      const store = useBaseStore()
+      if (!store.token) return
+      try {
+        const [notifRes, msgRes] = await Promise.allSettled([
+          getNotificationUnread(),
+          getUnreadMessageCount()
+        ])
+        let count = 0
+        if (notifRes.status === 'fulfilled' && notifRes.value?.success) {
+          count += Number(notifRes.value.data?.all) || 0
+        }
+        if (msgRes.status === 'fulfilled' && msgRes.value?.success) {
+          count += Number(msgRes.value.data) || 0
+        }
+        this.unreadCount = count
+      } catch { /* ignore */ }
     }
   }
 }

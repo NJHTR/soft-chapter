@@ -1,7 +1,6 @@
 package com.douyin.kafka;
 
 import com.douyin.entity.Message;
-import com.douyin.entity.Notification;
 import com.douyin.entity.User;
 import com.douyin.kafka.dto.ChatMessageEvent;
 import com.douyin.kafka.dto.NotificationEvent;
@@ -77,35 +76,28 @@ public class KafkaMessageConsumer {
         }
     }
 
-    /** 消费互动通知 — 3 个并发消费者 */
+    /** 消费互动通知 — 3 个并发消费者（仅负责 WebSocket 实时推送，DB 落库由调用方保证） */
     @KafkaListener(
             topics = KafkaTopicConfig.TOPIC_NOTIFICATION,
             concurrency = "3",
             containerFactory = "kafkaListenerContainerFactory")
     public void onNotification(NotificationEvent event, Acknowledgment ack) {
         try {
-            log.debug("Consuming notify: user={} type={}", event.getUserId(), event.getType());
+            log.info("[KAFKA-CONSUME] notify received: toUser={} fromUser={} type={} content={}",
+                    event.getUserId(), event.getFromUserId(), event.getType(), event.getContent());
 
-            // 1. 持久化通知到 DB
-            Notification n = new Notification();
-            n.setUserId(event.getUserId());
-            n.setFromUserId(event.getFromUserId());
-            n.setType(event.getType());
-            n.setVideoId(event.getVideoId());
-            n.setCommentId(event.getCommentId());
-            n.setContent(event.getContent());
-            messageService.createNotification(n);
+            boolean online = sessionManager.isOnline(event.getUserId());
+            log.info("[KAFKA-CONSUME] target user online={} userId={}", online, event.getUserId());
 
-            // 2. 推送通知给在线接收者
-            if (sessionManager.isOnline(event.getUserId())) {
-                String json = buildNotificationPushJson(n, event);
+            if (online) {
+                String json = buildNotificationPushJson(event);
                 sessionManager.push(event.getUserId(), json);
+                log.info("[KAFKA-CONSUME] WS pushed to userId={} jsonLen={}", event.getUserId(), json.length());
             }
 
-            log.debug("Notify processed: userId={} type={}", event.getUserId(), event.getType());
-
         } catch (Exception e) {
-            log.error("Notify consume failed: user={} type={}", event.getUserId(), event.getType(), e);
+            log.error("[KAFKA-CONSUME] notify consume FAILED: toUser={} type={} error={}",
+                    event.getUserId(), event.getType(), e.getMessage(), e);
         } finally {
             ack.acknowledge();
         }
@@ -127,16 +119,14 @@ public class KafkaMessageConsumer {
         return objectMapper.writeValueAsString(resp);
     }
 
-    private String buildNotificationPushJson(Notification n, NotificationEvent event) throws JsonProcessingException {
+    private String buildNotificationPushJson(NotificationEvent event) throws JsonProcessingException {
         User fromUser = event.getFromUserId() != null ? userService.getById(event.getFromUserId()) : null;
         Map<String, Object> resp = new LinkedHashMap<>();
-        resp.put("id", n.getId());
-        resp.put("user_id", n.getUserId());
-        resp.put("from_user_id", n.getFromUserId());
-        resp.put("type", n.getType());
-        resp.put("video_id", n.getVideoId());
-        resp.put("content", n.getContent());
-        resp.put("create_time", n.getCreateTime() != null ? n.getCreateTime().toString() : null);
+        resp.put("user_id", event.getUserId());
+        resp.put("from_user_id", event.getFromUserId());
+        resp.put("type", event.getType());
+        resp.put("video_id", event.getVideoId());
+        resp.put("content", event.getContent());
         if (fromUser != null) {
             resp.put("from_user", UserVO.from(fromUser));
         }
