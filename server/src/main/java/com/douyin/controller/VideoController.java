@@ -66,8 +66,19 @@ public class VideoController {
 
     /** 视频评论 */
     @GetMapping("/comments")
-    public Result<List<Map<String, Object>>> comments(@RequestParam Long id) {
-        return Result.ok(commentService.getVideoComments(id));
+    public Result<List<Map<String, Object>>> comments(@RequestParam Long id, HttpServletRequest req) {
+        Long viewerUserId = getLoginUserId(req);
+        return Result.ok(commentService.getVideoComments(id, viewerUserId));
+    }
+
+    /** 点赞/取消点赞评论 */
+    @PostMapping("/comment/like/{commentId}")
+    public Result<Map<String, Object>> toggleCommentLike(@PathVariable Long commentId, HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        boolean liked = commentService.toggleCommentLike(userId, commentId);
+        Comment c = commentService.getById(commentId);
+        return Result.ok(Map.of("isLoved", liked, "likeCount", c != null ? c.getLikeCount() : 0));
     }
 
     /** 我的视频 */

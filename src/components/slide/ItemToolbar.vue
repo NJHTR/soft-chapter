@@ -4,7 +4,7 @@ import { _formatNumber, cloneDeep, _notice } from '@/utils'
 import bus, { EVENT_KEY } from '@/utils/bus'
 import { Icon } from '@iconify/vue'
 import { useClick } from '@/utils/hooks/useClick'
-import { inject } from 'vue'
+import { inject, onMounted, onUnmounted } from 'vue'
 import { toggleVideoLike } from '@/api/videos'
 import { toggleFollowUser } from '@/api/user'
 
@@ -53,6 +53,7 @@ async function loved() {
     if (res.success) {
       props.item.statistics.digg_count = res.data.likeCount
       _updateItem(props, 'is_loved', res.data.isLoved)
+      bus.emit(EVENT_KEY.LIKE_UPDATED)
     } else {
       // 回滚
       props.item.is_loved = wasLoved
@@ -93,6 +94,18 @@ function showComments() {
 }
 
 const vClick = useClick()
+
+onMounted(() => {
+  bus.on(EVENT_KEY.COMMENT_ADDED, (videoId: string) => {
+    if (String(videoId) === String(props.item.aweme_id)) {
+      props.item.statistics.comment_count++
+      _updateItem(props, 'statistics', { ...props.item.statistics })
+    }
+  })
+})
+onUnmounted(() => {
+  bus.off(EVENT_KEY.COMMENT_ADDED)
+})
 </script>
 
 <template>
@@ -105,7 +118,7 @@ const vClick = useClick()
         v-click="() => bus.emit(EVENT_KEY.GO_USERINFO)"
       />
       <transition name="fade">
-        <div v-if="!item.is_attention" v-click="attention" class="options">
+        <div v-if="!item.is_attention && !isMy" v-click="attention" class="options">
           <img class="no" src="../../assets/img/icon/add-light.png" alt="" />
           <img class="yes" src="../../assets/img/icon/ok-red.png" alt="" />
         </div>

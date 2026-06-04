@@ -122,6 +122,14 @@ function click(uniqueId) {
 function updateItem({ position, item }) {
   if (position.uniqueId === props.uniqueId) {
     state.list[position.index] = item
+    // 关注状态变更时，同步更新同一作者的所有视频
+    if (item.author?.uid && Object.prototype.hasOwnProperty.call(item, 'is_attention')) {
+      state.list.forEach((v, i) => {
+        if (i !== position.index && v.author?.uid === item.author.uid) {
+          v.is_attention = item.is_attention
+        }
+      })
+    }
   }
 }
 
@@ -134,14 +142,20 @@ function togglePlay() {
   })
 }
 
+function refreshFeed() {
+  getData(true)
+}
+
 onMounted(() => {
   bus.on(EVENT_KEY.SINGLE_CLICK, click)
   bus.on(EVENT_KEY.UPDATE_ITEM, updateItem)
   bus.on(EVENT_KEY.TOGGLE_CURRENT_VIDEO, togglePlay)
+  bus.on(EVENT_KEY.REFRESH_FEED, refreshFeed)
 })
 onUnmounted(() => {
   bus.off(EVENT_KEY.SINGLE_CLICK, click)
   bus.off(EVENT_KEY.UPDATE_ITEM, updateItem)
   bus.off(EVENT_KEY.TOGGLE_CURRENT_VIDEO, togglePlay)
+  bus.off(EVENT_KEY.REFRESH_FEED, refreshFeed)
 })
 </script>

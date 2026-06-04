@@ -284,7 +284,7 @@ function setCurrentItem(item) {
   if (!state.active) return
   // console.log('sss',item,state.baseIndex)
   if (state.baseIndex !== 1) return
-  if (state.currentItem.author?.uid !== item.author?.uid) {
+  if (state.currentItem.aweme_id !== item.aweme_id) {
     state.currentItem = {
       ...item,
       isRequest: false,

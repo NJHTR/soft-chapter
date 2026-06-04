@@ -394,7 +394,7 @@ import Indicator from '../../components/slide/Indicator'
 import { nextTick } from 'vue'
 import { mapState, mapActions } from 'pinia'
 
-import bus from '../../utils/bus'
+import bus, { EVENT_KEY } from '../../utils/bus'
 import ConfirmDialog from '../../components/dialog/ConfirmDialog'
 import { _checkImgUrl, _formatNumber, _getUserDouyinId, _no, _stopPropagation } from '@/utils'
 import { likeVideo, myVideo, privateVideo } from '@/api/videos'
@@ -505,6 +505,12 @@ export default {
     this.videoItemHeight = (this.bodyWidth / 3) * 1.2 + 2
     bus.on('baseSlide-moved', () => (this.canScroll = false))
     bus.on('baseSlide-end', () => (this.canScroll = true))
+    bus.on(EVENT_KEY.LIKE_UPDATED, () => {
+      this.videos.like.total = -1
+    })
+  },
+  beforeUnmount() {
+    bus.off(EVENT_KEY.LIKE_UPDATED)
   },
   methods: {
     _no,
