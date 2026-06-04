@@ -30,9 +30,12 @@
         ></ChatMessage>
       </div>
       <div class="footer">
+        <!-- 隐藏的图片选择器 -->
+        <input ref="imageInput" type="file" accept="image/*" style="display:none" @change="handleImagePicked" />
         <div class="toolbar" v-if="!data.recording">
-          <img src="../../../assets/img/icon/message/camera.png" alt="" class="camera" />
+          <img @click="pickImage()" src="../../../assets/img/icon/message/camera.png" alt="" class="camera" />
           <input
+            ref="inputRef"
             v-model="data.inputText"
             @keyup.enter="handleSend"
             type="text"
@@ -40,37 +43,47 @@
           />
           <!-- 有文字: 表情包 + 发送按钮，隐藏语音和加号 -->
           <template v-if="data.inputText">
-            <img src="../../../assets/img/icon/message/emoji-white.png" alt="" class="emoji" />
+            <img @click="toggleEmoji" src="../../../assets/img/icon/message/emoji-white.png" alt="" class="emoji" />
             <div class="send-btn" @click="handleSend">
               <img src="../../../assets/img/icon/message/up.png" alt="" />
             </div>
           </template>
           <!-- 没文字: 语音 + 表情包 + 加号 -->
           <template v-else>
-            <img @click="handleClick" src="../../../assets/img/icon/message/voice-white.png" alt="" />
-            <img src="../../../assets/img/icon/message/emoji-white.png" alt="" />
+            <img @click="startVoice" src="../../../assets/img/icon/message/voice-white.png" alt="" />
+            <img @click="toggleEmoji" src="../../../assets/img/icon/message/emoji-white.png" alt="" />
             <img
-              @click="data.showOption = !data.showOption"
+              @click="data.showOption = !data.showOption; data.showEmoji = false"
               src="../../../assets/img/icon/message/add-white.png"
               alt=""
             />
           </template>
         </div>
-        <div class="record" v-else>
-          <span>按住 说话</span>
+        <div class="record" v-else
+          @touchstart.prevent="voiceStart"
+          @touchend.prevent="voiceEnd"
+          @touchcancel.prevent="voiceEnd"
+          @mousedown.prevent="voiceStart"
+          @mouseup.prevent="voiceEnd"
+          @mouseleave.prevent="voiceEnd">
+          <span>{{ data.recordingActive ? '松开 发送' : '按住 说话' }}</span>
           <img
-            @click="data.recording = false"
+            @click="cancelVoice"
             src="../../../assets/img/icon/message/keyboard.png"
             alt=""
           />
         </div>
+        <!-- 表情包面板 -->
+        <div class="emoji-panel" v-if="data.showEmoji">
+          <span class="emoji-item" v-for="e in emojiList" :key="e" @click="insertEmoji(e)">{{ e }}</span>
+        </div>
         <div class="options" v-if="data.showOption">
           <div class="option-wrapper">
-            <div class="option">
+            <div class="option" @click="pickImage()">
               <img src="../../../assets/img/icon/message/photo.png" alt="" />
               <span>照片</span>
             </div>
-            <div class="option">
+            <div class="option" @click="pickImage()">
               <img src="../../../assets/img/icon/message/camera2.png" alt="" />
               <span>拍摄</span>
             </div>
@@ -267,12 +280,104 @@ const data = reactive({
   opening: false,
   isOpened: false,
   recording: false,
+  recordingActive: false,
   showOption: false,
+  showEmoji: false,
   isShowOpenRedPacket: false,
   tooltipTop: -1,
   tooltipTopLocation: '',
   inputText: ''
 })
+
+const imageInput = ref<HTMLInputElement>()
+
+// 表情包列表
+const emojiList = ['😀','😂','🤣','😍','🥰','😘','😜','😎','🤩','😊','😏','🥺','😭','😡','🤬','👍','👎','👏','🙌','💪','🤝','❤️','💔','🔥','⭐','🎉','🎊','🙏','🤔','🤗','😱','😴','🤤','🫡','🫠','😶','🤐','😮‍💨','😵','🥴','🤧','💩','👻','💀','👀','👋','🫶','🌹','🌈','🍉','🎂','🍺','💰','🔞']
+
+// 语音录音相关
+let mediaRecorder: MediaRecorder | null = null
+let audioChunks: BlobPart[] = []
+let voiceStartTime = 0
+
+function toggleEmoji() { data.showEmoji = !data.showEmoji; data.showOption = false }
+function insertEmoji(emoji: string) { data.inputText += emoji; data.showEmoji = false }
+
+function pickImage() {
+  data.showOption = false
+  imageInput.value?.click()
+}
+
+async function handleImagePicked(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  try {
+    data.loading = true
+    const formData = new FormData()
+    formData.append('file', file)
+    const resp = await fetch('/api/upload/image', { method: 'POST', body: formData, headers: { Authorization: 'Bearer ' + store.token } })
+    const json = await resp.json()
+    if (json.code === 200 && json.data?.url) {
+      const res = await sendMessage({ to_user_id: targetUserId.value as any, content: json.data.url, msg_type: 2 })
+      if (res.success && res.data) addMessageWithDedup(res.data)
+    } else {
+      _notice('图片上传失败')
+    }
+  } catch { _notice('图片上传失败') }
+  finally {
+    data.loading = false
+    if (imageInput.value) imageInput.value.value = ''
+  }
+}
+
+function startVoice() {
+  data.recording = true
+}
+
+function cancelVoice() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop()
+  data.recording = false
+  data.recordingActive = false
+}
+
+function voiceStart() {
+  if (!data.recording) return
+  data.recordingActive = true
+  audioChunks = []
+  voiceStartTime = Date.now()
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data) }
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop())
+      if (audioChunks.length === 0) return
+      const duration = Math.max(1, Math.round((Date.now() - voiceStartTime) / 1000))
+      const blob = new Blob(audioChunks, { type: 'audio/webm' })
+      const formData = new FormData()
+      formData.append('file', blob, 'voice.webm')
+      try {
+        data.loading = true
+        const resp = await fetch('/api/upload/image', { method: 'POST', body: formData, headers: { Authorization: 'Bearer ' + store.token } })
+        const json = await resp.json()
+        if (json.code === 200 && json.data?.url) {
+          const res = await sendMessage({ to_user_id: targetUserId.value as any, content: json.data.url, msg_type: 3, extra: String(duration) })
+          if (res.success && res.data) addMessageWithDedup(res.data)
+        } else {
+          _notice('语音上传失败')
+        }
+      } catch { _notice('语音发送失败') }
+      finally { data.loading = false }
+    }
+    mediaRecorder.start()
+  }).catch(() => { _notice('无法访问麦克风'); data.recording = false; data.recordingActive = false })
+}
+
+function voiceEnd() {
+  data.recordingActive = false
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop()
+  }
+  data.recording = false
+}
 
 watch(() => route.query, () => {
   console.log('[Chat] route.query changed:', JSON.stringify(route.query))
@@ -297,7 +402,7 @@ onUnmounted(() => {
 })
 
 const isExpand = computed(() => {
-  return data.showOption
+  return data.showOption || data.showEmoji
 })
 
 // 后端 msg_type → 前端 MESSAGE_TYPE 映射
@@ -313,14 +418,19 @@ const MSG_TYPE_MAP: Record<number, number> = {
 function mapMsgToChatItem(msg: any) {
   const myUid = store.userinfo.uid
   const isMyMsg = msg.from_user_id === myUid
-  // REST API 返回的 Message 没有 from_user，WebSocket 推送有
   const fromUserAvatar = msg.from_user?.avatar_168x168?.url_list?.[0]
   const myAvatar = store.userinfo.avatar_168x168?.url_list?.[0] || ''
+  const frontendType = MSG_TYPE_MAP[msg.msg_type] ?? MESSAGE_TYPE.TEXT
+  // 音频消息需要 duration 字段给 ChatMessage 组件渲染
+  let data: any = msg.content
+  if (frontendType === MESSAGE_TYPE.AUDIO) {
+    data = { url: msg.content, duration: Number(msg.extra) || 0 }
+  }
   return {
-    type: MSG_TYPE_MAP[msg.msg_type] ?? MESSAGE_TYPE.TEXT,
-    data: msg.content,
+    type: frontendType,
+    data,
     time: msg.create_time,
-    backendId: msg.id, // 用于去重
+    backendId: msg.id,
     user: {
       id: isMyMsg ? myUid : targetUserId.value,
       avatar: isMyMsg ? myAvatar : (fromUserAvatar || targetUserAvatar.value || '')
@@ -386,6 +496,7 @@ async function handleSend() {
       addMessageWithDedup(res.data)
       data.inputText = ''
       data.showOption = false
+      data.showEmoji = false
     } else {
       _notice((res as any).msg || '发送失败')
     }
@@ -602,6 +713,25 @@ function showTooltip(e) {
           width: 24rem;
           border-radius: 50%;
           margin-left: 15rem;
+        }
+      }
+
+      .emoji-panel {
+        height: calc(var(--vh, 1vh) * 30);
+        overflow-y: auto;
+        padding: 10rem;
+        display: flex;
+        flex-wrap: wrap;
+        align-content: flex-start;
+
+        .emoji-item {
+          width: calc(100vw / 8 - 8rem);
+          height: calc(100vw / 8 - 8rem);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 24rem;
+          cursor: pointer;
         }
       }
 
