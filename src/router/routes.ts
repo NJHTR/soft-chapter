@@ -10,6 +10,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/test4', component: Test4 },
 
   { path: '/publish', component: () => import('@/pages/home/Publish.vue') },
+  { path: '/video-editor', component: () => import('@/pages/home/VideoEditor.vue') },
 
   { path: '/home', component: Home, alias: '/slide' },
   { path: '/home/music', component: () => import('@/pages/home/Music.vue') },
@@ -33,6 +34,10 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/me/edit-userinfo-item',
     component: () => import('@/pages/me/userinfo/EditUserInfoItem.vue')
+  },
+  {
+    path: '/me/password-setting',
+    component: () => import('@/pages/me/userinfo/PasswordSetting.vue')
   },
   {
     path: '/me/country-choose',
@@ -92,6 +97,10 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/me/rightMenu/Setting.vue')
   },
   {
+    path: '/me/right-menu/login-device',
+    component: () => import('@/pages/me/rightMenu/LoginDevice.vue')
+  },
+  {
     path: '/me/collect/music-collect',
     component: () => import('@/pages/me/collect/MusicCollect.vue')
   },
@@ -118,6 +127,10 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/message/fans',
     component: () => import('@/pages/message/Fans.vue')
+  },
+  {
+    path: '/message/friend-requests',
+    component: () => import('@/pages/message/FriendRequests.vue')
   },
   {
     path: '/message/visitors',

@@ -3,6 +3,7 @@ package com.douyin.controller;
 import com.douyin.common.Result;
 import com.douyin.entity.Message;
 import com.douyin.entity.User;
+import com.douyin.service.ContentFeatureService;
 import com.douyin.service.MessageService;
 import com.douyin.service.UserService;
 import com.douyin.utils.JwtUtil;
@@ -30,15 +31,18 @@ public class MessageController {
     private final SessionManager sessionManager;
     private final UserService userService;
     private final ObjectMapper objectMapper;
+    private final ContentFeatureService contentFeatureService;
 
     public MessageController(MessageService messageService, JwtUtil jwtUtil,
                              SessionManager sessionManager, UserService userService,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             ContentFeatureService contentFeatureService) {
         this.messageService = messageService;
         this.jwtUtil = jwtUtil;
         this.sessionManager = sessionManager;
         this.userService = userService;
         this.objectMapper = objectMapper;
+        this.contentFeatureService = contentFeatureService;
     }
 
     private Long getLoginUserId(HttpServletRequest req) {
@@ -63,6 +67,10 @@ public class MessageController {
         String extra = (String) body.getOrDefault("extra", "");
 
         Message msg = messageService.sendMessage(userId, toUserId, content, msgType, extra);
+
+        // 更新双方画像: 私信 = 社交互动信号
+        try { contentFeatureService.onProfileVisit(userId, toUserId); } catch (Exception ignored) {}
+        try { contentFeatureService.onProfileVisit(toUserId, userId); } catch (Exception ignored) {}
 
         // 实时推送：对方在线则通过 WebSocket 即刻收到
         try {
@@ -112,6 +120,18 @@ public class MessageController {
         Long userId = getLoginUserId(req);
         if (userId == null) return Result.fail("请先登录");
         messageService.markRead(userId, fromUserId);
+
+        // 推送已读回执给消息发送方：告知"userId 已读了你的消息"
+        try {
+            Map<String, Object> receipt = new LinkedHashMap<>();
+            receipt.put("type", "read_receipt");
+            receipt.put("from_user_id", userId);     // 读者
+            receipt.put("to_user_id", fromUserId);   // 被读者（消息发送方）
+            sessionManager.push(fromUserId, objectMapper.writeValueAsString(receipt));
+        } catch (Exception e) {
+            log.error("read receipt push failed: {}", e.getMessage());
+        }
+
         return Result.ok();
     }
 

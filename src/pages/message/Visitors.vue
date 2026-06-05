@@ -94,9 +94,12 @@ import Switches from './components/swtich/switches.vue'
 import BaseButton from '@/components/BaseButton.vue'
 import { useBaseStore } from '@/store/pinia'
 import { _checkImgUrl, _notice, cloneDeep } from '@/utils'
+import CONST_VAR from '@/utils/const_var'
+const { RELATE_ENUM } = CONST_VAR
 
 import { onMounted, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { getVisitors, setVisitorDisplay } from '@/api/user'
 
 defineOptions({
   name: 'Visitors'
@@ -107,8 +110,42 @@ const router = useRouter()
 const data = reactive({
   recommend: [],
   isShowSetting: false,
-  display: false,
-  realDisplay: false
+  display: !!store.userinfo?.visitor_display,
+  realDisplay: !!store.userinfo?.visitor_display
+})
+
+function mapVisitor(u: any) {
+  let type = 0
+  if (u.is_followed && u.is_following_me) type = RELATE_ENUM.FOLLOW_EACH_OTHER
+  else if (u.is_followed) type = RELATE_ENUM.FOLLOW_HE
+  else if (u.is_following_me) type = RELATE_ENUM.FOLLOW_ME
+
+  return {
+    id: u.uid,
+    uid: u.uid,
+    name: u.nickname || '',
+    avatar: u.avatar_168x168?.url_list?.[0] || '',
+    type,
+    visit_time: u.visit_time || ''
+  }
+}
+
+async function loadVisitors() {
+  const res = await getVisitors()
+  if (res.success) {
+    data.recommend = (res.data || []).map(mapVisitor)
+  } else {
+    // 兜底
+    data.recommend = (store.friends as any)?.all || []
+  }
+}
+
+onMounted(() => {
+  loadVisitors()
+})
+
+watch(() => data.display, (val) => {
+  setVisitorDisplay(val).catch(() => {})
 })
 
 onMounted(() => {

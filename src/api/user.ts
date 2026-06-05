@@ -102,3 +102,50 @@ export function recordVisit(userId: number) {
 export function getVisitors() {
   return request({ url: '/user/visitors', method: 'get' })
 }
+
+export function getMutualFriends(params?: any, data?: any) {
+  return request({ url: '/user/friends-mutual', method: 'get', params, data })
+}
+
+export function setVisitorDisplay(enabled: boolean) {
+  return request({ url: '/user/visitor-display', method: 'put', data: { enabled } })
+}
+
+// 朋友系统
+export function sendFriendRequest(targetId: number) {
+  return request({ url: '/user/friend/request', method: 'post', data: { target_id: targetId } })
+}
+
+export function acceptFriendRequest(fromId: number) {
+  return request({ url: '/user/friend/accept', method: 'post', data: { from_id: fromId } })
+}
+
+export function rejectFriendRequest(fromId: number) {
+  return request({ url: '/user/friend/reject', method: 'post', data: { from_id: fromId } })
+}
+
+export function getFriendList(params?: any, data?: any) {
+  return request({ url: '/user/friend/list', method: 'get', params, data })
+}
+
+export function getFriendRequests(params?: any, data?: any) {
+  return request({ url: '/user/friend/requests', method: 'get', params, data })
+}
+
+// 系统通知
+export function getSystemNotices(params?: any, data?: any) {
+  return request({ url: '/system-notice', method: 'get', params, data })
+}
+
+export function markNoticeRead(id: number) {
+  return request({ url: `/system-notice/${id}/read`, method: 'put' })
+}
+
+export function markAllNoticesRead() {
+  return request({ url: '/system-notice/read-all', method: 'put' })
+}
+
+// 登录设备管理
+export function getLoginHistory(params?: any) {
+  return request({ url: '/user/login-history', method: 'get', params })
+}

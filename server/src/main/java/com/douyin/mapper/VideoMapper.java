@@ -25,4 +25,18 @@ public interface VideoMapper extends BaseMapper<Video> {
             "GROUP BY v.author_user_id " +
             "ORDER BY MAX(r.create_time) DESC LIMIT #{limit}")
     List<Long> findRecentAuthorIds(@Param("userId") Long userId, @Param("limit") int limit);
+
+    /** 召回用: 按品类查询视频(排除已曝光), 有内容特征的优先 */
+    @Select("<script>SELECT v.* FROM t_video v " +
+            "LEFT JOIN t_video_content vc ON v.id = vc.video_id " +
+            "WHERE v.type IN ('recommend-video', 'image', 'text') " +
+            "<if test='excludeIds != null and excludeIds.size() > 0'>" +
+            "AND v.id NOT IN <foreach collection='excludeIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> " +
+            "</if>" +
+            "<if test='minDuration != null'>AND v.duration >= #{minDuration}</if> " +
+            "ORDER BY (CASE WHEN vc.extract_status = 1 THEN 0 ELSE 1 END), v.create_time DESC " +
+            "LIMIT #{limit}</script>")
+    List<Video> findRecallCandidates(@Param("excludeIds") List<Long> excludeIds,
+                                      @Param("minDuration") Double minDuration,
+                                      @Param("limit") int limit);
 }

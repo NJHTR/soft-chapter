@@ -8,6 +8,8 @@ import NoticeDialog from '../components/dialog/NoticeDialog.vue'
 import { ArchiveReader, libarchiveWasm } from 'libarchive-wasm'
 import SlideUser from '@/components/slide/SlideUser.vue'
 import BaseVideo from '@/components/slide/BaseVideo.vue'
+import ImageSlide from '@/components/slide/ImageSlide.vue'
+import TextSlide from '@/components/slide/TextSlide.vue'
 
 export function _storageSet(key, value) {
   localStorage.setItem(key, JSON.stringify(value))
@@ -416,6 +418,26 @@ export function slideItemRender(props) {
       // case 'imgs':
       //   node = <SlideAlbum isPlay={play} index={index} position={{ uniqueId, index }} {...props} />
       //   break
+      case 'image':
+        node = (
+          <ImageSlide
+            isPlay={play}
+            item={item}
+            position={{ uniqueId, index }}
+            {...props}
+          />
+        )
+        break
+      case 'text':
+        node = (
+          <TextSlide
+            isPlay={play}
+            item={item}
+            position={{ uniqueId, index }}
+            {...props}
+          />
+        )
+        break
       case 'user':
         node = <SlideUser {...props} />
         break

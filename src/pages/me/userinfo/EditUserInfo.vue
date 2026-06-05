@@ -74,6 +74,13 @@
           <dy-back scale=".8" direction="right"></dy-back>
         </div>
       </div>
+      <div class="row" @click="nav('/me/password-setting')">
+        <div class="left">登录密码</div>
+        <div class="right">
+          <span>{{ store.userinfo.has_password ? '修改密码' : '点击设置密码' }}</span>
+          <dy-back scale=".8" direction="right"></dy-back>
+        </div>
+      </div>
       <div class="row" @click="nav('/me/add-school')">
         <div class="left">学校</div>
         <div class="right">

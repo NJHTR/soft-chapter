@@ -24,6 +24,9 @@ public class CoverService {
 
     private static final Logger log = LoggerFactory.getLogger(CoverService.class);
 
+    @org.springframework.beans.factory.annotation.Value("${server.port:9191}")
+    private int serverPort;
+
     @Autowired
     private MinioClient minioClient;
 
@@ -67,8 +70,9 @@ public class CoverService {
         Path tempCover = null;
         try {
             // 1. 下载视频到临时文件
+            String fullUrl = videoUrl.startsWith("/") ? "http://localhost:" + serverPort + videoUrl : videoUrl;
             tempVideo = Files.createTempFile("douyin-video-", ".mp4");
-            try (InputStream in = new URL(videoUrl).openStream();
+            try (InputStream in = new URL(fullUrl).openStream();
                  FileOutputStream out = new FileOutputStream(tempVideo.toFile())) {
                 byte[] buf = new byte[8192];
                 int n;

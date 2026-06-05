@@ -23,7 +23,7 @@ const props = defineProps({
   }
 })
 
-const position = inject<any>('position')
+const position = inject<any>('position', {})
 
 const emit = defineEmits(['update:item', 'goUserInfo', 'showComments', 'showShare', 'goMusic'])
 

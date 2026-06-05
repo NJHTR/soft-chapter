@@ -2,6 +2,7 @@ package com.douyin.controller;
 
 import com.douyin.common.Result;
 import com.douyin.mapper.SearchHistoryMapper;
+import com.douyin.service.ContentFeatureService;
 import com.douyin.utils.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
@@ -15,10 +16,13 @@ public class SearchHistoryController {
 
     private final SearchHistoryMapper searchHistoryMapper;
     private final JwtUtil jwtUtil;
+    private final ContentFeatureService contentFeatureService;
 
-    public SearchHistoryController(SearchHistoryMapper searchHistoryMapper, JwtUtil jwtUtil) {
+    public SearchHistoryController(SearchHistoryMapper searchHistoryMapper, JwtUtil jwtUtil,
+                                    ContentFeatureService contentFeatureService) {
         this.searchHistoryMapper = searchHistoryMapper;
         this.jwtUtil = jwtUtil;
+        this.contentFeatureService = contentFeatureService;
     }
 
     private Long getLoginUserId(HttpServletRequest req) {
@@ -45,6 +49,7 @@ public class SearchHistoryController {
         String keyword = body.get("keyword");
         if (keyword == null || keyword.trim().isEmpty()) return Result.fail("关键词不能为空");
         searchHistoryMapper.insertKeyword(userId, keyword.trim());
+        try { contentFeatureService.onSearch(userId, keyword.trim()); } catch (Exception ignored) {}
         return Result.ok();
     }
 

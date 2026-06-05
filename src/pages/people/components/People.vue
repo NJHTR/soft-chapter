@@ -124,9 +124,30 @@
         </div>
       </template>
 
+      <template v-if="mode === 'mutual'">
+        <div class="left">
+          <div class="name">{{ people.name }}</div>
+          <div class="detail">
+            <template v-if="people.type === RELATE_ENUM.REQUEST_FOLLOW">
+              发来一个关注请求
+            </template>
+            <template v-else> 互相关注</template>
+          </div>
+        </div>
+        <div class="right">
+          <div class="l-button" @click.stop="$emit('follow')">互相关注</div>
+          <img
+            src="../../../assets/img/icon/menu-white.png"
+            alt=""
+            @click.stop="showPopover = !showPopover"
+          />
+        </div>
+      </template>
+
       <template v-if="mode === 'visitor'">
         <div class="left">
           <div class="name">{{ people.name }}</div>
+          <div class="detail" v-if="people.visit_time">{{ people.visit_time }}</div>
         </div>
         <div class="right">
           <!--   他关注我   -->

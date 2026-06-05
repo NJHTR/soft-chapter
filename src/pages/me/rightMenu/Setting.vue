@@ -16,6 +16,15 @@
           <dy-back direction="right"></dy-back>
         </div>
       </div>
+      <div class="row" @click="$router.push('/me/right-menu/login-device')">
+        <div class="left">
+          <img src="@/assets/img/icon/newicon/left_menu/time.png" alt="" />
+          <span>登录设备管理</span>
+        </div>
+        <div class="right">
+          <dy-back direction="right"></dy-back>
+        </div>
+      </div>
       <div class="row">
         <div class="left">
           <img src="@/assets/img/icon/newicon/left_menu/lock.png" alt="" />

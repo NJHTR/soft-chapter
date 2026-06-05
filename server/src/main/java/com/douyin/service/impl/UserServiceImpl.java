@@ -15,9 +15,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -48,7 +50,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
         User user = new User();
         user.setEmail(email);
-        user.setPassword(passwordEncoder.encode(password));
+        // 密码可选：验证码注册可不设密码
+        if (password != null && !password.isEmpty()) {
+            user.setPassword(passwordEncoder.encode(password));
+        }
         user.setNickname(nickname != null ? nickname : email.split("@")[0]);
         user.setUniqueId(String.valueOf(System.currentTimeMillis()).substring(5));
         user.setAvatar168Url(DEFAULT_AVATAR);
@@ -161,8 +166,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (follows.isEmpty()) return List.of();
         List<Long> followIds = follows.stream().map(Follow::getFollowId).toList();
         List<User> users = listByIds(followIds);
+        // 查哪些人回关了我
+        Set<Long> mutualIds = new HashSet<>(followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                .eq(Follow::getFollowId, userId)
+                .in(Follow::getUserId, followIds))
+                .stream().map(Follow::getUserId).toList());
         Map<Long, UserVO> userMap = users.stream()
-                .collect(java.util.stream.Collectors.toMap(User::getUid, UserVO::from));
+                .collect(java.util.stream.Collectors.toMap(User::getUid, u -> {
+                    UserVO vo = UserVO.from(u);
+                    vo.setIsFollowed(true);
+                    vo.setIsFollowingMe(mutualIds.contains(u.getUid()));
+                    return vo;
+                }));
         return followIds.stream().map(userMap::get).filter(Objects::nonNull).toList();
     }
 
@@ -174,9 +189,42 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (follows.isEmpty()) return List.of();
         List<Long> followerIds = follows.stream().map(Follow::getUserId).toList();
         List<User> users = listByIds(followerIds);
+        // 查我回关了哪些人
+        Set<Long> mutualIds = new HashSet<>(followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                .eq(Follow::getUserId, userId)
+                .in(Follow::getFollowId, followerIds))
+                .stream().map(Follow::getFollowId).toList());
         Map<Long, UserVO> userMap = users.stream()
-                .collect(java.util.stream.Collectors.toMap(User::getUid, UserVO::from));
+                .collect(java.util.stream.Collectors.toMap(User::getUid, u -> {
+                    UserVO vo = UserVO.from(u);
+                    vo.setIsFollowed(mutualIds.contains(u.getUid()));
+                    vo.setIsFollowingMe(true);
+                    return vo;
+                }));
         return followerIds.stream().map(userMap::get).filter(Objects::nonNull).toList();
+    }
+
+    /** 朋友列表 — 互相关注的人 */
+    public List<UserVO> getFriends(Long userId) {
+        List<Follow> myFollows = followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                .eq(Follow::getUserId, userId));
+        if (myFollows.isEmpty()) return List.of();
+        List<Long> myFollowIds = myFollows.stream().map(Follow::getFollowId).toList();
+        // 回关我的 = 朋友
+        List<Long> friendIds = followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                .eq(Follow::getFollowId, userId)
+                .in(Follow::getUserId, myFollowIds))
+                .stream().map(Follow::getUserId).toList();
+        if (friendIds.isEmpty()) return List.of();
+        List<User> users = listByIds(friendIds);
+        Map<Long, UserVO> userMap = users.stream()
+                .collect(java.util.stream.Collectors.toMap(User::getUid, u -> {
+                    UserVO vo = UserVO.from(u);
+                    vo.setIsFollowed(true);
+                    vo.setIsFollowingMe(true);
+                    return vo;
+                }));
+        return friendIds.stream().map(userMap::get).filter(Objects::nonNull).toList();
     }
 
     @Override
@@ -222,14 +270,56 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         List<User> users = baseMapper.selectBatchIds(visitorIds);
         java.util.Map<Long, User> userMap = users.stream()
                 .collect(java.util.stream.Collectors.toMap(User::getUid, u -> u));
+
+        // Build visitor_id → visit_time map
+        java.util.Map<Long, String> timeMap = new java.util.LinkedHashMap<>();
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm");
+        for (java.util.Map<String, Object> row : rows) {
+            Long vid = (Long) row.get("visitor_id");
+            if (!timeMap.containsKey(vid)) {
+                Object ts = row.get("last_time");
+                if (ts instanceof java.time.LocalDateTime) {
+                    timeMap.put(vid, ((java.time.LocalDateTime) ts).format(fmt));
+                } else if (ts instanceof java.sql.Timestamp) {
+                    timeMap.put(vid, ((java.sql.Timestamp) ts).toLocalDateTime().format(fmt));
+                }
+            }
+        }
+
         return rows.stream()
                 .map(r -> {
                     Long vid = (Long) r.get("visitor_id");
                     User u = userMap.get(vid);
-                    return u != null ? UserVO.from(u) : null;
+                    if (u == null) return null;
+                    UserVO vo = UserVO.from(u);
+                    vo.setVisitTime(timeMap.get(vid));
+                    return vo;
                 })
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    @Override
+    public boolean hasPassword(Long userId) {
+        User user = getById(userId);
+        return user != null && user.getPassword() != null && !user.getPassword().isEmpty();
+    }
+
+    @Override
+    public void setPassword(Long userId, String password) {
+        User user = getById(userId);
+        if (user == null) throw new RuntimeException("用户不存在");
+        user.setPassword(passwordEncoder.encode(password));
+        updateById(user);
+    }
+
+    @Override
+    public void setVisitorDisplay(Long userId, boolean enabled) {
+        User user = getById(userId);
+        if (user != null) {
+            user.setVisitorDisplay(enabled ? 1 : 0);
+            updateById(user);
+        }
     }
 
     /** @param isFollowing true=更新自己的关注数, false=更新对方的粉丝数 */

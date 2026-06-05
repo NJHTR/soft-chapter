@@ -59,6 +59,37 @@ public class UserVO {
     @JsonProperty("is_followed")
     private Boolean isFollowed;
 
+    @JsonProperty("visitor_display")
+    private Boolean visitorDisplay;
+
+    /** 对方是否关注了我 (查看他人主页时) */
+    @JsonProperty("is_following_me")
+    private Boolean isFollowingMe;
+
+    /** 互关数 (相互关注) */
+    @JsonProperty("mutual_count")
+    private Long mutualCount;
+
+    /** 朋友数 (双向确认) */
+    @JsonProperty("friend_count")
+    private Long friendCount;
+
+    /** 是否为确认的朋友 (双方通过t_friend双向确认) */
+    @JsonProperty("is_friend")
+    private Boolean isFriend;
+
+    /** 当前用户是否已向对方发送过好友申请(待处理) */
+    @JsonProperty("friend_request_sent")
+    private Boolean friendRequestSent;
+
+    /** 是否已设置密码 */
+    @JsonProperty("has_password")
+    private Boolean hasPassword;
+
+    /** 访问时间 (仅访客列表使用) */
+    @JsonProperty("visit_time")
+    private String visitTime;
+
     @Data
     public static class Avatar {
         @JsonProperty("url_list")
@@ -101,6 +132,8 @@ public class UserVO {
         vo.totalFavorited = user.getTotalFavorited();
         vo.videoCount = user.getVideoCount();
         vo.userAge = calcAge(user.getBirthday());
+        vo.visitorDisplay = user.getVisitorDisplay() != null && user.getVisitorDisplay() == 1;
+        vo.hasPassword = user.getPassword() != null && !user.getPassword().isEmpty();
         return vo;
     }
 

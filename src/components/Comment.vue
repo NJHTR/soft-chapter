@@ -26,9 +26,9 @@
           <div class="item" :key="i" :data-comment-id="item.comment_id" v-for="(item, i) in comments">
             <div class="main">
               <div class="content">
-                <img :src="_checkImgUrl(item.avatar)" alt="" class="head-image" />
+                <img :src="_checkImgUrl(item.avatar)" alt="" class="head-image" @click.stop="goUserHome(item)" />
                 <div class="comment-container">
-                  <div class="name">{{ item.nickname }}</div>
+                  <div class="name" @click.stop="goUserHome(item)">{{ item.nickname }}</div>
                   <!-- 文字内容 -->
                   <div class="detail" :class="item.user_buried && 'gray'" v-if="item.content && !item.user_buried">
                     {{ renderContent(item.content) }}
@@ -91,9 +91,9 @@
               <template v-if="item.showChildren">
                 <div class="reply" :key="i" :data-comment-id="child.comment_id" v-for="(child, i) in item.children">
                   <div class="content">
-                    <img :src="_checkImgUrl(child.avatar)" alt="" class="head-image" />
+                    <img :src="_checkImgUrl(child.avatar)" alt="" class="head-image" @click.stop="goUserHome(child)" />
                     <div class="comment-container">
-                      <div class="name">
+                      <div class="name" @click.stop="goUserHome(child)">
                         {{ child.nickname }}
                         <template v-if="child.reply_to_nickname">
                           <div class="reply-user"></div>
@@ -387,6 +387,12 @@ export default {
       this.friends.all.forEach((item) => {
         item.select = false
       })
+    },
+    goUserHome(item) {
+      const uid = item.user_id
+      if (uid) {
+        this.$router.push('/people/user-home/' + uid)
+      }
     },
     async handShowChildren(item) {
       if (item.showChildren) {
@@ -759,6 +765,7 @@ export default {
           width: 37rem;
           height: 37rem;
           border-radius: 50%;
+          cursor: pointer;
         }
       }
 
@@ -819,6 +826,7 @@ export default {
             margin-bottom: 5rem;
             display: flex;
             align-items: center;
+            cursor: pointer;
 
             .reply-user {
               margin-left: 5rem;

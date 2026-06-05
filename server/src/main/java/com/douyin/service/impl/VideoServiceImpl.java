@@ -17,6 +17,8 @@ import com.douyin.mapper.UserMapper;
 import com.douyin.mapper.VideoCollectMapper;
 import com.douyin.mapper.VideoMapper;
 import com.douyin.mapper.WatchHistoryMapper;
+import com.douyin.service.ContentFeatureService;
+import com.douyin.service.RecommendationEngine;
 import com.douyin.service.VideoService;
 import com.douyin.vo.UserVO;
 import com.douyin.vo.VideoVO;
@@ -36,25 +38,47 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     private final FollowMapper followMapper;
     private final VideoCollectMapper collectMapper;
     private final WatchHistoryMapper watchHistoryMapper;
+    private final RecommendationEngine recommendationEngine;
+    private final ContentFeatureService contentFeatureService;
 
     public VideoServiceImpl(UserMapper userMapper, LikeMapper likeMapper, FollowMapper followMapper,
-                            VideoCollectMapper collectMapper, WatchHistoryMapper watchHistoryMapper) {
+                            VideoCollectMapper collectMapper, WatchHistoryMapper watchHistoryMapper,
+                            RecommendationEngine recommendationEngine,
+                            ContentFeatureService contentFeatureService) {
         this.userMapper = userMapper;
         this.likeMapper = likeMapper;
         this.followMapper = followMapper;
         this.collectMapper = collectMapper;
         this.watchHistoryMapper = watchHistoryMapper;
+        this.recommendationEngine = recommendationEngine;
+        this.contentFeatureService = contentFeatureService;
     }
 
     @Override
     public PageDTO<VideoVO> getRecommended(Long viewerUserId, int start, int pageSize, String type) {
-        LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
-                .eq(Video::getType, "recommend-video")
-                .orderByDesc(Video::getCreateTime);
-        // 长视频：只过滤时长 >= 60 秒
-        if ("long-video".equals(type)) {
-            wrapper.ge(Video::getDuration, 60.0);
+        Double minDuration = "long-video".equals(type) ? 60.0 : null;
+
+        if (viewerUserId != null && start == 0) {
+            // 首页个性化推荐
+            List<Long> rankedIds = recommendationEngine.recommend(viewerUserId,
+                    pageSize * 2, minDuration);
+            if (!rankedIds.isEmpty()) {
+                List<Video> videos = listByIds(rankedIds.subList(0, Math.min(pageSize, rankedIds.size())));
+                // 恢复排序
+                Map<Long, Video> videoMap = videos.stream()
+                        .collect(Collectors.toMap(Video::getId, v -> v));
+                List<Video> ordered = rankedIds.stream()
+                        .map(videoMap::get).filter(Objects::nonNull).limit(pageSize).toList();
+                List<VideoVO> voList = toVideoVOList(ordered, viewerUserId);
+                return new PageDTO<>((long) rankedIds.size(), 1, pageSize, voList);
+            }
         }
+
+        // 非首页 / 未登录 / 引擎无结果 → 简单时间排序兜底
+        LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
+                .in(Video::getType, List.of("recommend-video", "image", "text"))
+                .orderByDesc(Video::getCreateTime);
+        if (minDuration != null) wrapper.ge(Video::getDuration, minDuration);
         int pageNo = start / pageSize + 1;
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
         List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
@@ -72,7 +96,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
 
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .in(Video::getAuthorUserId, followedIds)
-                .eq(Video::getType, "recommend-video")
+                .in(Video::getType, List.of("recommend-video", "image", "text"))
                 .orderByDesc(Video::getCreateTime);
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
         List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
@@ -82,7 +106,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     @Override
     public PageDTO<VideoVO> getTrendingVideos(Long viewerUserId, int pageNo, int pageSize) {
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
-                .eq(Video::getType, "recommend-video")
+                .in(Video::getType, List.of("recommend-video", "image", "text"))
                 .orderByDesc(Video::getLikeCount)
                 .orderByDesc(Video::getCreateTime);
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
@@ -161,12 +185,33 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     }
 
     @Override
-    public PageDTO<VideoVO> getRecommendedPosts(int pageNo, int pageSize) {
+    public PageDTO<VideoVO> getRecommendedPosts(Long viewerUserId, int pageNo, int pageSize) {
+        if (viewerUserId != null && pageNo == 1) {
+            // 首页：走推荐引擎，然后仅保留 image/text 类型
+            List<Long> rankedIds = recommendationEngine.recommend(viewerUserId,
+                    pageSize * 4, null);
+            if (!rankedIds.isEmpty()) {
+                List<Video> videos = listByIds(rankedIds);
+                Map<Long, Video> videoMap = videos.stream()
+                        .collect(Collectors.toMap(Video::getId, v -> v));
+                List<Video> ordered = rankedIds.stream()
+                        .map(videoMap::get)
+                        .filter(Objects::nonNull)
+                        .filter(v -> "image".equals(v.getType()) || "text".equals(v.getType()))
+                        .limit(pageSize).toList();
+                if (!ordered.isEmpty()) {
+                    List<VideoVO> voList = toVideoVOList(ordered, viewerUserId);
+                    return new PageDTO<>((long) rankedIds.size(), 1, pageSize, voList);
+                }
+            }
+        }
+
+        // 兜底：简单时间排序
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
-                .eq(Video::getType, "recommend-video")
+                .in(Video::getType, List.of("image", "text"))
                 .orderByDesc(Video::getCreateTime);
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
-        List<VideoVO> voList = toVideoVOList(page.getRecords(), null);
+        List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
         return new PageDTO<>(page.getTotal(), pageNo, pageSize, voList);
     }
 
@@ -346,18 +391,22 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     @Override
     @Transactional
     public void recordWatch(Long userId, Long videoId, Long authorUserId,
-                            double watchDuration, double videoDuration, boolean finished) {
+                            double watchDuration, double videoDuration, boolean finished,
+                            String trafficSource, String sessionId, double swipeSeconds) {
         if (userId == null || videoId == null) return;
         WatchHistory exist = watchHistoryMapper.selectOne(new LambdaQueryWrapper<WatchHistory>()
                 .eq(WatchHistory::getUserId, userId)
                 .eq(WatchHistory::getVideoId, videoId));
         if (exist != null) {
-            // 更新：取最大观看时长
             if (watchDuration > (exist.getWatchDuration() != null ? exist.getWatchDuration() : 0)) {
                 exist.setWatchDuration(watchDuration);
             }
             exist.setVideoDuration(videoDuration);
             if (finished) exist.setFinished(1);
+            exist.setRepeatCount((exist.getRepeatCount() != null ? exist.getRepeatCount() : 0) + 1);
+            if (trafficSource != null) exist.setTrafficSource(trafficSource);
+            if (sessionId != null) exist.setSessionId(sessionId);
+            if (swipeSeconds > 0) exist.setSwipeSeconds(swipeSeconds);
             watchHistoryMapper.updateById(exist);
         } else {
             WatchHistory wh = new WatchHistory();
@@ -367,6 +416,10 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
             wh.setWatchDuration(watchDuration);
             wh.setVideoDuration(videoDuration);
             wh.setFinished(finished ? 1 : 0);
+            wh.setRepeatCount(1);
+            wh.setTrafficSource(trafficSource);
+            wh.setSessionId(sessionId);
+            wh.setSwipeSeconds(swipeSeconds);
             watchHistoryMapper.insert(wh);
         }
     }

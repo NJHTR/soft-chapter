@@ -1,0 +1,22 @@
+# 视频特征提取流水线依赖
+# RTX 4060 8GB + i9-14900 可运行
+
+# 核心
+torch>=2.4.0  # CUDA 12.x
+transformers>=4.46.0
+sentence-transformers>=3.0.0
+
+# 视频/音频处理
+librosa>=0.10.0
+soundfile>=0.12.0
+opencv-python>=4.10.0
+ffmpeg-python>=0.2.0
+
+# 中文文本
+jieba>=0.42.0
+
+# 视觉 Transformers (Chinese-CLIP)
+Pillow>=10.0.0
+
+# HTTP 请求 (写回 Java 后端)
+httpx>=0.27.0

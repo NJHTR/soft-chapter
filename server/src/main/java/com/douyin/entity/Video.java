@@ -40,8 +40,17 @@ public class Video {
     /** 音乐标题 */
     private String musicTitle;
 
-    /** 视频类型: recommend-video, long-video 等 */
+    /** BGM起始偏移(秒) */
+    private Double bgmStartOffset;
+
+    /** BGM音量 0-1, 默认0.7 */
+    private Double bgmVolume;
+
+    /** 视频类型: recommend-video, long-video, image, text 等 */
     private String type;
+
+    /** 多图URL列表 (JSON数组字符串), 用于图文轮播 */
+    private String imageUrls;
 
     /** 点赞数 */
     private Long likeCount;

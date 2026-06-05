@@ -62,12 +62,12 @@ const data = reactive({
   pageSize: 15,
   historyVideo: {
     total: 0,
-    pageNo: 0,
+    pageNo: 1,
     list: []
   },
   historyOther: {
     total: 0,
-    pageNo: 0,
+    pageNo: 1,
     list: []
   }
 })

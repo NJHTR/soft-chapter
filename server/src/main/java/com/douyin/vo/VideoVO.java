@@ -17,6 +17,9 @@ public class VideoVO {
 
     private String desc;
 
+    /** 内容类型: recommend-video, long-video, image, text */
+    private String type;
+
     /** 时长(毫秒), 前端用 duration 字段 */
     private Long duration;
 
@@ -31,6 +34,10 @@ public class VideoVO {
 
     private String city;
     private String address;
+
+    /** 多图URL列表 (用于图文轮播帖子) */
+    @JsonProperty("image_urls")
+    private List<String> imageUrls;
 
     @JsonProperty("is_loved")
     private Boolean isLoved;
@@ -94,6 +101,7 @@ public class VideoVO {
         VideoVO vo = new VideoVO();
         vo.awemeId = v.getId();
         vo.desc = v.getDesc();
+        vo.type = v.getType();
         vo.duration = (long) (v.getDuration() * 1000); // 秒 → 毫秒
 
         VideoInfo info = new VideoInfo();
@@ -118,6 +126,18 @@ public class VideoVO {
         Music music = new Music();
         music.title = v.getMusicTitle() != null ? v.getMusicTitle() : "原创";
         vo.music = music;
+
+        // 多图URL列表
+        if (v.getImageUrls() != null && !v.getImageUrls().isEmpty()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                vo.imageUrls = mapper.readValue(v.getImageUrls(), new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+            } catch (Exception ignored) {
+                vo.imageUrls = List.of();
+            }
+        } else {
+            vo.imageUrls = List.of();
+        }
 
         vo.city = "";
         vo.address = "";

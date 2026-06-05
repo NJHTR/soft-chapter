@@ -37,6 +37,9 @@ public class User {
     private Long totalFavorited;
     private Integer videoCount;
 
+    /** 主页访客展示开关: 0关闭 1开启 */
+    private Integer visitorDisplay;
+
     private String phone;
 
     /** 邮箱 */

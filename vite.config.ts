@@ -119,6 +119,7 @@ export default defineConfig((): Promise<UserConfig> => {
                 if (id.includes('node_modules')) return 'vendor'
 
                 if (id.includes('/src/pages/home/Publish.vue')) return 'other'
+                if (id.includes('/src/pages/home/VideoEditor.vue')) return 'other'
 
                 if (id.includes('/src/pages/home/Music.vue')) return 'other'
                 if (id.includes('/src/pages/home/MusicRankList.vue')) return 'other'
@@ -171,6 +172,10 @@ export default defineConfig((): Promise<UserConfig> => {
           host: '0.0.0.0',
           proxy: {
             '/api': {
+              target: 'http://localhost:9191',
+              changeOrigin: true
+            },
+            '/music': {
               target: 'http://localhost:9191',
               changeOrigin: true
             },

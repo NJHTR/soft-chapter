@@ -15,17 +15,19 @@
         </div>
 
         <div class="douyin_video" v-if="message.type === MESSAGE_TYPE.DOUYIN_VIDEO">
-          <img class="poster" :src="message.data.poster" alt="" />
+          <img v-if="message.data.poster" class="poster" :src="_checkImgUrl(message.data.poster)" alt="" @error="e => e.target.style.display = 'none'" />
+          <div class="poster-placeholder" v-else></div>
+          <div class="mask"></div>
           <div class="title">{{ message.data.title }}</div>
           <img src="../../../assets/img/icon/play-white.png" class="pause" />
           <div class="author">
-            <img class="video-avatar" :src="message.data.author.avatar" alt="" />
-            <span class="name">{{ message.data.author.name }}</span>
+            <img class="video-avatar" :src="_checkImgUrl(message.data.author?.avatar)" alt="" />
+            <span class="name">{{ message.data.author?.name }}</span>
           </div>
         </div>
 
         <div class="douyin_video" v-if="message.type === MESSAGE_TYPE.VIDEO">
-          <img class="poster" :src="message.data.poster" alt="" />
+          <img class="poster" :src="_checkImgUrl(message.data.poster)" alt="" />
           <img src="../../../assets/img/icon/play-white.png" class="pause" />
         </div>
 
@@ -107,6 +109,11 @@
             alt=""
             class="love-avatar"
           />
+        </div>
+        <!-- 已读回执 -->
+        <div class="read-receipt" v-if="message.readByAvatar">
+          <img :src="_checkImgUrl(message.readByAvatar)" alt="" class="read-avatar" />
+          <span>已读</span>
         </div>
       </div>
       <img v-if="isMe" :src="_checkImgUrl(message.user.avatar)" alt="" class="avatar" @click.stop="goUserHome" />
@@ -458,53 +465,91 @@ export default {
 
   .douyin_video {
     position: relative;
+    width: 45vw;
+    border-radius: @border-radius;
+    overflow: hidden;
+
+    .poster {
+      width: 100%;
+      height: 60vw;
+      object-fit: cover;
+      display: block;
+      border-radius: @border-radius;
+    }
+
+    .poster-placeholder {
+      width: 100%;
+      height: 60vw;
+      background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+      border-radius: @border-radius;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mask {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 60rem;
+      background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+      border-radius: 0 0 @border-radius @border-radius;
+      pointer-events: none;
+    }
 
     .pause {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translateY(-50%) translateX(-50%);
-      width: 24rem;
+      width: 28rem;
+      pointer-events: none;
     }
 
     .title {
       position: absolute;
-      font-size: 16rem;
-      bottom: 35rem;
-      width: calc(100% - 20rem);
+      font-size: 12rem;
+      bottom: 28rem;
+      width: calc(100% - 16rem);
+      left: 8rem;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.5);
       word-break: break-word;
       display: -webkit-box;
-      -webkit-line-clamp: 3;
+      -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
       text-overflow: ellipsis;
-      left: 10rem;
-    }
-
-    .poster {
-      border-radius: @border-radius;
-      //height: 30vh;
-      width: 40vw;
+      line-height: 1.3;
     }
 
     .author {
-      width: calc(100% - 20rem);
-      left: 10rem;
       position: absolute;
-      bottom: 10rem;
+      bottom: 8rem;
+      left: 8rem;
+      right: 8rem;
       display: flex;
       align-items: center;
+      z-index: 1;
 
       .video-avatar {
-        margin-right: 5rem;
-        height: 16rem;
+        margin-right: 6rem;
+        width: 18rem;
+        height: 18rem;
         border-radius: 50%;
+        object-fit: cover;
+        border: 1px solid rgba(255,255,255,0.3);
+        flex-shrink: 0;
       }
 
       .name {
-        width: 80%;
+        color: #fff;
+        font-size: 11rem;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.5);
         text-overflow: ellipsis;
         overflow: hidden;
+        white-space: nowrap;
       }
     }
   }
@@ -527,6 +572,30 @@ export default {
       border-radius: 50%;
       margin-right: 5rem;
     }
+  }
+
+  .read-receipt {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-top: 4rem;
+    gap: 4rem;
+
+    .read-avatar {
+      width: 14rem;
+      height: 14rem;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    span {
+      font-size: 11rem;
+      color: var(--second-text-color);
+    }
+  }
+
+  &.left .read-receipt {
+    justify-content: flex-start;
   }
 }
 </style>

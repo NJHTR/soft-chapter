@@ -22,4 +22,10 @@ public class ConversationVO {
 
     @JsonProperty("unread_count")
     private Long unreadCount;
+
+    @JsonProperty("last_msg_from_user_id")
+    private Long lastMsgFromUserId;
+
+    @JsonProperty("last_msg_is_read")
+    private Integer lastMsgIsRead;
 }

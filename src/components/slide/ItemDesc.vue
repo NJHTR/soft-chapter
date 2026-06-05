@@ -16,7 +16,7 @@ const props = defineProps({
   }
 })
 
-const item = inject<any>('item')
+const item = inject<any>('item', {})
 
 const state = reactive({
   isAttention: false,

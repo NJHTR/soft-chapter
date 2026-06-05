@@ -16,6 +16,13 @@
           <input v-model="email" type="text" placeholder="请输入邮箱地址" />
         </div>
       </div>
+      <div class="input-number mt1r" v-if="codeSent">
+        <div class="right flex1">
+          <input v-model="code" type="text" placeholder="请输入6位验证码" maxlength="6" />
+        </div>
+        <div class="send-code" v-if="!countdown" @click="sendCode">发送</div>
+        <div class="send-code disabled" v-else>{{ countdown }}s</div>
+      </div>
       <div class="input-number mt1r">
         <div class="right flex1">
           <input v-model="nickname" type="text" placeholder="请输入昵称（选填）" />
@@ -23,7 +30,7 @@
       </div>
       <div class="input-number mt1r">
         <div class="right flex1">
-          <input v-model="password" type="password" autocomplete="new-password" placeholder="请设置密码" />
+          <input v-model="password" type="password" autocomplete="new-password" placeholder="请设置密码（选填，后续可在设置中补充）" />
         </div>
       </div>
 
@@ -41,8 +48,8 @@
 
       <div class="notice" v-if="notice">{{ notice }}</div>
 
-      <dy-button type="primary" :loading="loading" :active="false" :disabled="disabled" @click="doRegister">
-        {{ loading ? '注册中' : '注册' }}
+      <dy-button type="primary" :loading="loading" :active="false" :disabled="!canRegister" @click="doRegister">
+        {{ loading ? '注册中...' : '注册' }}
       </dy-button>
 
       <div class="options">
@@ -51,39 +58,72 @@
     </div>
   </div>
 </template>
-<script>
-import Check from '../../components/Check'
-import Tooltip from './components/Tooltip'
-import Base from './Base.js'
+<script setup lang="ts">
+import Check from '../../components/Check.vue'
+import Tooltip from './components/Tooltip.vue'
+import { computed, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { register, sendEmailCode } from '@/api/auth'
 import { useBaseStore } from '@/store/pinia'
 
-export default {
-  name: 'Register',
-  extends: Base,
-  components: { Check, Tooltip },
-  data() {
-    return { email: '', password: '', nickname: '', notice: '' }
-  },
-  computed: {
-    disabled() {
-      return !(this.email.includes('@') && this.password)
+defineOptions({ name: 'Register' })
+
+const router = useRouter()
+const store = useBaseStore()
+
+const email = ref('')
+const code = ref('')
+const password = ref('')
+const nickname = ref('')
+const notice = ref('')
+const loading = ref(false)
+const isAgree = ref(false)
+const showAnim = ref(false)
+const showTooltip = ref(false)
+const codeSent = ref(false)
+const countdown = ref(0)
+
+const canRegister = computed(() => {
+  return isAgree.value && email.value.includes('@') && code.value.length >= 4
+})
+
+async function startCountdown() {
+  countdown.value = 60
+  const timer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) clearInterval(timer)
+  }, 1000)
+}
+
+async function sendCode() {
+  if (!email.value.includes('@')) return
+  loading.value = true
+  try {
+    const res = await sendEmailCode(email.value)
+    if (res.success) {
+      codeSent.value = true
+      startCountdown()
+    } else {
+      notice.value = '发送验证码失败，请稍后重试'
     }
-  },
-  methods: {
-    async doRegister() {
-      const ok = await this.check()
-      if (!ok) return
-      this.loading = true
-      this.notice = ''
-      const store = useBaseStore()
-      const result = await store.register(this.email, this.password, this.nickname || undefined)
-      this.loading = false
-      if (result.success) {
-        this.$router.replace('/login/password')
-      } else {
-        this.notice = result.msg || '注册失败，请检查邮箱是否已被注册'
-      }
+  } finally {
+    loading.value = false
+  }
+}
+
+async function doRegister() {
+  if (!canRegister.value) return
+  loading.value = true
+  notice.value = ''
+  try {
+    const res = await register(email.value, code.value, password.value || undefined, nickname.value || undefined)
+    if (res.success) {
+      router.replace('/login/password')
+    } else {
+      notice.value = res.msg || '注册失败，请检查验证码是否正确'
     }
+  } finally {
+    loading.value = false
   }
 }
 </script>
@@ -102,9 +142,14 @@ export default {
       .title { margin-bottom: 20rem; font-size: 20rem; }
       .sub-title { font-size: 12rem; color: var(--second-text-color); }
     }
-    .input-number { display: flex; background: whitesmoke; padding: 15rem 10rem; font-size: 14rem;
+    .input-number {
+      display: flex; background: whitesmoke; padding: 15rem 10rem; font-size: 14rem; align-items: center;
       .right.flex1 { flex: 1;
         input { width: 100%; outline: none; border: none; background: whitesmoke; caret-color: red; }
+      }
+      .send-code {
+        flex-shrink: 0; padding: 5rem 12rem; font-size: 13rem; color: var(--primary-btn-color);
+        &.disabled { color: var(--second-text-color); }
       }
     }
     .mt1r { margin-top: 1rem; }

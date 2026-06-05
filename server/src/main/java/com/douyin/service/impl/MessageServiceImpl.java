@@ -122,6 +122,8 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
             vo.setLastMsgType(last != null ? last.getMsgType() : 1);
             vo.setLastTime(last != null ? last.getCreateTime() : null);
             vo.setUnreadCount(unread);
+            vo.setLastMsgFromUserId(last != null ? last.getFromUserId() : null);
+            vo.setLastMsgIsRead(last != null ? last.getIsRead() : null);
             result.add(vo);
         }
 

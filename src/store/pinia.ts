@@ -66,7 +66,8 @@ export const useBaseStore = defineStore('base', {
           {
             url_list: []
           }
-        ]
+        ],
+        has_password: false
       },
       friends: resource.users,
       message: ''
@@ -119,8 +120,8 @@ export const useBaseStore = defineStore('base', {
       }
       return { success: false, msg: (r.data as any)?.msg || '登录失败' }
     },
-    async register(email: string, password: string, nickname?: string): Promise<{ success: boolean; msg?: string }> {
-      const r = await registerApi(email, password, nickname)
+    async register(email: string, code: string, password?: string, nickname?: string): Promise<{ success: boolean; msg?: string }> {
+      const r = await registerApi(email, code, password, nickname)
       if (r.success) {
         _notice('注册成功，请登录')
         return { success: true }
@@ -145,7 +146,8 @@ export const useBaseStore = defineStore('base', {
         avatar_168x168: { url_list: [] },
         avatar_300x300: { url_list: [] },
         cover_url: [{ url_list: [] }],
-        white_cover_url: [{ url_list: [] }]
+        white_cover_url: [{ url_list: [] }],
+        has_password: false
       }
       _notice('已退出登录')
     },

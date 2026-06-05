@@ -1,11 +1,20 @@
 import { request } from '@/utils/request'
+import { deviceInfoToHeader } from '@/utils/device'
 
 export function login(email: string, password: string) {
-  return request({ url: '/login', method: 'post', data: { email, password } })
+  return request({ url: '/login', method: 'post', data: { email, password }, headers: { 'X-Device-Info': deviceInfoToHeader() } })
 }
 
-export function register(email: string, password: string, nickname?: string) {
-  return request({ url: '/register', method: 'post', data: { email, password, nickname } })
+export function register(email: string, code: string, password?: string, nickname?: string) {
+  return request({ url: '/register', method: 'post', data: { email, code, password, nickname } })
+}
+
+export function setUserPassword(password: string) {
+  return request({ url: '/user/password', method: 'put', data: { password } })
+}
+
+export function hasPassword() {
+  return request({ url: '/user/has-password', method: 'get' })
 }
 
 export function sendEmailCode(email: string) {
@@ -13,5 +22,5 @@ export function sendEmailCode(email: string) {
 }
 
 export function loginByEmail(email: string, code: string) {
-  return request({ url: '/email/login', method: 'post', data: { email, code } })
+  return request({ url: '/email/login', method: 'post', data: { email, code }, headers: { 'X-Device-Info': deviceInfoToHeader() } })
 }

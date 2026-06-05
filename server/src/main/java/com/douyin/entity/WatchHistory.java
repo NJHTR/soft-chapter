@@ -19,6 +19,18 @@ public class WatchHistory {
     private Double videoDuration;
     private Integer finished;
 
+    /** 重复观看次数 */
+    private Integer repeatCount;
+
+    /** 流量来源 */
+    private String trafficSource;
+
+    /** 会话ID */
+    private String sessionId;
+
+    /** 划走耗时(秒) */
+    private Double swipeSeconds;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

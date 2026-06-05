@@ -17,8 +17,8 @@
     <div class="content">
       <div class="indicator-wrapper">
         <Indicator
-          tabStyleWidth="50%"
-          :tabTexts="['关注', '粉丝']"
+          tabStyleWidth="25%"
+          :tabTexts="['关注', '粉丝', '朋友', '互关']"
           v-model:active-index="data.slideIndex"
         >
         </Indicator>
@@ -45,11 +45,19 @@
           </div>
           <div class="no-search" v-else>
             <div class="title">我的关注</div>
-            <People :key="i" v-for="(item, i) in data.followings" :people="item" @click="nav('/people/user-home/' + item.uid)"></People>
+            <People mode="normal-add-button" :key="i" v-for="(item, i) in data.followings" :people="item" @click="nav('/people/user-home/' + item.uid)"></People>
           </div>
         </SlideItem>
         <SlideItem class="tab2">
-          <People :key="i" v-for="(item, i) in data.followers" :people="item" @click="nav('/people/user-home/' + item.uid)"></People>
+          <People mode="fans" :key="i" v-for="(item, i) in data.followers" :people="item" @click="nav('/people/user-home/' + item.uid)"></People>
+          <NoMore />
+        </SlideItem>
+        <SlideItem class="tab3">
+          <People mode="friend" :key="i" v-for="(item, i) in data.friends" :people="item" @click="nav('/people/user-home/' + item.uid)"></People>
+          <NoMore />
+        </SlideItem>
+        <SlideItem class="tab4">
+          <People mode="mutual" :key="i" v-for="(item, i) in data.mutualFollows" :people="item" @click="nav('/people/user-home/' + item.uid)"></People>
           <NoMore />
         </SlideItem>
       </SlideHorizontal>
@@ -64,7 +72,9 @@ import { useBaseStore } from '@/store/pinia'
 import { onMounted, reactive, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useNav } from '@/utils/hooks/useNav'
-import { getFollowings, getFollowers } from '@/api/user'
+import { getFollowings, getFollowers, getMutualFriends, getFriendList } from '@/api/user'
+import CONST_VAR from '@/utils/const_var'
+const { RELATE_ENUM } = CONST_VAR
 
 defineOptions({
   name: 'FindAcquaintance'
@@ -80,15 +90,22 @@ const data = reactive({
   slideIndex: 0,
   searchFriends: [],
   followings: [],
-  followers: []
+  followers: [],
+  friends: [],
+  mutualFollows: []
 })
 
 function mapUser(u: any) {
+  let type = 0
+  if (u.is_followed && u.is_following_me) type = RELATE_ENUM.FOLLOW_EACH_OTHER
+  else if (u.is_followed) type = RELATE_ENUM.FOLLOW_HE
+  else if (u.is_following_me) type = RELATE_ENUM.FOLLOW_ME
   return {
     name: u.nickname || '',
     account: u.unique_id || '',
     avatar: u.avatar_168x168?.url_list?.[0] || '',
-    uid: u.uid
+    uid: u.uid,
+    type
   }
 }
 
@@ -102,10 +119,22 @@ async function loadFollowers() {
   if (res.success) data.followers = (res.data || []).map(mapUser)
 }
 
+async function loadFriends() {
+  const res = await getFriendList()
+  if (res.success) data.friends = (res.data || []).map(mapUser)
+}
+
+async function loadMutualFollows() {
+  const res = await getMutualFriends()
+  if (res.success) data.mutualFollows = (res.data || []).map(mapUser)
+}
+
 onMounted(() => {
   data.slideIndex = ~~route.query.type
   loadFollowings()
   loadFollowers()
+  loadFriends()
+  loadMutualFollows()
 })
 
 watch(
@@ -113,6 +142,8 @@ watch(
   (newVal) => {
     if (newVal === 0 && !data.followings.length) loadFollowings()
     if (newVal === 1 && !data.followers.length) loadFollowers()
+    if (newVal === 2 && !data.friends.length) loadFriends()
+    if (newVal === 3 && !data.mutualFollows.length) loadMutualFollows()
   }
 )
 
@@ -163,7 +194,9 @@ watch(
   }
 
   .tab1,
-  .tab2 {
+  .tab2,
+  .tab3,
+  .tab4 {
     overflow: auto;
     padding: 0 var(--page-padding);
     box-sizing: border-box;

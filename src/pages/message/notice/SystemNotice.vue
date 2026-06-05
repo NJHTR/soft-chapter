@@ -16,17 +16,14 @@
         <div class="list">
           <NoMore />
           <!--TODO 超过3行显示全文-->
-          <div class="item" :key="i" v-for="(item, i) in data.list" @click="goDetail(item)">
+          <div class="item" :key="i" v-for="(item, i) in data.list" @click="goDetail(item)" :class="{ 'is-read': item.read }">
             <div class="title">
+              <span class="type-badge">{{ typeLabel(item.type) }}</span>
               {{ item.title }}
               <div class="ml1r not-read" v-if="!item.read"></div>
             </div>
             <div class="time">{{ item.time }}</div>
-            <div class="content-text">{{ item.content }}</div>
-            <div class="look-detail" v-if="item.detail">
-              <span>查看详情</span>
-              <dy-back direction="right" scale=".6" />
-            </div>
+            <div class="content-text" v-html="formatContent(item.content)"></div>
           </div>
         </div>
       </Scroll>
@@ -64,11 +61,12 @@
   </div>
 </template>
 <script setup lang="ts">
-import { nextTick, onMounted, reactive, watch } from 'vue'
+import { onMounted, reactive, watch } from 'vue'
 import Scroll from '@/components/Scroll.vue'
 import { useNav } from '@/utils/hooks/useNav.js'
-import { _no, _sleep } from '@/utils'
+import { _no } from '@/utils'
 import { useScroll } from '@/utils/hooks/useScroll'
+import { getSystemNotices, markNoticeRead, markAllNoticesRead } from '@/api/user'
 
 defineOptions({
   name: 'SystemNotice'
@@ -81,61 +79,26 @@ const data = reactive({
   isShowMask: false,
   isShowLeftHover: false,
   isShowRightHover: false,
-  list: [
-    {
-      read: false,
-      title: '账号登录提醒',
-      detail: 'xxx',
-      time: '2021-10-12 12:12',
-      content:
-        '您的SeekFlow号4533452342于2021-02-09 07:45:23进行了登录操作。如非本人操作，账号可能被盗。建议立即修改密码，或在[设置-账号与安全-登录设备管理]中删除异常设备。参考设备：iPhone X参考地点：上海市'
-    },
-    {
-      read: false,
-      title: '账号登录提醒',
-      detail: 'xxx',
-      time: '2021-10-12 12:12',
-      content:
-        '您的SeekFlow号4533452342于2021-02-09 07:45:23进行了登录操作。如非本人操作，账号可能被盗。建议立即修改密码，或在[设置-账号与安全-登录设备管理]中删除异常设备。参考设备：iPhone X参考地点：上海市'
-    },
-    {
-      read: false,
-      title: '协议修订通知',
-      detail: '',
-      time: '2021-10-12 12:12',
-      content:
-        '你好，根据业务开展的实际情况，SeekFlow近期更新了《SeekFlow用户服务协议》《SeekFlow隐私政策》及《儿童/青少年使用须知》中的相关内容。你可以在“我”-“设置”页面中，查看更新后的协议全文。'
-    },
-    {
-      read: false,
-      title: '协议修订通知',
-      detail: '',
-      time: '2021-10-12 12:12',
-      content:
-        '你好，根据业务开展的实际情况，SeekFlow近期更新了《SeekFlow用户服务协议》部分条款的表述。你可以在“我”-“设置”页面中，查看更新后的协议全文。'
-    }
-  ]
+  list: [] as any[],
+  pageNo: 1,
+  pageSize: 20
 })
 
 onMounted(() => {
-  getData()
+  loadNotices()
 })
 
 watch(
   () => data.isShowLeftHover,
   (newVal) => {
-    if (newVal) {
-      data.isShowMask = true
-    }
+    if (newVal) data.isShowMask = true
   }
 )
 
 watch(
   () => data.isShowRightHover,
   (newVal) => {
-    if (newVal) {
-      data.isShowMask = true
-    }
+    if (newVal) data.isShowMask = true
   }
 )
 
@@ -149,19 +112,44 @@ watch(
   }
 )
 
-async function getData() {
+async function loadNotices() {
   data.loading = true
-  await _sleep(700)
-  data.loading = false
-  await nextTick()
-  // data.$refs.mainScroll.scrollBottom()
+  try {
+    const res = await getSystemNotices({ pageNo: data.pageNo, pageSize: data.pageSize })
+    if (res.success) {
+      data.list = (res.data.list || []).map((n: any) => ({
+        ...n,
+        read: n.is_read === 1,
+        time: n.create_time?.replace('T', ' ').substring(0, 19) || ''
+      }))
+    }
+  } finally {
+    data.loading = false
+  }
 }
 
-function goDetail(item) {
-  item.read = true
-  if (item.detail) {
-    _no()
+function goDetail(item: any) {
+  if (!item.read) {
+    markNoticeRead(item.id).catch(() => {})
+    item.read = true
   }
+}
+
+function typeLabel(type: string) {
+  const map: Record<string, string> = {
+    'login': '登录',
+    'friend_accepted': '好友',
+    'publish_recommend-video': '作品',
+    'publish_image': '作品',
+    'publish_text': '作品',
+    'system': '系统'
+  }
+  return map[type] || '系统'
+}
+
+function formatContent(content: string) {
+  if (!content) return ''
+  return content.replace(/\n/g, '<br/>')
 }
 </script>
 
@@ -197,6 +185,21 @@ function goDetail(item) {
           align-items: center;
           font-size: 16rem;
           margin-bottom: 10rem;
+
+          .type-badge {
+            display: inline-block;
+            padding: 1rem 8rem;
+            border-radius: 4rem;
+            font-size: 11rem;
+            margin-right: 8rem;
+            background: var(--primary-btn-color);
+            color: #fff;
+            flex-shrink: 0;
+          }
+        }
+
+        .item.is-read {
+          opacity: 0.55;
         }
 
         .time {

@@ -40,7 +40,21 @@ export function videoComments(params?: any, data?: any) {
   return request({ url: '/video/comments', method: 'get', params, data })
 }
 
-export function publishVideo(data: { video_url: string; cover_url?: string; desc?: string; duration?: number; music_title?: string }) {
+export function publishVideo(data: {
+  video_url: string
+  cover_url?: string
+  desc?: string
+  duration?: number
+  music_title?: string
+  music_id?: number
+  bgm_volume?: number
+  bgm_start_offset?: number
+  trim_start?: number
+  trim_end?: number
+  segments?: string
+  type?: string
+  image_urls?: string
+}) {
   return request({ url: '/video', method: 'post', data })
 }
 

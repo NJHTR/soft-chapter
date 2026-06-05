@@ -6,10 +6,10 @@
           <div
             :style="floatFixed ? 'opacity: 0;' : ''"
             class="left"
-            @click="$nav('/me/edit-userinfo')"
+            @click="$nav('/people/find-acquaintance')"
           >
-            <Icon icon="ri:edit-fill" />
-            <span>编辑资料</span>
+            <Icon icon="ri:user-add-line" />
+            <span>添加朋友</span>
           </div>
           <transition name="fade">
             <div class="center" v-if="floatShowName">
@@ -97,9 +97,9 @@
                     <span class="num">{{ _formatNumber(userinfo.total_favorited) }}</span>
                     <span>获赞</span>
                   </div>
-                  <div class="text" @click="$nav('/people/follow-and-fans', { type: 0 })">
-                    <span class="num">{{ _formatNumber(userinfo.following_count) }}</span>
-                    <span>朋友</span>
+                  <div class="text" @click="$nav('/people/follow-and-fans', { type: 3 })">
+                    <span class="num">{{ _formatNumber(userinfo.mutual_count ?? 0) }}</span>
+                    <span>互关</span>
                   </div>
                   <div class="text" @click="$nav('/people/follow-and-fans', { type: 0 })">
                     <span class="num">{{ _formatNumber(userinfo.following_count) }}</span>
@@ -109,8 +109,12 @@
                     <span class="num">{{ _formatNumber(userinfo.follower_count) }}</span>
                     <span>粉丝</span>
                   </div>
+                  <div class="text" @click="$nav('/people/follow-and-fans', { type: 2 })">
+                    <span class="num">{{ _formatNumber(userinfo.friend_count ?? 0) }}</span>
+                    <span>朋友</span>
+                  </div>
                 </div>
-                <div class="button" @click="$nav('/people/find-acquaintance')">添加朋友</div>
+                <div class="button" @click="$nav('/me/edit-userinfo')">编辑资料</div>
               </div>
               <div class="signature" @click="$nav('/me/edit-userinfo-item', { type: 3 })">
                 <template v-if="!userinfo.signature">

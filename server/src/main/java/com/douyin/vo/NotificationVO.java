@@ -40,6 +40,8 @@ public class NotificationVO {
     public static final int TYPE_COMMENT = 3;
     public static final int TYPE_COLLECT = 4;
     public static final int TYPE_AT = 5;
+    public static final int TYPE_FRIEND_REQUEST = 6;
+    public static final int TYPE_FRIEND_ACCEPTED = 7;
 
     public static NotificationVO from(Notification n, UserVO fromUser) {
         NotificationVO vo = new NotificationVO();

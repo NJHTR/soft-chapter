@@ -46,6 +46,23 @@
               </div>
             </div>
           </div>
+          <!--      朋友申请-->
+          <div class="message" @click="nav('/message/friend-requests')">
+            <div class="avatar">
+              <img src="../../assets/img/icon/msg-icon1.png" alt="" class="head-image" />
+            </div>
+            <div class="content">
+              <div class="left">
+                <div class="name">
+                  <span>朋友申请</span>
+                </div>
+                <div class="detail">查看好友申请</div>
+              </div>
+              <div class="right">
+                <dy-back class="arrow" mode="gray" img="back" direction="right" />
+              </div>
+            </div>
+          </div>
           <!--      互动消息-->
           <div class="message" @click="nav('/message/all')">
             <div class="avatar">
@@ -122,13 +139,17 @@
                   <span class="tag">官方</span>
                 </div>
                 <div class="detail">
-                  协议修订通知
-                  <div class="point"></div>
-                  08-31
+                  <template v-if="data.latestSystemNotice">
+                    {{ data.latestSystemNotice.title }}
+                    <div class="point"></div>
+                    {{ formatSysTime(data.latestSystemNotice.create_time) }}
+                  </template>
+                  <template v-else>暂无通知</template>
                 </div>
               </div>
               <div class="right">
-                <div class="not-read"></div>
+                <div class="badge" v-if="data.sysNoticeUnread">{{ data.sysNoticeUnread }}</div>
+                <div class="not-read" v-else-if="!data.latestSystemNotice"></div>
               </div>
             </div>
           </div>
@@ -473,12 +494,12 @@ import People from '../people/components/Peoples.vue'
 import Scroll from '../../components/Scroll.vue'
 import { useBaseStore } from '@/store/pinia'
 
-import { computed, onMounted, onUnmounted, reactive, watch } from 'vue'
+import { computed, onActivated, onMounted, onUnmounted, reactive, watch } from 'vue'
 import { useNav } from '@/utils/hooks/useNav.js'
 import { _checkImgUrl, _sleep, cloneDeep } from '@/utils'
 import { useScroll } from '@/utils/hooks/useScroll'
 import { getConversations, getNotificationUnread, searchChats, searchNotifications } from '@/api/message'
-import { searchUsers } from '@/api/user'
+import { searchUsers, getSystemNotices } from '@/api/user'
 import { connectSocket, disconnectSocket, onSocketMsg } from '@/utils/socket'
 import bus from '@/utils/bus'
 
@@ -510,7 +531,9 @@ const data = reactive({
   contactResults: [] as any[],
   groupResults: [] as any[],
   sysMsgResults: [] as any[],
-  suggestions: [] as any[]
+  suggestions: [] as any[],
+  latestSystemNotice: null as any,
+  sysNoticeUnread: 0
 })
 
 let unsubConv: (() => void) | null = null
@@ -531,6 +554,14 @@ onMounted(() => {
   // bus 事件兜底
   bus.on('CHAT_MESSAGE', loadConversations)
   bus.on('NEW_NOTIFICATION', loadUnreadCounts)
+  bus.on('REFRESH_UNREAD', refreshAll)
+  bus.on('READ_RECEIPT', loadConversations)
+  loadSystemNoticePreview()
+})
+
+// keep-alive 激活时刷新
+onActivated(() => {
+  refreshAll()
 })
 
 onUnmounted(() => {
@@ -538,30 +569,61 @@ onUnmounted(() => {
   if (unsubNotify) { unsubNotify(); unsubNotify = null }
   bus.off('CHAT_MESSAGE', loadConversations)
   bus.off('NEW_NOTIFICATION', loadUnreadCounts)
+  bus.off('REFRESH_UNREAD', refreshAll)
+  bus.off('READ_RECEIPT', loadConversations)
 })
+
+function refreshAll() {
+  loadConversations()
+  loadUnreadCounts()
+  loadSystemNoticePreview()
+}
 
 async function loadConversations() {
   try {
     const res = await getConversations()
     if (res.success && res.data) {
+      const myUid = store.userinfo.uid
       data.conversations = (res.data as any[]).map(item => ({
         ...item,
-        last_message: formatLastMsg(item.last_message, item.last_msg_type)
+        last_message: formatLastMsg(item.last_message, item.last_msg_type, item.last_msg_from_user_id === myUid && item.last_msg_is_read === 1)
       }))
     }
   } catch { /* ignore */ }
 }
 
-function formatLastMsg(content: string, msgType: number): string {
-  if (!content) return ''
+function formatSysTime(timeStr: string): string {
+  if (!timeStr) return ''
+  try {
+    const d = new Date(timeStr)
+    return `${d.getMonth() + 1}`.padStart(2, '0') + '-' + `${d.getDate()}`.padStart(2, '0')
+  } catch { return '' }
+}
+
+function formatLastMsg(content: string, msgType: number, readByThem?: boolean): string {
+  const prefix = readByThem ? '已读·' : ''
+  if (!content) return prefix
+  let body: string
   switch (msgType) {
-    case 2: return '[图片]'
-    case 3: return '[语音]'
-    case 4: return '[视频]'
-    case 5: return '[红包]'
+    case 2: body = '[图片]'; break
+    case 3: body = '[语音]'; break
+    case 4: body = '[视频]'; break
+    case 5: body = '[红包]'; break
+    case 9: body = '[分享视频]'; break
     default:
-      return content.length > 20 ? content.slice(0, 20) + '...' : content
+      body = content.length > 20 ? content.slice(0, 20) + '...' : content
   }
+  return prefix + body
+}
+
+async function loadSystemNoticePreview() {
+  try {
+    const res = await getSystemNotices({ pageNo: 1, pageSize: 1 })
+    if (res.success && res.data) {
+      data.latestSystemNotice = res.data.list?.[0] || null
+      data.sysNoticeUnread = res.data.unread || 0
+    }
+  } catch { /* ignore */ }
 }
 
 async function loadUnreadCounts() {

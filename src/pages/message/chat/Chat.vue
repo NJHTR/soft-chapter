@@ -220,7 +220,7 @@ import ChatMessage from '../components/ChatMessage.vue'
 import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import Loading from '@/components/Loading.vue'
 import { useBaseStore } from '@/store/pinia'
-import { _checkImgUrl, _no, _notice, _sleep } from '@/utils'
+import { _checkImgUrl, _no, _notice, _sleep, cloneDeep } from '@/utils'
 import { useRouter, useRoute } from 'vue-router'
 import { useNav } from '@/utils/hooks/useNav'
 import bus, { EVENT_KEY } from '@/utils/bus'
@@ -421,15 +421,18 @@ watch(() => route.query, () => {
 }, { deep: true, immediate: true })
 
 let unsubChat: (() => void) | null = null
+let unsubReadReceipt: (() => void) | null = null
 
 onMounted(async () => {
   await loadHistory()
   connectSocket()
   unsubChat = onSocketMsg('chat', handleWsMessage)
+  unsubReadReceipt = onSocketMsg('read_receipt', handleReadReceipt)
 })
 
 onUnmounted(() => {
   if (unsubChat) { unsubChat(); unsubChat = null }
+  if (unsubReadReceipt) { unsubReadReceipt(); unsubReadReceipt = null }
 })
 
 const isExpand = computed(() => {
@@ -442,7 +445,8 @@ const MSG_TYPE_MAP: Record<number, number> = {
   2: MESSAGE_TYPE.IMAGE,
   3: MESSAGE_TYPE.AUDIO,
   4: MESSAGE_TYPE.VIDEO,
-  5: MESSAGE_TYPE.RED_PACKET
+  5: MESSAGE_TYPE.RED_PACKET,
+  9: MESSAGE_TYPE.DOUYIN_VIDEO
 }
 
 // 映射后端消息到前端组件格式
@@ -456,15 +460,97 @@ function mapMsgToChatItem(msg: any) {
   let data: any = msg.content
   if (frontendType === MESSAGE_TYPE.AUDIO) {
     data = { url: msg.content, duration: Number(msg.extra) || 0 }
+  } else if (frontendType === MESSAGE_TYPE.DOUYIN_VIDEO) {
+    try { data = JSON.parse(msg.content) } catch { data = {} }
   }
   return {
     type: frontendType,
     data,
     time: msg.create_time,
     backendId: msg.id,
+    fromUserId: msg.from_user_id,
+    isRead: msg.is_read === 1,
     user: {
       id: isMyMsg ? myUid : targetUserId.value,
       avatar: isMyMsg ? myAvatar : (fromUserAvatar || targetUserAvatar.value || '')
+    }
+  }
+}
+
+// 时间分隔线
+const CHINESE_WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
+const TIME_GAP_THRESHOLD = 5 * 60 * 1000 // 5分钟
+
+function formatChatTime(timeStr: string): string {
+  if (!timeStr) return ''
+  const d = new Date(timeStr)
+  const now = new Date()
+  const hh = d.getHours().toString().padStart(2, '0')
+  const mm = d.getMinutes().toString().padStart(2, '0')
+  const time = `${hh}:${mm}`
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const msgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const dayDiff = Math.floor((today.getTime() - msgDay.getTime()) / 86400000)
+
+  if (dayDiff === 0) return time
+  if (dayDiff === 1) return `昨天 ${time}`
+  if (dayDiff < 7) return `周${CHINESE_WEEKDAYS[d.getDay()]} ${time}`
+
+  const month = (d.getMonth() + 1).toString().padStart(2, '0')
+  const day = d.getDate().toString().padStart(2, '0')
+  if (d.getFullYear() === now.getFullYear()) return `${month}/${day} ${time}`
+  return `${d.getFullYear()}/${month}/${day} ${time}`
+}
+
+function insertTimeDividers(messages: any[]) {
+  if (!messages.length) return
+  const realMessages = messages.filter(m => m.type !== MESSAGE_TYPE.TIME)
+  const result: any[] = []
+
+  for (let i = 0; i < realMessages.length; i++) {
+    const msg = realMessages[i]
+    const msgTime = new Date(msg.time).getTime()
+
+    if (i === 0) {
+      result.push({ type: MESSAGE_TYPE.TIME, time: formatChatTime(msg.time), user: {} })
+    } else {
+      const prevTime = new Date(realMessages[i - 1].time).getTime()
+      if (msgTime - prevTime > TIME_GAP_THRESHOLD) {
+        result.push({ type: MESSAGE_TYPE.TIME, time: formatChatTime(msg.time), user: {} })
+      }
+    }
+    result.push(msg)
+  }
+
+  messages.length = 0
+  messages.push(...result)
+}
+
+// 计算已读回执: 在对方最后一条已读消息下面显示我的小头像+已读
+function applyReadReceipts(messages: any[]) {
+  if (!messages.length) return
+  const myUid = store.userinfo.uid
+  const theirAvatar = targetUserAvatar.value || ''
+
+  // 清除旧标记 (跳过时间分隔线)
+  messages.forEach(m => { if (m.type !== MESSAGE_TYPE.TIME) delete m.readByAvatar })
+
+  // 找最后一条真实消息
+  let lastRealIdx = messages.length - 1
+  while (lastRealIdx >= 0 && messages[lastRealIdx].type === MESSAGE_TYPE.TIME) lastRealIdx--
+  if (lastRealIdx < 0) return
+
+  // 如果最后一条消息是对方发的（已回复），无需已读回执
+  if (messages[lastRealIdx].fromUserId !== myUid) return
+
+  // 找到我发给对方的最后一条已读消息 → 显示对方头像 (对方读了)
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.type === MESSAGE_TYPE.TIME) continue
+    if (m.fromUserId === myUid && m.isRead) {
+      m.readByAvatar = theirAvatar
+      break
     }
   }
 }
@@ -480,10 +566,14 @@ async function loadHistory() {
     console.log('[Chat] loadHistory response:', res.success, res.data?.length, 'messages')
     if (res.success && res.data) {
       data.messages = res.data.map(mapMsgToChatItem)
+      insertTimeDividers(data.messages)
+      applyReadReceipts(data.messages)
       scrollBottom()
     }
-    // 标记已读并刷新底部徽章
+    // 标记已读并刷新底部徽章 (markRead 后对方消息全都已读，重新应用回执)
     await markRead(targetUserId.value)
+    data.messages.forEach(m => { if (m.fromUserId !== store.userinfo.uid) m.isRead = true })
+    applyReadReceipts(data.messages)
     bus.emit('REFRESH_UNREAD')
   } catch (e) {
     console.error('[Chat] loadHistory failed:', e)
@@ -496,6 +586,8 @@ function addMessageWithDedup(msg: any) {
     return false
   }
   data.messages.push(mapMsgToChatItem(msg))
+  insertTimeDividers(data.messages)
+  applyReadReceipts(data.messages)
   scrollBottom()
   return true
 }
@@ -506,9 +598,24 @@ function handleWsMessage(msg: any) {
   if (msg.from_user_id === targetUserId.value || (msg.to_user_id === targetUserId.value && msg.from_user_id === store.userinfo.uid)) {
     addMessageWithDedup(msg)
     // 正在看对话，自动标记已读并刷新徽章
-    markRead(targetUserId.value).then(() => bus.emit('REFRESH_UNREAD'))
+    markRead(targetUserId.value).then(() => {
+      // 收到新消息后自己的已读状态已变化，重新应用已读回执
+      data.messages.forEach(m => { if (m.fromUserId !== store.userinfo.uid) m.isRead = true })
+      applyReadReceipts(data.messages)
+      bus.emit('REFRESH_UNREAD')
+    })
   } else {
     console.log('[Chat] WS message ignored: not current conversation')
+  }
+}
+
+function handleReadReceipt(msg: any) {
+  // from_user_id = 读了消息的人（对方），to_user_id = 我（被读者）
+  if (msg.from_user_id === targetUserId.value) {
+    data.messages.forEach(m => {
+      if (m.fromUserId === store.userinfo.uid) m.isRead = true
+    })
+    applyReadReceipts(data.messages)
   }
 }
 
@@ -566,6 +673,31 @@ async function clickItem(e) {
     data.loading = false
     data.isOpened = e.data.state === '已过期'
     data.isShowOpenRedPacket = true
+  }
+  if (e.type === data.MESSAGE_TYPE.DOUYIN_VIDEO && e.data.aweme_id) {
+    const videoItem = {
+      aweme_id: e.data.aweme_id,
+      desc: e.data.title || '',
+      video: {
+        play_addr: { url_list: [e.data.video_url] },
+        cover: { url_list: [e.data.poster] },
+        poster: e.data.poster || '',
+        duration: e.data.duration || 0
+      },
+      author: {
+        nickname: e.data.author?.name || '',
+        unique_id: e.data.author?.name || '',
+        avatar_168x168: { url_list: [e.data.author?.avatar || ''] },
+        avatar_300x300: { url_list: [e.data.author?.avatar || ''] }
+      },
+      type: e.data.type || 'recommend-video',
+      duration: e.data.duration || 0,
+      image_urls: e.data.image_urls || [],
+      statistics: e.data.statistics || { digg_count: 0, comment_count: 0, share_count: 0, collect_count: 0, play_count: 0 },
+      music: { title: '', play_url: { url_list: [] } }
+    }
+    store.routeData = cloneDeep({ list: [videoItem], index: 0 })
+    router.push({ path: '/video-detail' })
   }
 }
 

@@ -49,4 +49,16 @@ public interface UserService extends IService<User> {
 
     /** 获取访客列表 */
     java.util.List<com.douyin.vo.UserVO> getVisitors(Long userId, int limit);
+
+    /** 朋友列表 (互相关注) */
+    java.util.List<com.douyin.vo.UserVO> getFriends(Long userId);
+
+    /** 设置主页访客展示开关 */
+    void setVisitorDisplay(Long userId, boolean enabled);
+
+    /** 检查用户是否已设置密码 */
+    boolean hasPassword(Long userId);
+
+    /** 设置或修改密码 */
+    void setPassword(Long userId, String password);
 }

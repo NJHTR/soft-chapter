@@ -10,8 +10,12 @@ import com.douyin.kafka.MessagePublisher;
 import com.douyin.kafka.dto.NotificationEvent;
 import com.douyin.mapper.UserMapper;
 import com.douyin.service.CommentService;
+import com.douyin.service.ContentFeatureService;
 import com.douyin.service.CoverService;
 import com.douyin.service.MessageService;
+import com.douyin.service.MusicService;
+import com.douyin.service.SystemNoticeService;
+import com.douyin.service.VideoMergeService;
 import com.douyin.service.VideoService;
 import com.douyin.utils.JwtUtil;
 import com.douyin.vo.NotificationVO;
@@ -36,11 +40,17 @@ public class VideoController {
     private final MessagePublisher messagePublisher;
     private final MessageService messageService;
     private final UserMapper userMapper;
+    private final ContentFeatureService contentFeatureService;
+    private final MusicService musicService;
+    private final VideoMergeService videoMergeService;
+    private final SystemNoticeService systemNoticeService;
 
     public VideoController(VideoService videoService, CommentService commentService,
                            CoverService coverService, JwtUtil jwtUtil,
                            MessagePublisher messagePublisher, MessageService messageService,
-                           UserMapper userMapper) {
+                           UserMapper userMapper, ContentFeatureService contentFeatureService,
+                           MusicService musicService, VideoMergeService videoMergeService,
+                           SystemNoticeService systemNoticeService) {
         this.videoService = videoService;
         this.commentService = commentService;
         this.coverService = coverService;
@@ -48,6 +58,10 @@ public class VideoController {
         this.messagePublisher = messagePublisher;
         this.messageService = messageService;
         this.userMapper = userMapper;
+        this.contentFeatureService = contentFeatureService;
+        this.musicService = musicService;
+        this.videoMergeService = videoMergeService;
+        this.systemNoticeService = systemNoticeService;
     }
 
     /** 从请求头提取当前登录用户ID, 未登录返回 null */
@@ -119,6 +133,12 @@ public class VideoController {
         if (userId == null) return Result.fail("请先登录");
         boolean liked = commentService.toggleCommentLike(userId, commentId);
         Comment c = commentService.getById(commentId);
+        if (c != null) {
+            try {
+                if (liked) contentFeatureService.onCommentLike(userId, commentId, c.getVideoId());
+                else contentFeatureService.onCommentDislike(userId, commentId, c.getVideoId());
+            } catch (Exception ignored) {}
+        }
         return Result.ok(Map.of("isLoved", liked, "likeCount", c != null ? c.getLikeCount() : 0));
     }
 
@@ -179,40 +199,138 @@ public class VideoController {
         return Result.ok(videoService.getHistoryOther(pageNo, pageSize));
     }
 
-    /** 发布视频 */
+    /** 发布视频 (支持选配乐合成) */
     @PostMapping
     public Result<Video> publish(@RequestBody Map<String, Object> body, HttpServletRequest req) {
         Long userId = getLoginUserId(req);
         if (userId == null) return Result.fail("请先登录");
 
+        String videoUrl = (String) body.get("video_url");
+        double duration = body.get("duration") != null ? Double.parseDouble(body.get("duration").toString()) : 15.0;
+        String musicTitle = (String) body.getOrDefault("music_title", "原创");
+
+        // 音乐合成 (可选)
+        Long musicId = body.get("music_id") != null ? Long.valueOf(body.get("music_id").toString()) : null;
+        double bgmVolume = body.get("bgm_volume") != null ? Double.parseDouble(body.get("bgm_volume").toString()) : 0.7;
+        double bgmStartOffset = body.get("bgm_start_offset") != null
+                ? Double.parseDouble(body.get("bgm_start_offset").toString()) : 0;
+        double trimStart = body.get("trim_start") != null ? Double.parseDouble(body.get("trim_start").toString()) : 0;
+        double trimEnd = body.get("trim_end") != null ? Double.parseDouble(body.get("trim_end").toString()) : 0;
+
+        if (musicId != null) {
+            try {
+                com.douyin.entity.Music music = musicService.getById(musicId);
+                if (music != null) {
+                    String musicUrl = music.getPlayUrl();
+                    musicTitle = music.getName() + " - " + music.getArtist();
+                    if (musicUrl != null && !musicUrl.isEmpty()) {
+                        log.info("publish: 开始合成BGM musicId={} name={} volume={} trim=[{},{}]",
+                                musicId, music.getName(), bgmVolume,
+                                String.format("%.1f", trimStart), String.format("%.1f", trimEnd));
+                        String mergedPath = videoMergeService.merge(
+                                videoUrl, musicUrl, music.getName(), duration, bgmVolume, bgmStartOffset,
+                                trimStart, trimEnd);
+                        videoUrl = mergedPath;
+                        log.info("publish: BGM合成完成 → {}", videoUrl);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("publish: BGM合成失败, 使用原始视频", e);
+            }
+        }
+
+        // 无BGM但有裁剪: 仍需对原视频裁剪
+        if (musicId == null && trimEnd > trimStart && trimEnd > 0) {
+            try {
+                log.info("publish: 无BGM裁剪 trim=[{},{}]", String.format("%.1f", trimStart), String.format("%.1f", trimEnd));
+                String trimmedPath = videoMergeService.trimVideo(videoUrl, trimStart, trimEnd);
+                videoUrl = trimmedPath;
+            } catch (Exception e) {
+                log.error("publish: 视频裁剪失败", e);
+            }
+        }
+
+        // 更新实际发布时长
+        if (trimEnd > trimStart && trimEnd > 0) {
+            duration = trimEnd - trimStart;
+        }
+
+        // 编辑器分段信息 (含变速，后续版本做 ffmpeg setpts/atempo 处理)
+        String segmentsJson = (String) body.get("segments");
+        if (segmentsJson != null && !segmentsJson.isEmpty()) {
+            log.info("publish: editor segments={}", segmentsJson);
+        }
+
         Video video = new Video();
-        video.setVideoUrl((String) body.get("video_url"));
+        video.setVideoUrl(videoUrl);
         video.setCoverUrl((String) body.getOrDefault("cover_url", ""));
         video.setDesc((String) body.getOrDefault("desc", ""));
-        video.setDuration(body.get("duration") != null ? Double.valueOf(body.get("duration").toString()) : 15.0);
+        video.setDuration(duration);
         video.setWidth(1080);
         video.setHeight(1920);
         video.setAuthorUserId(userId);
-        video.setMusicTitle((String) body.getOrDefault("music_title", "原创"));
-        video.setType("recommend-video");
+        video.setMusicId(musicId);
+        video.setMusicTitle(musicTitle);
+        video.setBgmStartOffset(bgmStartOffset);
+        video.setBgmVolume(bgmVolume);
+        // 内容类型：视频/图片/文字
+        String contentType = (String) body.getOrDefault("type", "recommend-video");
+        video.setType(contentType);
+
+        // 多图URL列表 (图文轮播)
+        String imageUrls = (String) body.get("image_urls");
+        if (imageUrls != null && !imageUrls.isEmpty()) {
+            video.setImageUrls(imageUrls);
+            // 多图帖子的封面用第一张图
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                java.util.List<String> urls = mapper.readValue(imageUrls,
+                        new com.fasterxml.jackson.core.type.TypeReference<java.util.List<String>>() {});
+                if (!urls.isEmpty()) {
+                    video.setCoverUrl(urls.get(0));
+                }
+            } catch (Exception ignored) {}
+        }
         boolean saved = videoService.save(video);
         log.info("publish: save result={}, videoId={}", saved, video.getId());
 
-        // 保存后立即查询确认
-        Video verify = videoService.getById(video.getId());
-        log.info("publish: verify video exists={}", verify != null);
-
-        try {
-            String coverUrl = coverService.extractAndUpload(video.getVideoUrl());
-            if (coverUrl != null && !coverUrl.isEmpty()) {
-                video.setCoverUrl(coverUrl);
-                videoService.updateById(video);
+        // 只有视频类型才提取封面和内容特征
+        if (!"image".equals(contentType) && !"text".equals(contentType)) {
+            try {
+                String coverUrl = coverService.extractAndUpload(video.getVideoUrl());
+                if (coverUrl != null && !coverUrl.isEmpty()) {
+                    video.setCoverUrl(coverUrl);
+                    videoService.updateById(video);
+                }
+            } catch (Exception e) {
+                log.error("publish: cover extraction failed", e);
             }
-        } catch (Exception e) {
-            log.error("publish: cover extraction failed", e);
+
+            // 异步提取视频内容特征
+            contentFeatureService.extractAsync(video);
         }
 
+        // 发布成功系统通知
+        try {
+            String typeLabel = "image".equals(contentType) ? "图片" : "text".equals(contentType) ? "文字" : "视频";
+            String desc = video.getDesc();
+            if (desc == null || desc.isEmpty()) desc = "无描述";
+            String timeStr = java.time.LocalDateTime.now()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            systemNoticeService.send(userId, "publish_" + contentType,
+                    typeLabel + "作品发布成功",
+                    "您的" + typeLabel + "作品「" + desc + "」已于 " + timeStr + " 发布成功。可以在个人主页查看。");
+        } catch (Exception ignored) {}
+
         return Result.ok(video);
+    }
+
+    /** 接收 Python 特征提取流水线结果 */
+    @PostMapping("/content-features")
+    public Result<?> receiveContentFeatures(@RequestBody Map<String, Object> features) {
+        log.info("收到内容特征: videoId={}", features.get("video_id"));
+        contentFeatureService.saveFeatures(features);
+        return Result.ok();
     }
 
     /** 切换点赞 */
@@ -226,6 +344,11 @@ public class VideoController {
         log.info("toggleLike response: liked={}, likeCount={}, videoExists={}", liked,
                 video != null ? video.getLikeCount() : null, video != null);
 
+        // 更新用户画像
+        if (liked && video != null) {
+            try { contentFeatureService.onLike(userId, videoId, video.getAuthorUserId()); } catch (Exception e) { log.warn("画像更新失败", e); }
+        }
+
         // 点赞通知
         if (liked && video != null && !userId.equals(video.getAuthorUserId())) {
             log.info("[NOTIF] like notify: author={} liker={}", video.getAuthorUserId(), userId);
@@ -238,8 +361,13 @@ public class VideoController {
 
     /** 记录分享 */
     @PostMapping("/share/{videoId}")
-    public Result<Map<String, Object>> recordShare(@PathVariable Long videoId) {
+    public Result<Map<String, Object>> recordShare(@PathVariable Long videoId, HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
         long count = videoService.recordShare(videoId);
+        if (userId != null) {
+            Video video = videoService.getById(videoId);
+            try { contentFeatureService.onShare(userId, videoId, video != null ? video.getAuthorUserId() : null); } catch (Exception ignored) {}
+        }
         return Result.ok(Map.of("shareCount", count));
     }
 
@@ -250,6 +378,11 @@ public class VideoController {
         if (userId == null) return Result.fail("请先登录");
         boolean collected = videoService.toggleCollect(userId, videoId);
         Video video = videoService.getById(videoId);
+
+        // 更新用户画像
+        if (collected && video != null) {
+            try { contentFeatureService.onCollect(userId, videoId, video.getAuthorUserId()); } catch (Exception e) { log.warn("画像更新失败", e); }
+        }
 
         // 收藏通知
         if (collected && video != null && !userId.equals(video.getAuthorUserId())) {
@@ -273,6 +406,11 @@ public class VideoController {
         comment.setUserId(userId);
         Comment saved = commentService.addComment(comment);
         Video video = videoService.getById(comment.getVideoId());
+
+        // 更新用户画像: 评论行为
+        if (video != null) {
+            try { contentFeatureService.onComment(userId, comment.getVideoId(), video.getAuthorUserId()); } catch (Exception ignored) {}
+        }
         log.info("[NOTIF] video found: id={} authorUserId={}", video != null ? video.getId() : null,
                 video != null ? video.getAuthorUserId() : null);
 
@@ -407,7 +545,7 @@ public class VideoController {
         return "";
     }
 
-    /** 记录观看历史 */
+    /** 记录观看历史 + 更新用户画像 */
     @PostMapping("/watch/{videoId}")
     public Result<?> recordWatch(@PathVariable Long videoId,
                                  @RequestBody Map<String, Object> body,
@@ -421,8 +559,25 @@ public class VideoController {
         double videoDuration = body.get("video_duration") != null
                 ? Double.parseDouble(body.get("video_duration").toString()) : 0;
         boolean finished = body.get("finished") != null && Boolean.parseBoolean(body.get("finished").toString());
+        String trafficSource = body.get("traffic_source") != null
+                ? body.get("traffic_source").toString() : "HOME_RECOMMEND";
+        String sessionId = body.get("session_id") != null
+                ? body.get("session_id").toString() : null;
+        double swipeSeconds = body.get("swipe_seconds") != null
+                ? Double.parseDouble(body.get("swipe_seconds").toString()) : watchDuration;
+
         videoService.recordWatch(userId, videoId, video.getAuthorUserId(),
-                watchDuration, videoDuration, finished);
+                watchDuration, videoDuration, finished,
+                trafficSource, sessionId, swipeSeconds);
+
+        // 更新全行为画像
+        try {
+            contentFeatureService.onWatch(userId, videoId, video.getAuthorUserId(),
+                    watchDuration, videoDuration, trafficSource, sessionId, swipeSeconds);
+        } catch (Exception e) {
+            log.warn("画像更新失败: userId={} videoId={}", userId, videoId, e);
+        }
+
         return Result.ok();
     }
 

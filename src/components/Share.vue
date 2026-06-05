@@ -162,6 +162,7 @@ import FromBottomDialog from './dialog/FromBottomDialog'
 import { useBaseStore } from '@/store/pinia'
 import { _checkImgUrl, _copy, _hideLoading, _no, _notice, _showLoading, _sleep } from '@/utils'
 import { recordShare } from '@/api/videos'
+import { sendMessage } from '@/api/message'
 
 defineOptions({
   name: 'Share'
@@ -227,10 +228,55 @@ function closeShare() {
   })
   emit('update:modelValue', false)
 }
-function shared() {
+async function shared() {
+  const item = props.item
+  if (!item || !store.selectFriends.length) return
+
+  console.log('[Share] item.video:', JSON.stringify(item.video))
+  console.log('[Share] item.cover_url:', JSON.stringify(item.cover_url))
+  console.log('[Share] item.cover:', item.cover, 'item.origin_cover:', item.origin_cover)
+
+  const poster = item.video?.cover?.url_list?.[0]
+    || item.video?.poster
+    || item.cover_url?.[0]?.url_list?.[0]
+    || item.cover
+    || item.origin_cover
+    || item.video?.origin_cover?.url_list?.[0]
+    || item.video?.play_addr?.url_list?.[0]
+    || ''
+  console.log('[Share] resolved poster:', poster)
+  const videoData = JSON.stringify({
+    poster,
+    title: item.desc || '',
+    author: {
+      avatar: item.author?.avatar_168x168?.url_list?.[0]
+        || item.author?.avatar_medium?.url_list?.[0]
+        || item.author?.avatar_300x300?.url_list?.[0]
+        || '',
+      name: item.author?.nickname || item.author?.unique_id || ''
+    },
+    aweme_id: item.aweme_id,
+    video_url: item.video?.play_addr?.url_list?.[0] || '',
+    type: item.type || 'recommend-video',
+    duration: item.duration || item.video?.duration || 0,
+    image_urls: item.image_urls || [],
+    statistics: item.statistics || {}
+  })
+
+  const text = store.message?.trim() || ''
+
+  for (const friend of store.selectFriends) {
+    const uid = friend.uid || friend.id
+    if (!uid) continue
+    try {
+      if (text) await sendMessage({ to_user_id: uid, content: text, msg_type: 1 })
+      await sendMessage({ to_user_id: uid, content: videoData, msg_type: 9 })
+    } catch { /* ignore */ }
+  }
+
   _notice('分享成功！')
   store.message = ''
-  if (props.item?.aweme_id) recordShare(props.item.aweme_id)
+  if (item.aweme_id) recordShare(item.aweme_id)
   closeShare()
 }
 </script>

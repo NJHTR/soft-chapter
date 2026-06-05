@@ -16,7 +16,9 @@
               class="add"
             />
             <span @click="followButton">{{
-              props.currentItem.author.follow_status ? '私信' : '关注'
+              props.currentItem.author.follow_status
+                ? props.currentItem.author.is_following_me ? '互相关注' : '已关注'
+                : props.currentItem.author.is_following_me ? '回关' : '关注'
             }}</span>
           </div>
         </transition>
@@ -155,15 +157,23 @@
           >
             <div class="no-follow" @click="followButton">
               <img src="@/assets/img/icon/add-white.png" alt="" />
-              <span>关注</span>
+              <span>{{ props.currentItem.author.is_following_me ? '回关' : '关注' }}</span>
             </div>
-            <div class="followed">
+            <div class="followed" :class="{ 'has-friend-btn': props.currentItem.author.is_following_me }">
               <div class="l-button" @click="emit('showFollowSetting2')">
-                <span>已关注</span>
+                <span>{{ props.currentItem.author.is_following_me ? '互相关注' : '已关注' }}</span>
                 <Icon icon="bxs:down-arrow" class="arrow" />
               </div>
               <div class="l-button" @click="openChat">
                 <span>私信</span>
+              </div>
+              <div
+                v-if="props.currentItem.author.is_following_me"
+                class="l-button friend-btn"
+                :class="{ disabled: props.currentItem.author.is_friend || props.currentItem.author.friend_request_sent }"
+                @click="handleFriendAction"
+              >
+                <span>{{ props.currentItem.author.is_friend ? '已是朋友' : props.currentItem.author.friend_request_sent ? '已申请' : '添加朋友' }}</span>
               </div>
             </div>
           </div>
@@ -239,6 +249,7 @@ import {
   _formatNumber,
   _getUserDouyinId,
   _no,
+  _notice,
   _stopPropagation
 } from '@/utils'
 import { useNav } from '@/utils/hooks/useNav'
@@ -246,7 +257,7 @@ import Posters from '@/components/Posters.vue'
 import { DefaultUser } from '@/utils/const_var'
 import Loading from '@/components/Loading.vue'
 import { useBaseStore } from '@/store/pinia'
-import { panel, toggleFollowUser, userVideoList } from '@/api/user'
+import { panel, toggleFollowUser, userVideoList, sendFriendRequest } from '@/api/user'
 
 const $nav = useNav()
 const baseStore = useBaseStore()
@@ -314,6 +325,9 @@ watch(
         props.currentItem.author.following_count = u.following_count || 0
         props.currentItem.author.total_favorited = u.total_favorited || 0
         props.currentItem.author.follow_status = u.is_followed ? 1 : 0
+        props.currentItem.author.is_following_me = u.is_following_me || false
+        props.currentItem.author.is_friend = u.is_friend || false
+        props.currentItem.author.friend_request_sent = u.friend_request_sent || false
         props.currentItem.author.user_age = u.user_age ?? -1
         emit('update:currentItem', props.currentItem)
       }
@@ -363,6 +377,25 @@ function openChat() {
     name: author.nickname || '',
     avatar: author.avatar_168x168?.url_list?.[0] || ''
   })
+}
+
+async function handleFriendAction() {
+  const author = props.currentItem.author
+  if (author.is_friend || author.friend_request_sent) return
+  const uid = author.uid
+  if (!uid) return
+  try {
+    const res = await sendFriendRequest(uid)
+    if (res.success) {
+      author.friend_request_sent = true
+      emit('update:currentItem', props.currentItem)
+      _notice('好友申请已发送')
+    } else {
+      _notice(res.message || '发送失败')
+    }
+  } catch {
+    _notice('发送失败')
+  }
 }
 
 async function followButton() {
@@ -869,6 +902,19 @@ function touchEnd() {
               align-items: center;
               justify-content: center;
               gap: @gap;
+            }
+
+            .has-friend-btn .l-button {
+              width: 33.33%;
+              font-size: 12rem;
+              .arrow { font-size: 11rem; }
+            }
+
+            .friend-btn {
+              &.disabled {
+                opacity: 0.5;
+                cursor: default;
+              }
             }
           }
         }

@@ -60,7 +60,10 @@ async function loadUser(uid: string) {
         following_count: u.following_count || 0,
         user_age: u.user_age ?? -1,
         mplatform_followers_count: u.follower_count || 0,
-        follow_status: u.is_followed ? 1 : 0
+        follow_status: u.is_followed ? 1 : 0,
+        is_following_me: u.is_following_me || false,
+        is_friend: u.is_friend || false,
+        friend_request_sent: u.friend_request_sent || false
       },
       aweme_list: []
     }

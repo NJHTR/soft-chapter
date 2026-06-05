@@ -82,7 +82,7 @@ import Scroll from '@/components/Scroll.vue'
 import { useBaseStore } from '@/store/pinia'
 import { _checkImgUrl } from '@/utils'
 
-import { computed, onMounted, onUnmounted, reactive } from 'vue'
+import { computed, onActivated, onMounted, onUnmounted, reactive } from 'vue'
 import { useNav } from '@/utils/hooks/useNav.js'
 import { getNotifications, markNotificationRead } from '@/api/message'
 import bus from '@/utils/bus'
@@ -129,7 +129,14 @@ const showTypeText = computed(() => {
 
 onMounted(() => {
   loadNotifications()
+  markNotificationRead({}).catch(() => {})
   bus.on('NEW_NOTIFICATION', loadNotifications)
+})
+
+// keep-alive 激活时刷新并标记已读
+onActivated(() => {
+  loadNotifications()
+  markNotificationRead({}).catch(() => {})
 })
 
 onUnmounted(() => {

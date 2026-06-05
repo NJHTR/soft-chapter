@@ -5,7 +5,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 const handlers = new Map<string, Set<(msg: any) => void>>()
 
 /** 注册消息处理器，返回取消注册函数 */
-export function onSocketMsg(eventType: 'chat' | 'notification' | 'raw', fn: (msg: any) => void) {
+export function onSocketMsg(eventType: 'chat' | 'notification' | 'raw' | 'read_receipt', fn: (msg: any) => void) {
   if (!handlers.has(eventType)) handlers.set(eventType, new Set())
   handlers.get(eventType)!.add(fn)
   return () => { handlers.get(eventType)?.delete(fn) }
@@ -35,6 +35,12 @@ export function connectSocket() {
       const msg = JSON.parse(event.data)
       console.log('[WS] received:', msg.type !== undefined ? 'notification' : 'chat', msg)
       dispatch('raw', msg)
+      // 已读回执：对方已读了我的消息
+      if (msg.type === 'read_receipt') {
+        dispatch('read_receipt', msg)
+        bus.emit('READ_RECEIPT', msg)
+        return
+      }
       // 通知消息：有 type 字段（通知类型1-5）且没有 to_user_id
       if (msg.type !== undefined && msg.to_user_id === undefined) {
         dispatch('notification', msg)
