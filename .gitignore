@@ -1,3 +1,9 @@
+# Scraped data
+node/
+
+# Kafka local data
+server/kafkakraft-data/
+
 # Logs
 logs
 *.log
