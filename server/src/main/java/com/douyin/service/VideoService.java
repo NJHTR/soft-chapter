@@ -9,7 +9,8 @@ import java.util.List;
 
 public interface VideoService extends IService<Video> {
 
-    PageDTO<VideoVO> getRecommended(Long viewerUserId, int start, int pageSize);
+    /** 推荐视频（可按类型过滤：长视频、普通推荐） */
+    PageDTO<VideoVO> getRecommended(Long viewerUserId, int start, int pageSize, String type);
 
     PageDTO<VideoVO> getUserVideos(Long viewerUserId, Long userId, int pageNo, int pageSize);
 
@@ -41,6 +42,12 @@ public interface VideoService extends IService<Video> {
 
     /** 切换收藏状态, 返回: true=已收藏 false=已取消 */
     boolean toggleCollect(Long userId, Long videoId);
+
+    /** 关注页：关注用户的视频 */
+    PageDTO<VideoVO> getFollowingVideos(Long viewerUserId, int pageNo, int pageSize);
+
+    /** 热点：按热度排序 */
+    PageDTO<VideoVO> getTrendingVideos(Long viewerUserId, int pageNo, int pageSize);
 
     /** 获取用户收藏的视频列表 */
     PageDTO<VideoVO> getCollectedVideos(Long userId, int pageNo, int pageSize);

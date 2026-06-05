@@ -47,11 +47,44 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     }
 
     @Override
-    public PageDTO<VideoVO> getRecommended(Long viewerUserId, int start, int pageSize) {
+    public PageDTO<VideoVO> getRecommended(Long viewerUserId, int start, int pageSize, String type) {
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .eq(Video::getType, "recommend-video")
                 .orderByDesc(Video::getCreateTime);
+        // 长视频：只过滤时长 >= 60 秒
+        if ("long-video".equals(type)) {
+            wrapper.ge(Video::getDuration, 60.0);
+        }
         int pageNo = start / pageSize + 1;
+        IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
+        List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
+        return new PageDTO<>(page.getTotal(), pageNo, pageSize, voList);
+    }
+
+    @Override
+    public PageDTO<VideoVO> getFollowingVideos(Long viewerUserId, int pageNo, int pageSize) {
+        if (viewerUserId == null) return new PageDTO<>(0, pageNo, pageSize, List.of());
+        // 查询关注用户ID列表
+        List<Long> followedIds = followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                        .eq(Follow::getUserId, viewerUserId))
+                .stream().map(Follow::getFollowId).toList();
+        if (followedIds.isEmpty()) return new PageDTO<>(0, pageNo, pageSize, List.of());
+
+        LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
+                .in(Video::getAuthorUserId, followedIds)
+                .eq(Video::getType, "recommend-video")
+                .orderByDesc(Video::getCreateTime);
+        IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
+        List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
+        return new PageDTO<>(page.getTotal(), pageNo, pageSize, voList);
+    }
+
+    @Override
+    public PageDTO<VideoVO> getTrendingVideos(Long viewerUserId, int pageNo, int pageSize) {
+        LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
+                .eq(Video::getType, "recommend-video")
+                .orderByDesc(Video::getLikeCount)
+                .orderByDesc(Video::getCreateTime);
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
         List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
         return new PageDTO<>(page.getTotal(), pageNo, pageSize, voList);
@@ -129,7 +162,12 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
 
     @Override
     public PageDTO<VideoVO> getRecommendedPosts(int pageNo, int pageSize) {
-        return new PageDTO<>(0, pageNo, pageSize, List.of());
+        LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
+                .eq(Video::getType, "recommend-video")
+                .orderByDesc(Video::getCreateTime);
+        IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
+        List<VideoVO> voList = toVideoVOList(page.getRecords(), null);
+        return new PageDTO<>(page.getTotal(), pageNo, pageSize, voList);
     }
 
     @Override

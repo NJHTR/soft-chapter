@@ -162,8 +162,8 @@ let state = reactive({
 let watchSec = 0
 let watchTimer: any = null
 let watchReported = false
-const videoId = computed(() => props.item?.aweme_id ? Number(props.item.aweme_id) : 0)
-const authorUserId = computed(() => props.item?.author?.uid ? Number(props.item.author.uid) : 0)
+const videoId = computed(() => props.item?.aweme_id ? String(props.item.aweme_id) : '')
+const authorUserId = computed(() => props.item?.author?.uid ? String(props.item.author.uid) : '')
 const videoDuration = computed(() => state.duration || 0)
 
 function tickWatch() {
@@ -176,7 +176,7 @@ function tickWatch() {
 
 function sendWatchProgress(finished = false) {
   if (!store.userinfo?.uid || !videoId.value) return
-  if (Number(store.userinfo.uid) === authorUserId.value) return // 不看自己的
+  if (String(store.userinfo.uid) === authorUserId.value) return // 不看自己的
   const dur = watchSec
   recordWatch(videoId.value, {
     watch_duration: dur,

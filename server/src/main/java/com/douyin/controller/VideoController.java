@@ -66,17 +66,39 @@ public class VideoController {
             @RequestParam(defaultValue = "6") int pageSize,
             HttpServletRequest req) {
         Long viewerUserId = getLoginUserId(req);
-        return Result.ok(videoService.getRecommended(viewerUserId, start, pageSize));
+        return Result.ok(videoService.getRecommended(viewerUserId, start, pageSize, "recommend-video"));
     }
 
-    /** 长视频推荐 */
+    /** 长视频推荐（时长 >= 60 秒） */
     @GetMapping("/long/recommended")
     public Result<PageDTO<VideoVO>> longRecommended(
             @RequestParam(defaultValue = "1") int pageNo,
             @RequestParam(defaultValue = "10") int pageSize,
             HttpServletRequest req) {
         Long viewerUserId = getLoginUserId(req);
-        return Result.ok(videoService.getRecommended(viewerUserId, (pageNo - 1) * pageSize, pageSize));
+        return Result.ok(videoService.getRecommended(viewerUserId, (pageNo - 1) * pageSize, pageSize, "long-video"));
+    }
+
+    /** 关注页：关注用户的视频 */
+    @GetMapping("/following")
+    public Result<PageDTO<VideoVO>> following(
+            @RequestParam(defaultValue = "0") int start,
+            @RequestParam(defaultValue = "10") int pageSize,
+            HttpServletRequest req) {
+        Long viewerUserId = getLoginUserId(req);
+        int pageNo = start / pageSize + 1;
+        return Result.ok(videoService.getFollowingVideos(viewerUserId, pageNo, pageSize));
+    }
+
+    /** 热点：按热度排序 */
+    @GetMapping("/trending")
+    public Result<PageDTO<VideoVO>> trending(
+            @RequestParam(defaultValue = "0") int start,
+            @RequestParam(defaultValue = "10") int pageSize,
+            HttpServletRequest req) {
+        Long viewerUserId = getLoginUserId(req);
+        int pageNo = start / pageSize + 1;
+        return Result.ok(videoService.getTrendingVideos(viewerUserId, pageNo, pageSize));
     }
 
     /** 视频评论（分页） */

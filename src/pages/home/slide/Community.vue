@@ -11,21 +11,21 @@
         </div>
         <WaterfallList :list="list" class="list">
           <template v-slot="{ item }">
-            <div class="card" @click="(e) => showDetail(e, item)">
-              <img class="poster" v-lazy="_checkImgUrl(item.note_card?.cover?.url_default)" />
+            <div class="card" @click="(e) => showVideoDetail(e, item)">
+              <img class="poster" v-lazy="_checkImgUrl(item.video?.cover?.url_list?.[0] || item.note_card?.cover?.url_default)" />
               <div class="bottom">
                 <div class="title">
-                  {{ item.note_card?.display_title }}
+                  {{ item.desc || item.note_card?.display_title }}
                 </div>
                 <div class="b2">
                   <div class="user">
-                    <img class="avatar" :src="_checkImgUrl(item.note_card?.user?.avatar)" />
-                    <div class="name">{{ item.note_card?.user?.nickname }}</div>
+                    <img class="avatar" :src="_checkImgUrl(item.author?.avatar_168x168?.url_list?.[0] || item.note_card?.user?.avatar)" />
+                    <div class="name">{{ item.author?.nickname || item.note_card?.user?.nickname }}</div>
                   </div>
                   <div class="star">
                     <Icon icon="solar:heart-linear" />
                     <div class="num">
-                      {{ item.note_card?.interact_info?.liked_count }}
+                      {{ item.statistics?.digg_count || item.note_card?.interact_info?.liked_count || 0 }}
                     </div>
                   </div>
                 </div>
@@ -123,6 +123,16 @@ function close() {
     _css(s, 'transition', 'all 0s')
     _css(s, 'top', '-200vh')
   }, 300)
+}
+
+function showVideoDetail(e, item) {
+  // VideoVO 格式直接展示
+  if (item.aweme_id) {
+    nav('/video-detail', {}, { list: [item], index: 0 })
+    return
+  }
+  // note_card 格式（兼容旧数据）
+  showDetail(e, item)
 }
 
 function showDetail(e, item) {
