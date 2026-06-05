@@ -16,6 +16,14 @@ export function recommendedLongVideo(params?: any, data?: any) {
   return request({ url: '/video/long/recommended/', method: 'get', params, data })
 }
 
+export function followingVideos(params?: any, data?: any) {
+  return request({ url: '/video/following', method: 'get', params, data })
+}
+
+export function trendingVideos(params?: any, data?: any) {
+  return request({ url: '/video/trending', method: 'get', params, data })
+}
+
 export function myVideo(params?: any, data?: any) {
   return request({ url: '/video/my', method: 'get', params, data })
 }
@@ -64,6 +72,6 @@ export function searchVideos(keyword: string) {
   return request({ url: '/video/search', method: 'get', params: { keyword } })
 }
 
-export function recordWatch(videoId: number, data: { watch_duration: number; video_duration: number; finished: boolean }) {
+export function recordWatch(videoId: string, data: { watch_duration: number; video_duration: number; finished: boolean }) {
   return request({ url: `/video/watch/${videoId}`, method: 'post', data })
 }
