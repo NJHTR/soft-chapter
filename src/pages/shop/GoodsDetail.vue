@@ -10,8 +10,12 @@
           </div>
           <div class="option">
             <Icon icon="jam:search" />
-            <Icon icon="mynaui:star" />
-            <Icon icon="ph:share-fat" />
+            <Icon
+              icon="mynaui:star"
+              :class="{ favorited: state.isFavorited }"
+              @click="doFavorite"
+            />
+            <Icon icon="ph:share-fat" @click="doShare" />
           </div>
         </div>
       </div>
@@ -25,22 +29,42 @@
             <div class="placeholder">多功能电源插座</div>
           </div>
           <div class="option">
-            <Icon icon="mynaui:star" />
-            <Icon icon="ph:share-fat" />
+            <Icon
+              icon="mynaui:star"
+              :class="{ favorited: state.isFavorited }"
+              @click="doFavorite"
+            />
+            <Icon icon="ph:share-fat" @click="doShare" />
           </div>
         </div>
       </div>
       <div class="bottom">
-        <div class="tab active">
+        <div
+          class="tab"
+          :class="{ active: currentTab === 'goods' }"
+          @click="scrollToSection('goods')"
+        >
           <div class="text">商品</div>
         </div>
-        <div class="tab">
+        <div
+          class="tab"
+          :class="{ active: currentTab === 'review' }"
+          @click="scrollToSection('review')"
+        >
           <div class="text">评价</div>
         </div>
-        <div class="tab">
+        <div
+          class="tab"
+          :class="{ active: currentTab === 'detail' }"
+          @click="scrollToSection('detail')"
+        >
           <div class="text">详情</div>
         </div>
-        <div class="tab">
+        <div
+          class="tab"
+          :class="{ active: currentTab === 'recommend' }"
+          @click="scrollToSection('recommend')"
+        >
           <div class="text">推荐</div>
         </div>
       </div>
@@ -49,12 +73,12 @@
     <div class="slide-imgs">
       <SlideHorizontal v-model:index="state.index">
         <SlideItem v-for="(item, i) in state.detail.imgs" :key="i">
-          <img v-lazy="_checkImgUrl('goods/' + item)" alt="" />
+          <img v-lazy="_checkImgUrl(item)" alt="" />
         </SlideItem>
       </SlideHorizontal>
       <div class="index">{{ state.index + 1 }}/{{ state.detail.imgs.length }}</div>
     </div>
-    <div class="content p">
+    <div class="content p" ref="sectionGoods">
       <div class="info">
         <div class="price-wrap">
           <div class="price">
@@ -76,131 +100,60 @@
       </div>
 
       <div class="card desc-wrapper">
-        <div class="item">
+        <div class="item" v-if="state.detail.guarantee">
           <div class="label">保障</div>
-          <div class="desc">
-            假一赔四·运费险·极速退款
-            <Icon class="arrow" icon="mingcute:right-line" />
-          </div>
+          <div class="desc">{{ state.detail.guarantee }}</div>
         </div>
-        <div class="item">
+        <div class="item" v-if="parsedSpecs.length">
           <div class="label">选择</div>
           <div class="desc">
             <div class="left">
               <div class="options">
-                <div class="option">【10双】男土SP中筒袜</div>
-                <div class="option">【5双】男土SP中筒袜</div>
-                <div class="option">【5双】男土SP中筒袜</div>
+                <div class="option" v-for="(s, i) in parsedSpecs" :key="i">{{ s }}</div>
               </div>
-              <div class="all">
+              <div class="all" v-if="parsedSpecs.length > 2">
                 <div class="bg"></div>
-                <div class="count">共3种规格可选</div>
+                <div class="count">共{{ parsedSpecs.length }}种规格可选</div>
               </div>
             </div>
             <Icon class="arrow" icon="mingcute:right-line" />
           </div>
         </div>
-        <div class="item">
+        <div class="item" v-if="state.detail.shipping_from">
           <div class="label">物流</div>
           <div class="desc" style="display: block">
             <div style="display: flex; gap: 5rem">
-              <span>发货 四川成都</span>
+              <span>发货 {{ state.detail.shipping_from }}</span>
               <span style="color: #dedede">|</span>
-              <span>免运费</span>
+              <span>{{
+                state.detail.shipping_fee == 0 ? '免运费' : '运费 ¥' + state.detail.shipping_fee
+              }}</span>
             </div>
-            <div class="flex space-between mb1r mt1r">
-              <div>48小时内发货</div>
-              <Icon class="arrow" icon="mingcute:right-line" />
-            </div>
-            <div class="flex space-between mt1r">
-              <div class="gray">送至 四川省成都市</div>
-              <Icon class="arrow" icon="mingcute:right-line" />
+            <div class="flex space-between mt1r" v-if="state.detail.shipping_time">
+              <div>{{ state.detail.shipping_time }}</div>
             </div>
           </div>
         </div>
-        <div class="item mb0r">
+        <div class="item mb0r" v-if="parsedSpecs.length">
           <div class="label">参数</div>
           <div class="desc">
-            <div class="ellipsis">
-              优惠新人券 立减4新人券立减4新人券立减4新人券 立减4新人券 立减4
-            </div>
+            <div class="ellipsis">{{ parsedSpecs.join(' / ') }}</div>
             <Icon class="arrow" icon="mingcute:right-line" />
           </div>
         </div>
       </div>
 
-      <div class="card comments">
+      <div class="card shop" v-if="state.detail.seller_name">
         <header>
-          <span>商品评论(507)</span>
-          <Icon class="arrow" icon="mingcute:right-line" />
-        </header>
-        <div class="tags">
-          <div class="tag">物美价廉 <span class="gray">29</span></div>
-          <div class="tag">物流很好 <span class="gray">26</span></div>
-          <div class="tag">推荐 <span class="gray">18</span></div>
-          <div class="tag">商用服务好 <span class="gray">15</span></div>
-        </div>
-        <div class="comment">
-          <header>
-            <img :src="_checkImgUrl('2S9bbgb-Sf2kIdSTxoeTw.png')" alt="" class="avatar" />
-            <span class="gray">花***栽</span>
-          </header>
-          <div class="w">
-            <div class="left">
-              <div class="d">东西不错质量也很好 性价比很高 良心商家就冲这图必须给好评</div>
-              <div class="c2">china款/超值【买る双+送2双】共5双</div>
-            </div>
-            <img :src="_checkImgUrl('NYEfuYS-LVZ620UYgQNAM.png')" alt="" class="avatar" />
-          </div>
-        </div>
-        <div class="comment">
-          <header>
-            <img :src="_checkImgUrl('9Tx6cZkUOoHqPkbETUZ5Y.png')" alt="" class="avatar" />
-            <span class="gray">花***栽</span>
-          </header>
-          <div class="w">
-            <div class="left">
-              <div class="d">东西不错质量也很好 性价比很高 良心商家就冲这图必须给好评</div>
-              <div class="c2">china款/超值【买る双+送2双】共5双</div>
-            </div>
-            <img :src="_checkImgUrl('2b2rpive_RVzDrYgo-F9K.png')" alt="" class="avatar" />
-          </div>
-        </div>
-      </div>
-
-      <div class="card shop">
-        <header>
-          <img :src="_checkImgUrl('LJ-8p2jF3HydBD5j28PgQ.png')" alt="" class="avatar" />
+          <img :src="_checkImgUrl(state.detail.seller_avatar)" alt="" class="avatar" />
           <div class="right">
             <div class="l">
-              <div class="name">店铺名</div>
-              <div class="tags">
-                <div class="tag">金牌店铺</div>
-                <div class="tag">好评过千</div>
-                <div class="tag">销量超10万</div>
-              </div>
-              <div class="c2">店铺口碑4.90分</div>
+              <div class="name">{{ state.detail.seller_name }}</div>
+              <div class="c2">已售 {{ state.detail.sold || 0 }} 件</div>
             </div>
-            <div class="r">进店</div>
+            <div class="r" @click="goStore">进店</div>
           </div>
         </header>
-
-        <div class="desc">
-          <div class="grid">
-            <div class="c2">商品质量</div>
-            <div>商品评价一般</div>
-          </div>
-          <div class="line"></div>
-          <div class="grid">
-            <div class="c2">物流速度</div>
-            <div>平均24小时发货</div>
-          </div>
-          <div class="line"></div>
-          <div class="grid">
-            <div class="c2">商品质量</div>
-            <div>商品评价一般</div>
-          </div>
-        </div>
 
         <div class="recommend">
           <header>
@@ -211,40 +164,17 @@
             </div>
           </header>
           <div class="wrap">
-            <div class="item">
-              <img :src="_checkImgUrl('/goods/g6-0.jpg')" alt="" class="avatar" />
-              <div class="name">小米电视6 65" OLED 65英寸</div>
+            <div
+              class="item"
+              v-for="g in state.sellerGoods"
+              :key="g.id"
+              @click="nav('/shop/detail', {}, g)"
+            >
+              <img :src="_checkImgUrl(g.cover)" alt="" class="avatar" />
+              <div class="name">{{ g.name }}</div>
               <div class="price">
                 <span class="symbol">￥</span>
-                <span class="int">8</span>
-                <span class="decimal">.8</span>
-              </div>
-            </div>
-            <div class="item">
-              <img :src="_checkImgUrl('/goods/g1-0.jpg')" alt="" class="avatar" />
-              <div class="name">红白撞色条纹软糯针织上衣女2022年秋季新款甜美减龄短款毛衣开衫</div>
-              <div class="price">
-                <span class="symbol">￥</span>
-                <span class="int">8</span>
-                <span class="decimal">.8</span>
-              </div>
-            </div>
-            <div class="item">
-              <img :src="_checkImgUrl('/goods/g2-0.webp')" alt="" class="avatar" />
-              <div class="name">森马t恤男2023男士纯棉上衣白色情侣装凉感短袖打底衫纯色体恤潮</div>
-              <div class="price">
-                <span class="symbol">￥</span>
-                <span class="int">8</span>
-                <span class="decimal">.8</span>
-              </div>
-            </div>
-            <div class="item">
-              <img :src="_checkImgUrl('/goods/g3-0.jpg')" alt="" class="avatar" />
-              <div class="name">ins潮牌长袖t恤男宽松纯色内搭上衣潮牌百搭秋冬季潮流帅气打底衫</div>
-              <div class="price">
-                <span class="symbol">￥</span>
-                <span class="int">8</span>
-                <span class="decimal">.8</span>
+                <span class="int">{{ g.price }}</span>
               </div>
             </div>
           </div>
@@ -252,7 +182,7 @@
       </div>
     </div>
 
-    <div class="img-list">
+    <div class="img-list" ref="sectionDetail">
       <header>
         <div class="l"></div>
         <span class="gray">商品详情</span>
@@ -261,7 +191,7 @@
 
       <div class="imgs">
         <img
-          v-lazy="_checkImgUrl('goods/' + i)"
+          v-lazy="_checkImgUrl(i)"
           alt=""
           class="avatar"
           :key="j"
@@ -289,7 +219,7 @@
         </div>
       </div>
 
-      <div class="other-recommend">
+      <div class="other-recommend" ref="sectionRecommend">
         <header>你可以还会喜欢</header>
 
         <ScrollList class="Scroll" :api="recommendedShop">
@@ -298,7 +228,7 @@
               <template v-slot="{ item }">
                 <div class="goods" @click="nav('/shop/detail', {}, item)">
                   <div class="item">
-                    <img class="poster" v-lazy="_checkImgUrl('goods/' + item.cover)" />
+                    <img class="poster" v-lazy="_checkImgUrl(item.cover)" />
                     <div class="bottom">
                       <div class="desc">
                         {{ item.name }}
@@ -326,73 +256,142 @@
 
     <div class="toolbar">
       <div class="options">
-        <div class="option">
+        <div class="option" @click="goStore">
           <Icon icon="iconoir:shop-window" />
           <div class="text">进店</div>
         </div>
-        <div class="option">
+        <div class="option" @click="goChat">
           <Icon icon="icon-park-outline:message-emoji" />
           <div class="text">客服</div>
         </div>
-        <div class="option">
+        <div class="option cart-icon" @click="router.push('/shop/cart')">
           <Icon icon="icon-park-outline:shopping" />
+          <span class="cart-badge" v-if="cartCount">{{ cartCount > 99 ? '99+' : cartCount }}</span>
           <div class="text">购物车</div>
         </div>
       </div>
       <div class="btns">
-        <div class="btn">加入购物车</div>
-        <div class="btn">领券购买</div>
+        <div class="btn" @click="doAddCart($event)">加入购物车</div>
+        <div class="btn" @click="doBuy($event)">领券购买</div>
       </div>
     </div>
+    <!-- 飞入动画 -->
+    <div
+      v-for="ball in flyingBalls"
+      :key="ball.id"
+      class="flying-ball"
+      :style="{ left: ball.x + 'px', top: ball.y + 'px' }"
+    />
+    <PaymentDialog ref="payDialog" />
   </div>
 </template>
 
 <script setup lang="ts">
 import SlideHorizontal from '@/components/slide/SlideHorizontal.vue'
 import SlideItem from '@/components/slide/SlideItem.vue'
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref, computed } from 'vue'
 import { useNav } from '@/utils/hooks/useNav'
 import { _checkImgUrl } from '@/utils'
 import { useBaseStore } from '@/store/pinia'
-import { recommendedShop } from '@/api/user'
+import {
+  recommendedShop,
+  getGoodsDetail,
+  toggleFavorite,
+  addToCart,
+  getSellerGoods
+} from '@/api/user'
 import WaterfallList from '@/components/WaterfallList.vue'
 import ScrollList from '@/components/ScrollList.vue'
+import PaymentDialog from '@/components/dialog/PaymentDialog.vue'
 import { useRouter } from 'vue-router'
+import { Icon } from '@iconify/vue'
 
 defineOptions({
   name: 'GoodsDetail'
 })
 
 const router = useRouter()
-let activeIndexs = ref([])
+let activeIndexs = ref([]) as any
 const nav = useNav()
 const store = useBaseStore()
 let page = ref()
 let header = ref()
 let headerShadow = ref()
+let sectionGoods = ref()
+let sectionDetail = ref()
+let sectionRecommend = ref()
+const currentTab = ref('goods')
 
 function scroll() {
-  let d = page.value.scrollTop / 200
-  // console.log('s', d, header.value)
+  const st = page.value.scrollTop
+  let d = st / 200
   if (d > 0) {
     header.value.style.opacity = 1 - d
   } else {
     header.value.style.opacity = 1 - d
   }
   headerShadow.value.style.opacity = d
+
+  // 检测当前所在区域
+  const goodsTop = sectionGoods.value?.offsetTop || 0
+  const detailTop = sectionDetail.value?.offsetTop || 0
+  const recommendTop = sectionRecommend.value?.offsetTop || 0
+  const offset = 80 // header高度补偿
+  if (st + offset >= recommendTop) {
+    currentTab.value = 'recommend'
+  } else if (st + offset >= detailTop) {
+    currentTab.value = 'detail'
+  } else if (st + offset >= goodsTop) {
+    currentTab.value = 'goods'
+  }
+}
+
+function scrollToSection(tab: string) {
+  currentTab.value = tab
+  const el =
+    tab === 'goods'
+      ? sectionGoods.value
+      : tab === 'detail'
+        ? sectionDetail.value
+        : tab === 'recommend'
+          ? sectionRecommend.value
+          : null
+  if (el) {
+    page.value.scrollTo({ top: el.offsetTop - 50, behavior: 'smooth' })
+  }
 }
 
 const state = reactive({
   detail: {
+    id: null,
     price: '',
     name: '',
     sold: '',
     real_price: '',
-    imgs: []
-  },
+    imgs: [],
+    seller_name: '',
+    seller_avatar: '',
+    seller_id: null,
+    guarantee: '',
+    specs: '',
+    shipping_from: '',
+    shipping_fee: 0,
+    shipping_time: ''
+  } as any,
   index: 0,
+  isFavorited: false,
+  sellerGoods: [] as any[],
   listEl: null,
   fixed: false
+})
+
+const parsedSpecs = computed(() => {
+  if (!state.detail.specs) return []
+  try {
+    return JSON.parse(state.detail.specs)
+  } catch {
+    return []
+  }
 })
 
 function toggle(i) {
@@ -404,9 +403,136 @@ function toggle(i) {
   }
 }
 
-onMounted(() => {
-  console.log('r', store.routeData.imgs)
-  state.detail = store.routeData
+async function doFavorite() {
+  if (!store.isLoggedIn) {
+    nav('/login')
+    return
+  }
+  try {
+    const res: any = await toggleFavorite(state.detail.id)
+    state.isFavorited = res.data?.favorited ?? res.favorited ?? false
+  } catch {
+    /* ignore */
+  }
+}
+
+async function doShare() {
+  const url = window.location.href
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: state.detail.name, url })
+    } catch {
+      /* ignore */
+    }
+  } else {
+    try {
+      await navigator.clipboard.writeText(url)
+      alert('链接已复制')
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function goStore() {
+  if (state.detail.seller_id) {
+    router.push('/people/user-home/' + state.detail.seller_id)
+  }
+}
+
+function goChat() {
+  if (!store.isLoggedIn) {
+    nav('/login')
+    return
+  }
+  router.push({
+    path: '/shop/ai-chat',
+    query: {
+      product_id: state.detail.id,
+      product_name: state.detail.name,
+      product_cover: state.detail.cover,
+      product_info: `商品:${state.detail.name}, 价格:¥${state.detail.price}, 券后价:¥${state.detail.real_price || state.detail.price}, 已售:${state.detail.sold}件, 描述:${state.detail.description || ''}`
+    }
+  })
+}
+
+const cartCount = ref(0)
+const flyingBalls = ref([]) as any
+const payDialog = ref()
+
+async function doAddCart(e?: MouseEvent) {
+  if (!store.isLoggedIn) {
+    nav('/login')
+    return
+  }
+  try {
+    await addToCart(state.detail.id)
+    cartCount.value++
+    if (e) spawnBall(e.clientX, e.clientY)
+  } catch {
+    /* ignore */
+  }
+}
+
+function doBuy(e?: MouseEvent) {
+  if (!store.isLoggedIn) {
+    nav('/login')
+    return
+  }
+  const price = state.detail.real_price || state.detail.price
+  payDialog.value?.show(String(price))
+}
+
+function spawnBall(startX: number, startY: number) {
+  const cartEl = document.querySelector('.toolbar .option:last-child') as HTMLElement
+  if (!cartEl) return
+  const cartRect = cartEl.getBoundingClientRect()
+  const endX = cartRect.left + cartRect.width / 2
+  const endY = cartRect.top
+
+  const id = Date.now()
+  const ball = { id, x: startX, y: startY, endX, endY }
+  flyingBalls.value.push(ball)
+  // 下一帧触发动画
+  requestAnimationFrame(() => {
+    const idx = flyingBalls.value.findIndex((b: any) => b.id === id)
+    if (idx > -1) {
+      flyingBalls.value[idx].x = endX
+      flyingBalls.value[idx].y = endY
+    }
+  })
+  setTimeout(() => {
+    flyingBalls.value = flyingBalls.value.filter((b: any) => b.id !== id)
+  }, 500)
+}
+
+async function loadDetail(id: number) {
+  try {
+    const res: any = await getGoodsDetail(id)
+    const d = res.data || res
+    state.detail = Object.assign(state.detail, d)
+    state.isFavorited = d.is_favorited || d.isFavorited || false
+    // 加载卖家其他商品
+    if (d.seller_id) {
+      const sg: any = await getSellerGoods(d.seller_id, 6)
+      state.sellerGoods = (sg.data || sg).filter((g: any) => g.id !== d.id).slice(0, 4)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+onMounted(async () => {
+  const item = store.routeData
+  if (item && item.id) {
+    state.detail = Object.assign(state.detail, item)
+    loadDetail(item.id)
+  } else {
+    const id = router.currentRoute.value.query?.id
+    if (id) {
+      loadDetail(Number(id))
+    }
+  }
 })
 
 onUnmounted(() => {
@@ -1108,9 +1234,25 @@ onUnmounted(() => {
         flex-direction: column;
         font-size: 11rem;
         color: #646464;
+        position: relative;
 
         svg {
           font-size: 18rem;
+        }
+
+        .cart-badge {
+          position: absolute;
+          top: -4rem;
+          right: 50%;
+          transform: translateX(200%);
+          background: #fe2c55;
+          color: white;
+          font-size: 10rem;
+          padding: 1rem 5rem;
+          border-radius: 10rem;
+          min-width: 14rem;
+          text-align: center;
+          font-weight: 700;
         }
 
         &:first-child {
@@ -1144,6 +1286,21 @@ onUnmounted(() => {
         }
       }
     }
+  }
+
+  .flying-ball {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    width: 14rem;
+    height: 14rem;
+    border-radius: 50%;
+    background: @red;
+    transition:
+      left 0.45s cubic-bezier(0.5, -0.5, 1, 1),
+      top 0.45s cubic-bezier(0.5, 0, 0.5, 1);
+    margin-left: -7rem;
+    margin-top: -7rem;
   }
 }
 </style>

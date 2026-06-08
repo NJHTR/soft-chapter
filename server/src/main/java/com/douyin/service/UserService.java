@@ -6,7 +6,7 @@ import com.douyin.entity.User;
 public interface UserService extends IService<User> {
 
     /** 邮箱密码注册 */
-    User register(String email, String password, String nickname);
+    User register(String email, String password, String nickname, String role, String shopName);
 
     /** 邮箱密码登录 */
     String login(String email, String password);

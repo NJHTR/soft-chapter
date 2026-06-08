@@ -25,6 +25,22 @@ const routes: RouteRecordRaw[] = [
     path: '/shop/detail',
     component: () => import('@/pages/shop/GoodsDetail.vue')
   },
+  {
+    path: '/shop/publish',
+    component: () => import('@/pages/shop/Publish.vue')
+  },
+  {
+    path: '/shop/my',
+    component: () => import('@/pages/shop/MyShop.vue')
+  },
+  {
+    path: '/shop/cart',
+    component: () => import('@/pages/shop/Cart.vue')
+  },
+  {
+    path: '/shop/ai-chat',
+    component: () => import('@/pages/shop/AIChat.vue')
+  },
 
   { path: '/me', component: () => import('@/pages/me/Me.vue') },
   {
@@ -164,6 +180,10 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/message/chat',
     component: () => import('@/pages/message/chat/Chat.vue')
+  },
+  {
+    path: '/message/shop-messages',
+    component: () => import('@/pages/message/ShopMessages.vue')
   },
   {
     path: '/message/group-chat',

@@ -2,121 +2,146 @@
   <div id="Shop">
     <div class="wrapper">
       <div class="search">
-        <div class="search-input">
+        <div class="search-input" :class="{ focused: isSearching }">
           <Icon icon="tabler:search" />
-          <div class="placeholder">50元话费充值</div>
+          <input
+            v-model="searchKeyword"
+            class="placeholder"
+            placeholder="搜索商品"
+            @keyup.enter="doSearch"
+            @focus="onSearchFocus"
+          />
+          <Icon
+            v-if="searchKeyword && isSearching"
+            icon="ep:close"
+            class="clear-icon"
+            @click="clearSearch"
+          />
           <Icon color="gray" icon="lucide:camera" />
-          <div class="search-notice">搜索</div>
+          <div class="search-notice" @click="doSearch">搜索</div>
         </div>
-        <div class="more">
+        <div class="more" @click="nav('/shop/cart')">
           <Icon icon="ep:shopping-cart" />
         </div>
       </div>
     </div>
-    <ScrollList class="Scroll" :api="recommendedShop">
-      <template v-slot="{ list }">
-        <div class="top-card">
-          <div class="card">
-            <div class="options">
-              <div class="option" @click="_no">
-                <Icon icon="lets-icons:order-light" />
-                <div>我的订单</div>
-              </div>
-              <div class="option" @click="_no">
-                <Icon icon="material-symbols-light:charging-station-outline" />
-                <div>手机充值</div>
-              </div>
-              <div class="option" @click="_no">
-                <Icon icon="system-uicons:message" />
-                <div>购物消息</div>
-              </div>
-              <div class="option" @click="_no">
-                <Icon icon="fluent:location-16-regular" />
-                <div>小时达</div>
-              </div>
-              <div class="option" @click="_no">
-                <Icon icon="dashicons:money-alt" />
-                <div>退款/售后</div>
-              </div>
-              <div class="option" @click="_no">
-                <Icon icon="icon-park-outline:clothes-turtleneck" />
-                <div>潮流服饰</div>
-              </div>
-            </div>
+
+    <!-- 搜索结果 -->
+    <template v-if="isSearching">
+      <div class="search-header" v-if="searchKeyword">
+        <span>搜索 "{{ searchKeyword }}"</span>
+        <span class="cancel" @click="clearSearch">取消</span>
+      </div>
+      <ScrollList
+        v-if="searchKeyword"
+        class="Scroll"
+        :key="'search-' + searchKeyword"
+        :api="searchApi"
+      >
+        <template v-slot="{ list }">
+          <div class="empty-search" v-if="list.length === 0">
+            <span>暂无相关商品</span>
           </div>
-          <div class="card" style="margin-bottom: 5rem">
-            <div class="baiyibutie">
-              <div class="item">
-                <img src="@/assets/img/icon/shop/baiyibutie.png" alt="" />
-                <span>38节补贴</span>
-              </div>
-              <div class="item">
-                <img src="@/assets/img/icon/shop/1.webp" alt="" />
-                <span class="price">
-                  <span class="m">￥</span>
-                  <span>470</span>
-                </span>
-              </div>
-              <div class="item">
-                <img src="@/assets/img/icon/shop/2.webp" alt="" />
-                <span class="price">
-                  <span class="m">￥</span>
-                  <span>699</span>
-                </span>
-              </div>
-              <div class="item">
-                <img src="@/assets/img/icon/shop/3.png" alt="" />
-                <span class="price">
-                  <span class="m">￥</span>
-                  <span>8.8</span>
-                </span>
-              </div>
-              <div class="item">
-                <img src="@/assets/img/icon/shop/4.jpg" alt="" />
-                <span class="price">
-                  <span class="m">￥</span>
-                  <span>2.99</span>
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <WaterfallList :list="list">
-          <template v-slot="{ item }">
-            <div class="goods" @click="nav('/shop/detail', {}, item)">
-              <div class="item">
-                <img class="poster" v-lazy="_checkImgUrl('goods/' + item.cover)" />
-                <div class="bottom">
-                  <div class="desc">
-                    {{ item.name }}
-                  </div>
-                  <div class="discounts" v-if="item.discount">
-                    {{ item.discount }}
-                  </div>
-                  <div class="info">
-                    <div class="price">
-                      ￥
-                      <div class="big">{{ item.price }}</div>
+          <WaterfallList :list="list">
+            <template v-slot="{ item }">
+              <div class="goods" @click="nav('/shop/detail', {}, item)">
+                <div class="item">
+                  <img class="poster" v-lazy="_checkImgUrl(item.cover)" />
+                  <div class="bottom">
+                    <div class="desc">{{ item.name }}</div>
+                    <div class="discounts" v-if="item.discount">{{ item.discount }}</div>
+                    <div class="info">
+                      <div class="price">
+                        ￥
+                        <div class="big">{{ item.price }}</div>
+                      </div>
+                      <div class="num">已售{{ item.sold }}件</div>
                     </div>
-                    <div class="num">已售{{ item.sold }}件</div>
+                    <div class="low" v-if="item.isLowPrice">近30天低价</div>
                   </div>
-                  <div class="low" v-if="item.isLowPrice">近30天低价</div>
+                </div>
+              </div>
+            </template>
+          </WaterfallList>
+        </template>
+      </ScrollList>
+    </template>
+
+    <!-- 正常推荐 -->
+    <template v-else>
+      <ScrollList class="Scroll" :api="recommendedShop">
+        <template v-slot="{ list }">
+          <div class="top-card">
+            <div class="card">
+              <div class="options">
+                <div
+                  class="option"
+                  v-if="store.userinfo.role === 'merchant'"
+                  @click="nav('/shop/my')"
+                >
+                  <Icon icon="iconoir:shop-window" />
+                  <div>我的商品</div>
+                </div>
+                <div class="option" @click="nav('/shop/cart')">
+                  <Icon icon="lets-icons:order-light" />
+                  <div>我的订单</div>
+                </div>
+                <div class="option" @click="_no">
+                  <Icon icon="material-symbols-light:charging-station-outline" />
+                  <div>手机充值</div>
+                </div>
+                <div class="option" @click="nav('/message')">
+                  <Icon icon="system-uicons:message" />
+                  <div>购物消息</div>
+                </div>
+                <div class="option" @click="nav('/message')">
+                  <Icon icon="dashicons:money-alt" />
+                  <div>退款/售后</div>
+                </div>
+                <div class="option" @click="_no">
+                  <Icon icon="icon-park-outline:clothes-turtleneck" />
+                  <div>潮流服饰</div>
                 </div>
               </div>
             </div>
-          </template>
-        </WaterfallList>
-      </template>
-    </ScrollList>
+          </div>
+          <WaterfallList :list="list">
+            <template v-slot="{ item }">
+              <div class="goods" @click="nav('/shop/detail', {}, item)">
+                <div class="item">
+                  <img class="poster" v-lazy="_checkImgUrl(item.cover)" />
+                  <div class="bottom">
+                    <div class="desc">{{ item.name }}</div>
+                    <div class="discounts" v-if="item.discount">{{ item.discount }}</div>
+                    <div class="info">
+                      <div class="price">
+                        ￥
+                        <div class="big">{{ item.price }}</div>
+                      </div>
+                      <div class="num">已售{{ item.sold }}件</div>
+                    </div>
+                    <div class="low" v-if="item.isLowPrice">近30天低价</div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </WaterfallList>
+        </template>
+      </ScrollList>
+    </template>
+
     <BaseFooter v-bind:init-tab="2" :is-white="true" style="position: fixed; left: 0" />
   </div>
 </template>
 
 <script setup lang="tsx">
+import { ref } from 'vue'
 import { useNav } from '@/utils/hooks/useNav'
 import { _checkImgUrl, _no } from '@/utils'
+import { useBaseStore } from '@/store/pinia'
+import { Icon } from '@iconify/vue'
 import ScrollList from '@/components/ScrollList.vue'
-import { recommendedShop } from '@/api/user'
+import { recommendedShop, searchGoods } from '@/api/user'
 import WaterfallList from '@/components/WaterfallList.vue'
 
 defineOptions({
@@ -124,6 +149,31 @@ defineOptions({
 })
 
 const nav = useNav()
+const store = useBaseStore()
+
+const searchKeyword = ref('')
+const isSearching = ref(false)
+
+function searchApi(params: any) {
+  return searchGoods(searchKeyword.value, params.pageNo, params.pageSize)
+}
+
+function doSearch() {
+  const kw = searchKeyword.value.trim()
+  if (!kw) return
+  isSearching.value = true
+}
+
+function onSearchFocus() {
+  if (searchKeyword.value.trim()) {
+    isSearching.value = true
+  }
+}
+
+function clearSearch() {
+  searchKeyword.value = ''
+  isSearching.value = false
+}
 </script>
 
 <style scoped lang="less">
@@ -166,6 +216,20 @@ const nav = useNav()
 
       .placeholder {
         flex: 1;
+        border: none;
+        outline: none;
+        background: transparent;
+        font-size: 13rem;
+        color: #333;
+        &::placeholder {
+          color: #999;
+        }
+      }
+
+      .clear-icon {
+        cursor: pointer;
+        font-size: 16rem !important;
+        flex-shrink: 0;
       }
 
       img {
@@ -181,6 +245,9 @@ const nav = useNav()
         justify-content: center;
         align-items: center;
         color: white;
+        cursor: pointer;
+        flex-shrink: 0;
+        font-size: 12rem;
       }
     }
 
@@ -191,7 +258,28 @@ const nav = useNav()
       align-items: center;
       justify-content: space-between;
       font-size: 12rem;
+      cursor: pointer;
     }
+  }
+
+  .search-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 5rem 10rem;
+    font-size: 14rem;
+    color: #333;
+    .cancel {
+      color: #fe2c55;
+      cursor: pointer;
+    }
+  }
+
+  .empty-search {
+    text-align: center;
+    padding: 60rem 0;
+    color: #999;
+    font-size: 14rem;
   }
 
   .card {
@@ -218,34 +306,6 @@ const nav = useNav()
       svg {
         font-size: 30rem;
         margin-bottom: 3rem;
-      }
-    }
-  }
-
-  .baiyibutie {
-    display: flex;
-
-    .item {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      width: 25%;
-      font-size: 12rem;
-      color: gray;
-
-      img {
-        width: 80%;
-      }
-
-      .price {
-        color: red;
-        font-size: 16rem;
-        font-weight: bold;
-
-        .m {
-          font-size: 10rem;
-        }
       }
     }
   }

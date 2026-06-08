@@ -43,22 +43,48 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private static final String DEFAULT_COVER = "/images/default-cover.svg";
 
     @Override
-    public User register(String email, String password, String nickname) {
+    public User register(String email, String password, String nickname, String role, String shopName) {
         User exist = getByEmail(email);
+        String targetRole = role != null && !role.isEmpty() ? role : "user";
+
         if (exist != null) {
-            throw new RuntimeException("该邮箱已注册");
+            String existRole = exist.getRole() != null ? exist.getRole() : "user";
+            // 已经是同角色 → 拒绝
+            if (existRole.equals(targetRole)) {
+                throw new RuntimeException("该邮箱已注册");
+            }
+            // 普通用户升级为商家
+            if ("user".equals(existRole) && "merchant".equals(targetRole)) {
+                exist.setRole("merchant");
+                if (shopName != null && !shopName.isEmpty()) {
+                    exist.setNickname(shopName);
+                }
+                boolean hasPassword = exist.getPassword() != null && !exist.getPassword().isEmpty();
+                if (password != null && !password.isEmpty() && !hasPassword) {
+                    exist.setPassword(passwordEncoder.encode(password));
+                }
+                updateById(exist);
+                return exist;
+            }
+            // 商家再注册普通用户 → 拒绝（商家本身就是用户）
+            throw new RuntimeException("该邮箱已注册为商家，请直接登录");
         }
+
         User user = new User();
         user.setEmail(email);
-        // 密码可选：验证码注册可不设密码
         if (password != null && !password.isEmpty()) {
             user.setPassword(passwordEncoder.encode(password));
         }
-        user.setNickname(nickname != null ? nickname : email.split("@")[0]);
+        if (shopName != null && !shopName.isEmpty()) {
+            user.setNickname(shopName);
+        } else {
+            user.setNickname(nickname != null ? nickname : email.split("@")[0]);
+        }
         user.setUniqueId(String.valueOf(System.currentTimeMillis()).substring(5));
         user.setAvatar168Url(DEFAULT_AVATAR);
         user.setAvatar300Url(DEFAULT_AVATAR);
         user.setCoverUrl(DEFAULT_COVER);
+        user.setRole(targetRole);
         save(user);
         return user;
     }

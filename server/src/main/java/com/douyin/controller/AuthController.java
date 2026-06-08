@@ -36,6 +36,7 @@ public class AuthController {
             var result = new LoginResultDTO();
             result.setToken(token);
             result.setUserId(user.getUid());
+            result.setRole(user.getRole() != null ? user.getRole() : "user");
 
             // 记录登录设备 + 发送系统通知
             loginDeviceService.recordAndNotify(user.getUid(), user.getUniqueId(),
@@ -53,7 +54,7 @@ public class AuthController {
             if (!emailService.verify(dto.getEmail(), dto.getCode())) {
                 return Result.fail("验证码错误或已过期");
             }
-            userService.register(dto.getEmail(), dto.getPassword(), dto.getNickname());
+            userService.register(dto.getEmail(), dto.getPassword(), dto.getNickname(), dto.getRole(), dto.getShopName());
             return Result.ok();
         } catch (RuntimeException e) {
             return Result.fail(e.getMessage());

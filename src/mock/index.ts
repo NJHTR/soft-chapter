@@ -362,22 +362,5 @@ export async function startMock() {
     ]
   })
 
-  mock.onGet(/shop\/recommended/).reply(async (config) => {
-    const page = getPage2(config.params)
-
-    const r2 = await _fetch(BASE_URL + '/data/goods.md')
-    const v = await r2.json()
-    return [
-      200,
-      {
-        data: {
-          total: v.length,
-          list: v.slice(page.offset, page.limit)
-        },
-        code: 200
-      }
-    ]
-  })
-
   setTimeout(fetchData, 1000)
 }

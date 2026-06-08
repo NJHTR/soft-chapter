@@ -45,6 +45,9 @@ public class User {
     /** 邮箱 */
     private String email;
 
+    /** 角色: user=普通用户, merchant=SeekFlow商家 */
+    private String role;
+
     @JsonIgnore
     private String password;
 

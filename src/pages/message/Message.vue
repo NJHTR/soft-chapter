@@ -296,6 +296,31 @@
                     </div>
                   </div>
                 </div>
+                <!--      购物消息-->
+                <div class="message" @click="nav('/message/shop-messages')">
+                  <div class="avatar">
+                    <img src="../../assets/img/icon/msg-icon5.webp" alt="" class="head-image" />
+                  </div>
+                  <div class="content">
+                    <div class="left">
+                      <div class="name">
+                        <span>购物消息</span>
+                      </div>
+                      <div class="detail">
+                        <template v-if="data.latestShopMsg">
+                          {{ data.latestShopMsg.title }}
+                          <div class="point"></div>
+                          {{ formatSysTime(data.latestShopMsg.createTime) }}
+                        </template>
+                        <template v-else>暂无购物消息</template>
+                      </div>
+                    </div>
+                    <div class="right">
+                      <div class="badge" v-if="data.shopMsgUnread">{{ data.shopMsgUnread }}</div>
+                      <div class="not-read" v-else-if="!data.latestShopMsg"></div>
+                    </div>
+                  </div>
+                </div>
                 <!--      求更新-->
                 <div class="message" @click="nav('/me/request-update')">
                   <div class="avatar">
@@ -775,6 +800,8 @@ const data = reactive({
   suggestions: [] as any[],
   latestSystemNotice: null as any,
   sysNoticeUnread: 0,
+  latestShopMsg: null as any,
+  shopMsgUnread: 0,
   groupConversations: [] as any[],
   createGroupSelected: [] as any[],
   filteredInviteFriends: [] as any[],
@@ -843,6 +870,7 @@ onMounted(() => {
   bus.on('REFRESH_UNREAD', refreshAll)
   bus.on('READ_RECEIPT', loadConversations)
   loadSystemNoticePreview()
+  loadShopMessagePreview()
 })
 
 // keep-alive 激活时刷新
@@ -972,6 +1000,18 @@ async function loadSystemNoticePreview() {
       data.latestSystemNotice = res.data.list?.[0] || null
       data.sysNoticeUnread = res.data.unread || 0
     }
+  } catch {
+    /* ignore */
+  }
+}
+
+async function loadShopMessagePreview() {
+  try {
+    const { getShopMessages, getShopMessageUnread } = await import('@/api/user')
+    const [listRes, unreadRes] = await Promise.all([getShopMessages(), getShopMessageUnread()])
+    const list = listRes.data || listRes || []
+    data.latestShopMsg = list[0] || null
+    data.shopMsgUnread = unreadRes.data?.count || unreadRes.count || 0
   } catch {
     /* ignore */
   }

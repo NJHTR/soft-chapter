@@ -86,6 +86,9 @@ public class UserVO {
     @JsonProperty("has_password")
     private Boolean hasPassword;
 
+    /** 角色: user=普通用户, merchant=商家 */
+    private String role;
+
     /** 访问时间 (仅访客列表使用) */
     @JsonProperty("visit_time")
     private String visitTime;
@@ -133,6 +136,7 @@ public class UserVO {
         vo.videoCount = user.getVideoCount();
         vo.userAge = calcAge(user.getBirthday());
         vo.visitorDisplay = user.getVisitorDisplay() != null && user.getVisitorDisplay() == 1;
+        vo.role = user.getRole() != null ? user.getRole() : "user";
         vo.hasPassword = user.getPassword() != null && !user.getPassword().isEmpty();
         return vo;
     }

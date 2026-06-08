@@ -91,9 +91,9 @@ export const useBaseStore = defineStore('base', {
       if (r2.success) {
         const data = r2.data as any
         // 兼容 mock 返回数组、后端返回 { all, recent, eachOther } 两种格式
-        const rawAll: any[] = Array.isArray(data) ? data : (data.all || [])
-        const rawRecent: any[] = Array.isArray(data) ? [] : (data.recent || [])
-        const rawEachOther: any[] = Array.isArray(data) ? [] : (data.eachOther || [])
+        const rawAll: any[] = Array.isArray(data) ? data : data.all || []
+        const rawRecent: any[] = Array.isArray(data) ? [] : data.recent || []
+        const rawEachOther: any[] = Array.isArray(data) ? [] : data.eachOther || []
         this.friends = {
           all: rawAll.map(normalizeUser),
           recent: rawRecent.map(normalizeUser),
@@ -120,8 +120,15 @@ export const useBaseStore = defineStore('base', {
       }
       return { success: false, msg: (r.data as any)?.msg || '登录失败' }
     },
-    async register(email: string, code: string, password?: string, nickname?: string): Promise<{ success: boolean; msg?: string }> {
-      const r = await registerApi(email, code, password, nickname)
+    async register(
+      email: string,
+      code: string,
+      password?: string,
+      nickname?: string,
+      role?: string,
+      shopName?: string
+    ): Promise<{ success: boolean; msg?: string }> {
+      const r = await registerApi(email, code, password, nickname, role, shopName)
       if (r.success) {
         _notice('注册成功，请登录')
         return { success: true }
@@ -142,7 +149,13 @@ export const useBaseStore = defineStore('base', {
         province: '',
         city: '',
         gender: '',
-        school: { name: '', department: null, joinTime: null, education: null, displayType: enums.DISPLAY_TYPE.ALL },
+        school: {
+          name: '',
+          department: null,
+          joinTime: null,
+          education: null,
+          displayType: enums.DISPLAY_TYPE.ALL
+        },
         avatar_168x168: { url_list: [] },
         avatar_300x300: { url_list: [] },
         cover_url: [{ url_list: [] }],

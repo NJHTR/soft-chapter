@@ -93,6 +93,15 @@ export function searchUsers(keyword: string) {
   return request({ url: '/user/search', method: 'get', params: { keyword } })
 }
 
+// 商品搜索
+export function searchGoods(keyword: string, pageNo?: number, pageSize?: number) {
+  return request({
+    url: '/shop/search',
+    method: 'get',
+    params: { keyword, page_no: pageNo || 1, page_size: pageSize || 20 }
+  })
+}
+
 // 搜索历史
 export function getSearchHistory() {
   return request({ url: '/search-history', method: 'get' })
@@ -167,4 +176,111 @@ export function markAllNoticesRead() {
 // 登录设备管理
 export function getLoginHistory(params?: any) {
   return request({ url: '/user/login-history', method: 'get', params })
+}
+
+// ==================== 商城 ====================
+export function publishGoods(data: {
+  name: string
+  price: string | number
+  real_price?: string | number
+  cover?: string
+  imgs?: string
+  description?: string
+  discount?: string
+  guarantee?: string
+  specs?: string
+  shipping_from?: string
+  shipping_fee?: string | number
+  shipping_time?: string
+}) {
+  return request({ url: '/shop/goods', method: 'post', data })
+}
+
+export function updateGoods(
+  id: number,
+  data: {
+    name?: string
+    price?: string | number
+    real_price?: string | number
+    cover?: string
+    imgs?: string
+    description?: string
+    discount?: string
+    status?: number
+    guarantee?: string
+    specs?: string
+    shipping_from?: string
+    shipping_fee?: string | number
+    shipping_time?: string
+  }
+) {
+  return request({ url: `/shop/goods/${id}`, method: 'put', data })
+}
+
+export function deleteGoods(id: number) {
+  return request({ url: `/shop/goods/${id}`, method: 'delete' })
+}
+
+export function getMyGoods(params?: any) {
+  return request({ url: '/shop/my-goods', method: 'get', params })
+}
+
+export function getGoodsDetail(id: number) {
+  return request({ url: `/shop/detail/${id}`, method: 'get' })
+}
+
+// 收藏
+export function toggleFavorite(goodsId: number) {
+  return request({ url: `/shop/favorite/${goodsId}`, method: 'post' })
+}
+
+export function getFavorites() {
+  return request({ url: '/shop/favorites', method: 'get' })
+}
+
+// 购物车
+export function addToCart(goodsId: number, quantity?: number) {
+  return request({
+    url: '/shop/cart',
+    method: 'post',
+    data: { goods_id: goodsId, quantity: quantity || 1 }
+  })
+}
+
+export function getCart() {
+  return request({ url: '/shop/cart', method: 'get' })
+}
+
+export function removeFromCart(cartId: number) {
+  return request({ url: `/shop/cart/${cartId}`, method: 'delete' })
+}
+
+export function updateCartQuantity(cartId: number, quantity: number) {
+  return request({ url: `/shop/cart/${cartId}`, method: 'put', data: { quantity } })
+}
+
+// 卖家其他商品
+export function getSellerGoods(sellerId: number, limit?: number) {
+  return request({
+    url: `/shop/seller/${sellerId}/goods`,
+    method: 'get',
+    params: { limit: limit || 10 }
+  })
+}
+
+// 商城消息
+export function getShopMessages() {
+  return request({ url: '/shop-message/list', method: 'get' })
+}
+
+export function getShopMessageUnread() {
+  return request({ url: '/shop-message/unread', method: 'get' })
+}
+
+export function markShopMessageRead(id: number) {
+  return request({ url: `/shop-message/read/${id}`, method: 'put' })
+}
+
+export function markAllShopMessagesRead() {
+  return request({ url: '/shop-message/read-all', method: 'put' })
 }

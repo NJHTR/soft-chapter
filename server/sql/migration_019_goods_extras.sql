@@ -1,0 +1,27 @@
+-- 商品扩展字段 + 收藏 + 购物车
+ALTER TABLE t_goods
+    ADD COLUMN guarantee VARCHAR(500) DEFAULT '' COMMENT '保障信息',
+    ADD COLUMN specs TEXT COMMENT '规格参数 JSON',
+    ADD COLUMN shipping_from VARCHAR(200) DEFAULT '' COMMENT '发货地',
+    ADD COLUMN shipping_fee DECIMAL(10,2) DEFAULT 0 COMMENT '运费',
+    ADD COLUMN shipping_time VARCHAR(100) DEFAULT '' COMMENT '发货时间描述';
+
+-- 商品收藏
+CREATE TABLE IF NOT EXISTS t_favorite_goods (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    goods_id BIGINT NOT NULL COMMENT '商品ID',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_goods (user_id, goods_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品收藏';
+
+-- 购物车
+CREATE TABLE IF NOT EXISTS t_cart (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    goods_id BIGINT NOT NULL COMMENT '商品ID',
+    quantity INT DEFAULT 1 COMMENT '数量',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_goods (user_id, goods_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='购物车';

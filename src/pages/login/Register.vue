@@ -7,30 +7,61 @@
     </BaseHeader>
     <div class="content">
       <div class="desc">
-        <div class="title">注册SeekFlow账号</div>
-        <div class="sub-title">注册后即可登录看朋友内容</div>
+        <div class="title">{{ isMerchantMode ? '注册SeekFlow商家' : '注册SeekFlow账号' }}</div>
+        <div class="sub-title">
+          {{ isMerchantMode ? '注册商家账号，开启您的店铺' : '注册后即可登录看朋友内容' }}
+        </div>
       </div>
 
-      <div class="input-number">
+      <div class="input-number" v-if="isMerchantMode">
+        <div class="right flex1">
+          <input v-model="shopName" type="text" placeholder="请输入店铺名称" />
+        </div>
+      </div>
+      <div class="input-number" :class="{ mt1r: isMerchantMode }">
         <div class="right flex1">
           <input v-model="email" type="text" placeholder="请输入邮箱地址" />
         </div>
+        <div class="send-code" v-if="!codeSent" @click="sendCode">发送验证码</div>
       </div>
       <div class="input-number mt1r" v-if="codeSent">
         <div class="right flex1">
           <input v-model="code" type="text" placeholder="请输入6位验证码" maxlength="6" />
         </div>
-        <div class="send-code" v-if="!countdown" @click="sendCode">发送</div>
+        <div class="send-code" v-if="!countdown" @click="sendCode">重新发送</div>
         <div class="send-code disabled" v-else>{{ countdown }}s</div>
       </div>
-      <div class="input-number mt1r">
+      <div class="input-number mt1r" v-if="!isMerchantMode">
         <div class="right flex1">
           <input v-model="nickname" type="text" placeholder="请输入昵称（选填）" />
         </div>
       </div>
       <div class="input-number mt1r">
         <div class="right flex1">
-          <input v-model="password" type="password" autocomplete="new-password" placeholder="请设置密码（选填，后续可在设置中补充）" />
+          <input
+            v-model="password"
+            type="password"
+            autocomplete="new-password"
+            placeholder="请设置密码（选填，后续可在设置中补充）"
+          />
+        </div>
+      </div>
+
+      <div class="role-select mt1r" v-if="!isMerchantMode">
+        <div class="role-label">选择账号类型</div>
+        <div class="role-options">
+          <div class="role-card" :class="{ active: role === 'user' }" @click="role = 'user'">
+            <Icon icon="ph:user-light" />
+            <span>普通用户</span>
+          </div>
+          <div
+            class="role-card"
+            :class="{ active: role === 'merchant' }"
+            @click="role = 'merchant'"
+          >
+            <Icon icon="icon-park-outline:shop-window" />
+            <span>SeekFlow商家</span>
+          </div>
         </div>
       </div>
 
@@ -39,21 +70,37 @@
         <div class="left"><Check v-model="isAgree" /></div>
         <div class="right">
           已阅读并同意
-          <span class="link" @click="$router.push('/service-protocol', { type: '&quot;SeekFlow&quot;用户服务协议' })">用户协议</span>
+          <span
+            class="link"
+            @click="$router.push('/service-protocol', { type: '&quot;SeekFlow&quot;用户服务协议' })"
+            >用户协议</span
+          >
           和
-          <span class="link" @click="$router.push('/service-protocol', { type: '&quot;SeekFlow&quot;隐私政策' })">隐私政策</span>
+          <span
+            class="link"
+            @click="$router.push('/service-protocol', { type: '&quot;SeekFlow&quot;隐私政策' })"
+            >隐私政策</span
+          >
           ，同时登录并使用SeekFlow火山版（原"火山小视频"）和SeekFlow
         </div>
       </div>
 
       <div class="notice" v-if="notice">{{ notice }}</div>
 
-      <dy-button type="primary" :loading="loading" :active="false" :disabled="!canRegister" @click="doRegister">
+      <dy-button
+        type="primary"
+        :loading="loading"
+        :active="false"
+        :disabled="!canRegister"
+        @click="doRegister"
+      >
         {{ loading ? '注册中...' : '注册' }}
       </dy-button>
 
       <div class="options">
-        <span>已有账号？<span class="link" @click="$router.push('/login/password')">去登录</span></span>
+        <span
+          >已有账号？<span class="link" @click="$router.push('/login/password')">去登录</span></span
+        >
       </div>
     </div>
   </div>
@@ -62,15 +109,19 @@
 import Check from '../../components/Check.vue'
 import Tooltip from './components/Tooltip.vue'
 import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { register, sendEmailCode } from '@/api/auth'
 import { useBaseStore } from '@/store/pinia'
+import { Icon } from '@iconify/vue'
 
 defineOptions({ name: 'Register' })
 
 const router = useRouter()
+const route = useRoute()
 const store = useBaseStore()
 
+const isMerchantMode = ref(route.query.role === 'merchant')
+const shopName = ref('')
 const email = ref('')
 const code = ref('')
 const password = ref('')
@@ -82,9 +133,12 @@ const showAnim = ref(false)
 const showTooltip = ref(false)
 const codeSent = ref(false)
 const countdown = ref(0)
+const role = ref(isMerchantMode.value ? 'merchant' : 'user')
 
 const canRegister = computed(() => {
-  return isAgree.value && email.value.includes('@') && code.value.length >= 4
+  const base = isAgree.value && email.value.includes('@') && code.value.length >= 4
+  if (isMerchantMode.value) return base && shopName.value.trim().length > 0
+  return base
 })
 
 async function startCountdown() {
@@ -116,7 +170,14 @@ async function doRegister() {
   loading.value = true
   notice.value = ''
   try {
-    const res = await register(email.value, code.value, password.value || undefined, nickname.value || undefined)
+    const res = await register(
+      email.value,
+      code.value,
+      password.value || undefined,
+      nickname.value || undefined,
+      role.value,
+      shopName.value || undefined
+    )
     if (res.success) {
       router.replace('/login/password')
     } else {
@@ -133,32 +194,124 @@ async function doRegister() {
 @import 'Base.less';
 
 .Register {
-  position: fixed; left: 0; right: 0; bottom: 0; top: 0;
-  overflow: auto; color: black; font-size: 14rem; background: white;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 0;
+  overflow: auto;
+  color: black;
+  font-size: 14rem;
+  background: white;
 
   .content {
     padding: 60rem 30rem;
-    .desc { margin-bottom: 60rem; margin-top: 120rem; display: flex; align-items: center; flex-direction: column;
-      .title { margin-bottom: 20rem; font-size: 20rem; }
-      .sub-title { font-size: 12rem; color: var(--second-text-color); }
+    .desc {
+      margin-bottom: 60rem;
+      margin-top: 120rem;
+      display: flex;
+      align-items: center;
+      flex-direction: column;
+      .title {
+        margin-bottom: 20rem;
+        font-size: 20rem;
+      }
+      .sub-title {
+        font-size: 12rem;
+        color: var(--second-text-color);
+      }
     }
     .input-number {
-      display: flex; background: whitesmoke; padding: 15rem 10rem; font-size: 14rem; align-items: center;
-      .right.flex1 { flex: 1;
-        input { width: 100%; outline: none; border: none; background: whitesmoke; caret-color: red; }
+      display: flex;
+      background: whitesmoke;
+      padding: 15rem 10rem;
+      font-size: 14rem;
+      align-items: center;
+      .right.flex1 {
+        flex: 1;
+        input {
+          width: 100%;
+          outline: none;
+          border: none;
+          background: whitesmoke;
+          caret-color: red;
+        }
       }
       .send-code {
-        flex-shrink: 0; padding: 5rem 12rem; font-size: 13rem; color: var(--primary-btn-color);
-        &.disabled { color: var(--second-text-color); }
+        flex-shrink: 0;
+        padding: 5rem 12rem;
+        font-size: 13rem;
+        color: var(--primary-btn-color);
+        &.disabled {
+          color: var(--second-text-color);
+        }
       }
     }
-    .mt1r { margin-top: 1rem; }
-    .button { width: 100%; margin-bottom: 5rem; }
-    .protocol { position: relative; color: gray; margin-top: 20rem; font-size: 12rem; display: flex;
-      .left { padding-top: 1rem; margin-right: 5rem; }
+    .mt1r {
+      margin-top: 1rem;
     }
-    .options { position: relative; font-size: 14rem; display: flex; justify-content: center; margin-top: 15rem; }
-    .notice { color: #ff4d4f; font-size: 13rem; margin-top: 10rem; }
+    .button {
+      width: 100%;
+      margin-bottom: 5rem;
+    }
+    .protocol {
+      position: relative;
+      color: gray;
+      margin-top: 20rem;
+      font-size: 12rem;
+      display: flex;
+      .left {
+        padding-top: 1rem;
+        margin-right: 5rem;
+      }
+    }
+    .options {
+      position: relative;
+      font-size: 14rem;
+      display: flex;
+      justify-content: center;
+      margin-top: 15rem;
+    }
+    .notice {
+      color: #ff4d4f;
+      font-size: 13rem;
+      margin-top: 10rem;
+    }
+    .role-select {
+      margin-top: 15rem;
+      .role-label {
+        font-size: 13rem;
+        color: var(--second-text-color);
+        margin-bottom: 8rem;
+      }
+      .role-options {
+        display: flex;
+        gap: 10rem;
+        .role-card {
+          flex: 1;
+          padding: 12rem;
+          border-radius: 10rem;
+          border: 2rem solid #eee;
+          text-align: center;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6rem;
+          font-size: 13rem;
+          color: #666;
+          transition: all 0.2s;
+          svg {
+            font-size: 24rem;
+          }
+          &.active {
+            border-color: #fe2c55;
+            color: #fe2c55;
+            background: rgba(254, 44, 85, 0.04);
+          }
+        }
+      }
+    }
   }
 }
 </style>
