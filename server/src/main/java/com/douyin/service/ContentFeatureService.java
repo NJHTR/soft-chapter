@@ -61,28 +61,60 @@ public class ContentFeatureService extends ServiceImpl<VideoContentMapper, Video
         });
     }
 
-    /** 同步调用 Python 脚本提取特征 */
+    /** 同步调用 Python 脚本提取特征 (支持 video/image/text) */
     public void extractFeatures(Video video) throws Exception {
         String pythonDir = findPythonDir();
         String script = pythonDir + "/extract_video_features.py";
         String python = findPython(pythonDir);
+        String type = video.getType();
 
-        List<String> cmd = new ArrayList<>(Arrays.asList(
-                python, script,
-                "--video-url", video.getVideoUrl(),
-                "--video-id", String.valueOf(video.getId()),
-                "--api-base", "http://localhost:9191"
-        ));
+        String mode;
+        List<String> cmd;
+
+        if ("image".equals(type)) {
+            mode = "image";
+            String imageUrlsJson = video.getImageUrls();
+            if (imageUrlsJson == null || imageUrlsJson.isEmpty()) {
+                // 单图: videoUrl 即图片地址
+                imageUrlsJson = "[\"" + video.getVideoUrl() + "\"]";
+            }
+            cmd = new ArrayList<>(Arrays.asList(
+                    python, script,
+                    "--mode", mode,
+                    "--image-urls", imageUrlsJson,
+                    "--video-id", String.valueOf(video.getId()),
+                    "--api-base", "http://localhost:9191"
+            ));
+        } else if ("text".equals(type)) {
+            mode = "text";
+            cmd = new ArrayList<>(Arrays.asList(
+                    python, script,
+                    "--mode", mode,
+                    "--video-id", String.valueOf(video.getId()),
+                    "--api-base", "http://localhost:9191"
+            ));
+        } else {
+            // 默认 video 模式
+            mode = "video";
+            cmd = new ArrayList<>(Arrays.asList(
+                    python, script,
+                    "--mode", mode,
+                    "--video-url", video.getVideoUrl(),
+                    "--video-id", String.valueOf(video.getId()),
+                    "--api-base", "http://localhost:9191"
+            ));
+        }
+
         if (video.getDesc() != null && !video.getDesc().isEmpty()) {
             cmd.add("--desc");
             cmd.add(video.getDesc());
         }
-        if (video.getMusicTitle() != null && !video.getMusicTitle().isEmpty()) {
+        if (video.getMusicTitle() != null && !video.getMusicTitle().isEmpty() && !"text".equals(type)) {
             cmd.add("--music-title");
             cmd.add(video.getMusicTitle());
         }
 
-        log.info("启动特征提取: videoId={} dir={} python={}", video.getId(), pythonDir, python);
+        log.info("启动特征提取: mode={} videoId={} dir={} python={}", mode, video.getId(), pythonDir, python);
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.directory(new java.io.File(pythonDir));
         pb.redirectErrorStream(true);
@@ -99,7 +131,7 @@ public class ContentFeatureService extends ServiceImpl<VideoContentMapper, Video
             }
         }
         int exitCode = process.waitFor();
-        log.info("特征提取完成: videoId={} exitCode={}", video.getId(), exitCode);
+        log.info("特征提取完成: mode={} videoId={} exitCode={}", mode, video.getId(), exitCode);
     }
 
     /** 定位 python 目录，尝试多种路径 */

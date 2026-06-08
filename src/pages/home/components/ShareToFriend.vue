@@ -79,14 +79,18 @@
         </div>
 
         <div class="chat-list">
-          <div class="chat-item" :key="i" v-for="(item, i) in localFriends">
+          <div class="chat-item" :key="i" v-for="(item, i) in localGroups">
             <img class="left" v-lazy="_checkImgUrl(item.avatar)" alt="" />
             <div class="right">
               <div class="title">
-                <div class="name">{{ text }}</div>
-                <div class="num">(3)</div>
+                <div class="name">
+                  {{
+                    item.name && item.name.length > 20 ? item.name.substr(0, 20) + '...' : item.name
+                  }}
+                </div>
+                <div class="num">({{ item.member_count || 1 }})</div>
               </div>
-              <dy-button :type="item.shared ? 'dark' : 'primary'" @click="item.shared = true">
+              <dy-button :type="item.shared ? 'dark' : 'primary'" @click="shareToGroup(item)">
                 {{ item.shared ? '已' : '' }}分享
               </dy-button>
             </div>
@@ -102,6 +106,7 @@ import { mapState } from 'pinia'
 import Search from '../../../components/Search'
 import { useBaseStore } from '@/store/pinia'
 import { _checkImgUrl, cloneDeep } from '@/utils'
+import { getGroupList } from '@/api/message'
 /*
 分享给朋友
 * */
@@ -131,7 +136,8 @@ export default {
       text: 'AAAAAAA、BBBBBBBB、CCCCCCCCCCCCC',
       localFriends: [],
       searchResult: [],
-      searchKey: ''
+      searchKey: '',
+      localGroups: []
     }
   },
   watch: {
@@ -150,6 +156,7 @@ export default {
       if (newVal) {
         this.localFriends = cloneDeep(this.friends.all)
         this.localFriends.map((v) => (v.shared = false))
+        this.loadGroups()
       } else {
         this.searchKey = ''
         this.height = '70vh'
@@ -167,6 +174,20 @@ export default {
   created() {},
   methods: {
     _checkImgUrl,
+    async loadGroups() {
+      try {
+        const res = await getGroupList()
+        if (res.success && res.data) {
+          this.localGroups = (res.data || []).map((g) => ({ ...g, shared: false }))
+        }
+      } catch {
+        this.localGroups = []
+      }
+    },
+    shareToGroup(item) {
+      item.shared = true
+      this.$emit('shareToGroup', item)
+    },
     handleClick() {
       this.isShowRightText = true
       this.height = 'calc(var(--vh, 1vh) * 100)'

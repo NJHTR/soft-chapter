@@ -166,6 +166,14 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/message/chat/Chat.vue')
   },
   {
+    path: '/message/group-chat',
+    component: () => import('@/pages/message/chat/GroupChat.vue')
+  },
+  {
+    path: '/message/group-chat/detail',
+    component: () => import('@/pages/message/chat/GroupChatDetail.vue')
+  },
+  {
     path: '/message/chat/detail',
     component: () => import('@/pages/message/chat/ChatDetail.vue')
   },

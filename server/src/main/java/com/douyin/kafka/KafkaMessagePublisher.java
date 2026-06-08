@@ -1,6 +1,7 @@
 package com.douyin.kafka;
 
 import com.douyin.kafka.dto.ChatMessageEvent;
+import com.douyin.kafka.dto.GroupMessageEvent;
 import com.douyin.kafka.dto.NotificationEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -34,6 +35,23 @@ public class KafkaMessagePublisher implements MessagePublisher {
                     } else {
                         log.info("[KAFKA-PUB] chat send OK: from={} to={} offset={}",
                                 event.getFromUserId(), event.getToUserId(),
+                                result != null ? result.getRecordMetadata().offset() : -1);
+                    }
+                });
+    }
+
+    @Override
+    public void publishGroupChat(GroupMessageEvent event) {
+        log.info("[KAFKA-PUB] send group chat: group={} from={}", event.getGroupId(), event.getFromUserId());
+        kafkaTemplate.send(KafkaTopicConfig.TOPIC_GROUP_MESSAGE,
+                String.valueOf(event.getGroupId()), event)
+                .whenComplete((result, ex) -> {
+                    if (ex != null) {
+                        log.error("[KAFKA-PUB] group chat send FAILED: group={} from={} error={}",
+                                event.getGroupId(), event.getFromUserId(), ex.getMessage(), ex);
+                    } else {
+                        log.info("[KAFKA-PUB] group chat send OK: group={} from={} offset={}",
+                                event.getGroupId(), event.getFromUserId(),
                                 result != null ? result.getRecordMetadata().offset() : -1);
                     }
                 });

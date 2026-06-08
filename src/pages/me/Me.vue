@@ -63,100 +63,108 @@
 
             <!-- 已登录: 正常个人信息 -->
             <template v-if="isLoggedIn">
-            <header
-              ref="header"
-              :style="{
-                backgroundImage: `url(${_checkImgUrl(userinfo.cover_url[0].url_list[0])})`
-              }"
-              @click="previewImg = _checkImgUrl(userinfo.cover_url[0].url_list[0])"
-            >
-              <div class="info">
-                <img
-                  :src="_checkImgUrl(userinfo.avatar_168x168.url_list[0])"
-                  class="avatar"
-                  @click.stop="previewImg = _checkImgUrl(userinfo.avatar_300x300.url_list[0])"
-                />
-                <div class="right">
-                  <p class="name">{{ userinfo.nickname }}</p>
-                  <div class="number mb1r">
-                    <span class="mr1r" v-if="userinfo.is_private">私密账号</span>
-                    <span>SeekFlow号：{{ _getUserDouyinId({ author: userinfo }) }}</span>
+              <header
+                ref="header"
+                :style="{
+                  backgroundImage: `url(${_checkImgUrl(userinfo.cover_url[0].url_list[0])})`
+                }"
+                @click="previewImg = _checkImgUrl(userinfo.cover_url[0].url_list[0])"
+              >
+                <div class="info">
+                  <img
+                    :src="_checkImgUrl(userinfo.avatar_168x168.url_list[0])"
+                    class="avatar"
+                    @click.stop="previewImg = _checkImgUrl(userinfo.avatar_300x300.url_list[0])"
+                  />
+                  <div class="right">
+                    <p class="name">{{ userinfo.nickname }}</p>
+                    <div class="number mb1r">
+                      <span class="mr1r" v-if="userinfo.is_private">私密账号</span>
+                      <span>SeekFlow号：{{ _getUserDouyinId({ author: userinfo }) }}</span>
+                      <img
+                        src="../../assets/img/icon/me/qrcode-gray.png"
+                        alt=""
+                        @click.stop="$nav('/me/my-card')"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </header>
+              <div class="detail">
+                <div class="head">
+                  <div class="heat">
+                    <div class="text" @click="isShowStarCount = true">
+                      <span class="num">{{ _formatNumber(userinfo.total_favorited) }}</span>
+                      <span>获赞</span>
+                    </div>
+                    <div class="text" @click="$nav('/people/follow-and-fans', { type: 3 })">
+                      <span class="num">{{ _formatNumber(userinfo.mutual_count ?? 0) }}</span>
+                      <span>互关</span>
+                    </div>
+                    <div class="text" @click="$nav('/people/follow-and-fans', { type: 0 })">
+                      <span class="num">{{ _formatNumber(userinfo.following_count) }}</span>
+                      <span>关注</span>
+                    </div>
+                    <div class="text" @click="$nav('/people/follow-and-fans', { type: 1 })">
+                      <span class="num">{{ _formatNumber(userinfo.follower_count) }}</span>
+                      <span>粉丝</span>
+                    </div>
+                    <div class="text" @click="$nav('/people/follow-and-fans', { type: 2 })">
+                      <span class="num">{{ _formatNumber(userinfo.friend_count ?? 0) }}</span>
+                      <span>朋友</span>
+                    </div>
+                  </div>
+                  <div class="button" @click="$nav('/me/edit-userinfo')">编辑资料</div>
+                </div>
+                <div class="signature" @click="$nav('/me/edit-userinfo-item', { type: 3 })">
+                  <template v-if="!userinfo.signature">
+                    <span>点击添加介绍，让大家认识你...</span>
+                    <img src="../../assets/img/icon/me/write-gray.png" alt="" />
+                  </template>
+                  <div v-else class="text" v-html="userinfo.signature"></div>
+                </div>
+                <div class="more" @click="$nav('/me/edit-userinfo')">
+                  <div class="age item" v-if="userinfo.user_age > 0">
                     <img
-                      src="../../assets/img/icon/me/qrcode-gray.png"
+                      v-if="userinfo.gender == 2"
+                      src="../../assets/img/icon/me/woman.png"
                       alt=""
-                      @click.stop="$nav('/me/my-card')"
                     />
+                    <img
+                      v-if="userinfo.gender == 1"
+                      src="../../assets/img/icon/me/man.png"
+                      alt=""
+                    />
+                    <span>{{ userinfo.user_age }}岁</span>
+                  </div>
+                  <div class="item" v-if="userinfo.province || userinfo.city">
+                    {{ userinfo.province }}
+                    <template v-if="userinfo.province && userinfo.city"> -</template>
+                    {{ userinfo.city }}
+                  </div>
+                  <div class="item" v-if="userinfo.school?.name">
+                    {{ userinfo.school.name }}
+                  </div>
+                </div>
+                <div class="other">
+                  <div class="item" @click="_no">
+                    <Icon icon="iconamoon:shopping-card-light" />
+                    <span>SeekFlow商城</span>
+                  </div>
+                  <div class="item" @click="$nav('/me/my-music')">
+                    <Icon icon="iconamoon:music-2-light" />
+                    <span>我的音乐</span>
+                  </div>
+                  <div class="item" @click="$nav('/message/joined-group-chat')">
+                    <Icon icon="streamline:chat-two-bubbles-oval" />
+                    <span>我的群聊</span>
+                  </div>
+                  <div class="item" @click="_no">
+                    <Icon icon="iconamoon:shopping-card-light" />
+                    <span>查看更多</span>
                   </div>
                 </div>
               </div>
-            </header>
-            <div class="detail">
-              <div class="head">
-                <div class="heat">
-                  <div class="text" @click="isShowStarCount = true">
-                    <span class="num">{{ _formatNumber(userinfo.total_favorited) }}</span>
-                    <span>获赞</span>
-                  </div>
-                  <div class="text" @click="$nav('/people/follow-and-fans', { type: 3 })">
-                    <span class="num">{{ _formatNumber(userinfo.mutual_count ?? 0) }}</span>
-                    <span>互关</span>
-                  </div>
-                  <div class="text" @click="$nav('/people/follow-and-fans', { type: 0 })">
-                    <span class="num">{{ _formatNumber(userinfo.following_count) }}</span>
-                    <span>关注</span>
-                  </div>
-                  <div class="text" @click="$nav('/people/follow-and-fans', { type: 1 })">
-                    <span class="num">{{ _formatNumber(userinfo.follower_count) }}</span>
-                    <span>粉丝</span>
-                  </div>
-                  <div class="text" @click="$nav('/people/follow-and-fans', { type: 2 })">
-                    <span class="num">{{ _formatNumber(userinfo.friend_count ?? 0) }}</span>
-                    <span>朋友</span>
-                  </div>
-                </div>
-                <div class="button" @click="$nav('/me/edit-userinfo')">编辑资料</div>
-              </div>
-              <div class="signature" @click="$nav('/me/edit-userinfo-item', { type: 3 })">
-                <template v-if="!userinfo.signature">
-                  <span>点击添加介绍，让大家认识你...</span>
-                  <img src="../../assets/img/icon/me/write-gray.png" alt="" />
-                </template>
-                <div v-else class="text" v-html="userinfo.signature"></div>
-              </div>
-              <div class="more" @click="$nav('/me/edit-userinfo')">
-                <div class="age item" v-if="userinfo.user_age > 0">
-                  <img v-if="userinfo.gender == 2" src="../../assets/img/icon/me/woman.png" alt="" />
-                  <img v-if="userinfo.gender == 1" src="../../assets/img/icon/me/man.png" alt="" />
-                  <span>{{ userinfo.user_age }}岁</span>
-                </div>
-                <div class="item" v-if="userinfo.province || userinfo.city">
-                  {{ userinfo.province }}
-                  <template v-if="userinfo.province && userinfo.city"> -</template>
-                  {{ userinfo.city }}
-                </div>
-                <div class="item" v-if="userinfo.school?.name">
-                  {{ userinfo.school.name }}
-                </div>
-              </div>
-              <div class="other">
-                <div class="item" @click="_no">
-                  <Icon icon="iconamoon:shopping-card-light" />
-                  <span>SeekFlow商城</span>
-                </div>
-                <div class="item" @click="$nav('/me/my-music')">
-                  <Icon icon="iconamoon:music-2-light" />
-                  <span>我的音乐</span>
-                </div>
-                <div class="item" @click="_no">
-                  <Icon icon="streamline:chat-two-bubbles-oval" />
-                  <span>我的群聊</span>
-                </div>
-                <div class="item" @click="_no">
-                  <Icon icon="iconamoon:shopping-card-light" />
-                  <span>查看更多</span>
-                </div>
-              </div>
-            </div>
             </template>
           </div>
           <Indicator

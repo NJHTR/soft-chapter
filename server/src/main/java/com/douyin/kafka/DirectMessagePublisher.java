@@ -4,7 +4,9 @@ import com.douyin.entity.Message;
 import com.douyin.entity.Notification;
 import com.douyin.entity.User;
 import com.douyin.kafka.dto.ChatMessageEvent;
+import com.douyin.kafka.dto.GroupMessageEvent;
 import com.douyin.kafka.dto.NotificationEvent;
+import com.douyin.service.GroupChatService;
 import com.douyin.service.MessageService;
 import com.douyin.service.UserService;
 import com.douyin.vo.UserVO;
@@ -27,13 +29,16 @@ import java.util.Map;
 public class DirectMessagePublisher implements MessagePublisher {
 
     private final MessageService messageService;
+    private final GroupChatService groupChatService;
     private final UserService userService;
     private final SessionManager sessionManager;
     private final ObjectMapper objectMapper;
 
-    public DirectMessagePublisher(MessageService messageService, UserService userService,
-                                  SessionManager sessionManager, ObjectMapper objectMapper) {
+    public DirectMessagePublisher(MessageService messageService, GroupChatService groupChatService,
+                                  UserService userService, SessionManager sessionManager,
+                                  ObjectMapper objectMapper) {
         this.messageService = messageService;
+        this.groupChatService = groupChatService;
         this.userService = userService;
         this.sessionManager = sessionManager;
         this.objectMapper = objectMapper;
@@ -59,6 +64,34 @@ public class DirectMessagePublisher implements MessagePublisher {
             sessionManager.pushBoth(event.getFromUserId(), event.getToUserId(), json);
         } catch (Exception e) {
             log.error("Direct chat push failed", e);
+        }
+    }
+
+    @Override
+    public void publishGroupChat(GroupMessageEvent event) {
+        com.douyin.entity.GroupMessage msg = groupChatService.sendGroupMessage(
+                event.getGroupId(), event.getFromUserId(),
+                event.getContent(), event.getMsgType(), event.getExtra());
+
+        try {
+            User fromUser = userService.getById(event.getFromUserId());
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("id", msg.getId());
+            resp.put("group_id", msg.getGroupId());
+            resp.put("from_user_id", msg.getFromUserId());
+            resp.put("content", msg.getContent());
+            resp.put("msg_type", msg.getMsgType());
+            resp.put("extra", msg.getExtra());
+            resp.put("create_time", msg.getCreateTime() != null ? msg.getCreateTime().toString() : null);
+            if (fromUser != null) resp.put("from_user", UserVO.from(fromUser));
+            resp.put("type", "group_message");
+            String json = objectMapper.writeValueAsString(resp);
+
+            java.util.List<Long> memberUids = groupChatService.getGroupMembers(event.getGroupId())
+                    .stream().map(com.douyin.vo.GroupMemberVO::getUserId).toList();
+            sessionManager.pushToGroupMembers(memberUids, null, json);
+        } catch (Exception e) {
+            log.error("Direct group chat push failed", e);
         }
     }
 

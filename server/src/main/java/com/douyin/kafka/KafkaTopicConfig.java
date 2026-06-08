@@ -12,6 +12,7 @@ public class KafkaTopicConfig {
 
     public static final String TOPIC_CHAT_MESSAGE = "chat-messages";
     public static final String TOPIC_NOTIFICATION = "notification-events";
+    public static final String TOPIC_GROUP_MESSAGE = "group-messages";
 
     /** 聊天消息 Topic — 3 分区，消费端并行处理 */
     @Bean
@@ -26,6 +27,15 @@ public class KafkaTopicConfig {
     @Bean
     public NewTopic notificationTopic() {
         return TopicBuilder.name(TOPIC_NOTIFICATION)
+                .partitions(3)
+                .replicas(1)
+                .build();
+    }
+
+    /** 群聊消息 Topic — 3 分区 */
+    @Bean
+    public NewTopic groupMessageTopic() {
+        return TopicBuilder.name(TOPIC_GROUP_MESSAGE)
                 .partitions(3)
                 .replicas(1)
                 .build();

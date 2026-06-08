@@ -130,8 +130,10 @@
             <Check mode="red" v-model="data.isCreateChat" />
             <span>创建群聊</span>
           </div>
-          <dy-button type="primary"
-            >{{ data.selectFriends.length > 1 ? '分别发送' : '发送' }}
+          <dy-button type="primary" @click="handleSend"
+            >{{
+              data.isCreateChat ? '创建群聊' : data.selectFriends.length > 1 ? '分别发送' : '发送'
+            }}
           </dy-button>
         </div>
       </div>
@@ -181,6 +183,7 @@
 <script setup lang="ts">
 import Check from '../../components/Check.vue'
 import { friends } from '@/api/user'
+import { createGroup } from '@/api/message'
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useNav } from '@/utils/hooks/useNav'
 import { _checkImgUrl, cloneDeep } from '@/utils'
@@ -312,6 +315,36 @@ function toggleSelect(item) {
     item.select = true
     data.selectFriends.push(item)
   }
+}
+
+async function handleSend() {
+  if (!data.selectFriends.length) return
+  if (data.isCreateChat && data.selectFriends.length > 1) {
+    // 创建群聊
+    const name =
+      data.selectFriends
+        .map((f) => f.name)
+        .join('、')
+        .slice(0, 50) + '的群聊'
+    const memberUids: string[] = data.selectFriends
+      .map((f) => String(f.id || f.uid))
+      .filter(Boolean)
+    try {
+      const res = await createGroup({ name, member_uids: memberUids })
+      if (res.success) {
+        alert('群聊创建成功')
+        nav('/message/group-chat', {
+          group_id: res.data?.id || res.data?.group_id || '',
+          name: res.data?.name || name
+        })
+      } else {
+        alert('创建失败: ' + (res.msg || ''))
+      }
+    } catch (e) {
+      alert('创建群聊失败')
+    }
+  }
+  // TODO: 分别发送逻辑
 }
 
 async function getFriends() {

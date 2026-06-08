@@ -355,14 +355,51 @@ export function _showNoticeDialog(title, subtitle, subtitleColor, cancelCb, canc
   app.mount(parent)
 }
 
-export function _notice(val) {
+// msg_type → 通知展示文案
+const MSG_TYPE_LABEL: Record<number, string> = {
+  2: '[图片]',
+  3: '[语音]',
+  4: '[视频]',
+  9: '[视频]'
+}
+
+export function _notice(
+  val: string | { title?: string; content: string; avatar?: string; msgType?: number }
+) {
   const div = document.createElement('div')
   div.classList.add('global-notice')
-  div.textContent = val
+
+  if (typeof val === 'string') {
+    div.classList.add('simple')
+    div.innerHTML = `<span class="notice-text">${val}</span>`
+  } else {
+    div.classList.add('card')
+    const displayContent = val.msgType ? MSG_TYPE_LABEL[val.msgType] || val.content : val.content
+    const avatarHtml = val.avatar
+      ? `<img class="notice-avatar" src="${val.avatar}" onerror="this.style.display='none'" />`
+      : ''
+    const titleHtml = val.title ? `<span class="notice-title">${val.title}</span>` : ''
+    div.innerHTML = `
+      <div class="notice-left">
+        ${titleHtml}
+        <span class="notice-content">${displayContent}</span>
+      </div>
+      ${avatarHtml}
+    `
+  }
+
   document.body.append(div)
+  requestAnimationFrame(() => {
+    div.classList.add('show')
+  })
   setTimeout(() => {
-    document.body.removeChild(div)
-  }, 1000)
+    div.classList.add('hide')
+    div.addEventListener('animationend', (e) => {
+      if (e.animationName === 'notice-slide-out' && div.parentNode) {
+        document.body.removeChild(div)
+      }
+    })
+  }, 2000)
 }
 
 export function _no() {
@@ -419,24 +456,10 @@ export function slideItemRender(props) {
       //   node = <SlideAlbum isPlay={play} index={index} position={{ uniqueId, index }} {...props} />
       //   break
       case 'image':
-        node = (
-          <ImageSlide
-            isPlay={play}
-            item={item}
-            position={{ uniqueId, index }}
-            {...props}
-          />
-        )
+        node = <ImageSlide isPlay={play} item={item} position={{ uniqueId, index }} {...props} />
         break
       case 'text':
-        node = (
-          <TextSlide
-            isPlay={play}
-            item={item}
-            position={{ uniqueId, index }}
-            {...props}
-          />
-        )
+        node = <TextSlide isPlay={play} item={item} position={{ uniqueId, index }} {...props} />
         break
       case 'user':
         node = <SlideUser {...props} />

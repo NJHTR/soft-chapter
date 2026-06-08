@@ -20,7 +20,7 @@
         v-for="(urlItem, index) in item.video.play_addr.url_list"
         :key="index"
         :src="urlItem"
-        type="video/mp4"
+        :type="(urlItem || '').split('?')[0].endsWith('.webm') ? 'video/webm' : 'video/mp4'"
       />
       <p>您的浏览器不支持 video 标签。</p>
     </video>
@@ -38,7 +38,11 @@
           </template>
           <transition-group name="comment-status" tag="div" class="loveds">
             <div class="type-loved" :key="i" v-for="i in state.test">
-              <img :src="store.userinfo?.avatar_168x168?.url_list?.[0] || ''" alt="" class="avatar" />
+              <img
+                :src="store.userinfo?.avatar_168x168?.url_list?.[0] || ''"
+                alt=""
+                class="avatar"
+              />
               <img src="../../assets/img/icon/love.svg" alt="" class="loved" />
             </div>
           </transition-group>
@@ -162,8 +166,8 @@ let state = reactive({
 let watchSec = 0
 let watchTimer: any = null
 let watchReported = false
-const videoId = computed(() => props.item?.aweme_id ? String(props.item.aweme_id) : '')
-const authorUserId = computed(() => props.item?.author?.uid ? String(props.item.author.uid) : '')
+const videoId = computed(() => (props.item?.aweme_id ? String(props.item.aweme_id) : ''))
+const authorUserId = computed(() => (props.item?.author?.uid ? String(props.item.author.uid) : ''))
 const videoDuration = computed(() => state.duration || 0)
 
 function tickWatch() {
@@ -232,22 +236,30 @@ async function doDoubleTapLike() {
   likingDoubleTap = true
   const prevLoved = props.item.is_loved
   const prevCount = props.item.statistics.digg_count
+  // eslint-disable-next-line vue/no-mutating-props
   props.item.is_loved = true
+  // eslint-disable-next-line vue/no-mutating-props
   props.item.statistics.digg_count += 1
 
   try {
     const res = await toggleVideoLike(awemeId)
     if (res.success) {
+      // eslint-disable-next-line vue/no-mutating-props
       props.item.is_loved = res.data.isLoved
+      // eslint-disable-next-line vue/no-mutating-props
       props.item.statistics.digg_count = res.data.likeCount
       bus.emit(EVENT_KEY.UPDATE_ITEM, { position: props.position, item: { ...props.item } })
       bus.emit(EVENT_KEY.LIKE_UPDATED)
     } else {
+      // eslint-disable-next-line vue/no-mutating-props
       props.item.is_loved = prevLoved
+      // eslint-disable-next-line vue/no-mutating-props
       props.item.statistics.digg_count = prevCount
     }
   } catch {
+    // eslint-disable-next-line vue/no-mutating-props
     props.item.is_loved = prevLoved
+    // eslint-disable-next-line vue/no-mutating-props
     props.item.statistics.digg_count = prevCount
   } finally {
     likingDoubleTap = false
@@ -322,11 +334,17 @@ onMounted(() => {
     watchTimer = setInterval(tickWatch, 1000)
   })
   videoEl.addEventListener('pause', () => {
-    if (watchTimer) { clearInterval(watchTimer); watchTimer = null }
+    if (watchTimer) {
+      clearInterval(watchTimer)
+      watchTimer = null
+    }
     sendWatchProgress()
   })
   videoEl.addEventListener('ended', () => {
-    if (watchTimer) { clearInterval(watchTimer); watchTimer = null }
+    if (watchTimer) {
+      clearInterval(watchTimer)
+      watchTimer = null
+    }
     sendWatchProgress(true)
   })
 
@@ -347,7 +365,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   // console.log('unmounted')
-  if (watchTimer) { clearInterval(watchTimer); watchTimer = null }
+  if (watchTimer) {
+    clearInterval(watchTimer)
+    watchTimer = null
+  }
   sendWatchProgress()
   watchSec = 0
   bus.off(EVENT_KEY.SINGLE_CLICK_BROADCAST, click)

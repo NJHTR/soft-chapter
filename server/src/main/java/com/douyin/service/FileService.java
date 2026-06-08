@@ -23,14 +23,23 @@ public class FileService {
     @Autowired
     private com.douyin.config.MinioConfig minioConfig;
 
-    /** 上传视频 */
+    /** 上传视频 — 保留原始 Content-Type, 避免 webm→mp4 误标导致音轨丢失 */
     public String uploadVideo(MultipartFile file) throws Exception {
-        return upload(file, minioConfig.getBucketVideo(), "video/mp4");
+        String contentType = sanitizeContentType(file.getContentType(), "video/mp4");
+        return upload(file, minioConfig.getBucketVideo(), contentType);
     }
 
-    /** 上传图片 */
+    /** 上传图片 — 保留原始 Content-Type */
     public String uploadImage(MultipartFile file) throws Exception {
-        return upload(file, minioConfig.getBucketImage(), "image/jpeg");
+        String contentType = sanitizeContentType(file.getContentType(), "image/jpeg");
+        return upload(file, minioConfig.getBucketImage(), contentType);
+    }
+
+    /** 剥离 codecs 参数, 只保留基础 MIME type (video/webm;codecs=vp8 → video/webm) */
+    private String sanitizeContentType(String raw, String fallback) {
+        if (raw == null || raw.trim().isEmpty()) return fallback;
+        int semi = raw.indexOf(';');
+        return (semi > 0 ? raw.substring(0, semi).trim() : raw.trim());
     }
 
     private String upload(MultipartFile file, String bucket, String contentType) throws Exception {

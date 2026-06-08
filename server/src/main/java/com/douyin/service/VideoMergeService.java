@@ -67,7 +67,11 @@ public class VideoMergeService {
         String fadeOutStart = String.format("%.1f", Math.max(0, outDuration - 2));
         double originalVol = 1.0 - bgmVolume * 0.6;
 
-        // 3. 构建 ffmpeg 命令
+        // 3. 检测视频是否有音轨 + 视频编码格式
+        boolean videoHasAudio = probeAudioStream(videoPath);
+        String videoCodec = probeVideoCodec(videoPath);
+
+        // 4. 构建 ffmpeg 命令
         String outName = "merged_" + UUID.randomUUID() + ".mp4";
         Path musicDirPath = Path.of(musicDir);
         Files.createDirectories(musicDirPath);
@@ -85,17 +89,44 @@ public class VideoMergeService {
         cmdList.add("-i");
         cmdList.add(musicFile.toString());
         cmdList.add("-filter_complex");
-        cmdList.add(String.format(
-                "[1:a]atrim=%f,afade=t=in:st=0:d=1,afade=t=out:st=%s:d=2,volume=%f[a1];" +
-                "[0:a]volume=%f[a0];" +
-                "[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[a]",
-                bgmStartOffset, fadeOutStart, bgmVolume, originalVol));
+
+        String bgmFilter = String.format(
+                "[1:a]atrim=start=%f,afade=t=in:st=0:d=1,afade=t=out:st=%s:d=2,volume=%f[a1]",
+                bgmStartOffset, fadeOutStart, bgmVolume);
+        if (videoHasAudio) {
+            cmdList.add(bgmFilter + ";" +
+                    String.format("[0:a]volume=%f[a0];", originalVol) +
+                    "[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[a]");
+            log.info("[合成] 视频有音轨, 混音模式");
+        } else {
+            cmdList.add(bgmFilter + ";" +
+                    String.format("anullsrc=r=44100:cl=stereo,atrim=duration=%.3f,volume=%.1f[a0];",
+                            outDuration + 1, originalVol) +
+                    "[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[a]");
+            log.info("[合成] 视频无音轨, 使用静音源");
+        }
+
         cmdList.add("-map");
         cmdList.add("0:v");
         cmdList.add("-map");
         cmdList.add("[a]");
-        cmdList.add("-c:v");
-        cmdList.add("copy");
+
+        // 视频编码: h264 直接 copy, VP8/VP9/AV1 等需重编码
+        if (isMp4CompatibleCodec(videoCodec)) {
+            cmdList.add("-c:v");
+            cmdList.add("copy");
+            log.info("[合成] 视频编码 {}, 直接复制", videoCodec);
+        } else {
+            String vcodec = detectH264Encoder();
+            cmdList.add("-c:v");
+            cmdList.add(vcodec);
+            cmdList.add("-preset");
+            cmdList.add("fast");
+            cmdList.add("-crf");
+            cmdList.add("23");
+            log.info("[合成] 视频编码 {} 不兼容MP4, 重编码为 h264 ({})", videoCodec, vcodec);
+        }
+
         cmdList.add("-c:a");
         cmdList.add("aac");
         cmdList.add("-b:a");
@@ -108,27 +139,119 @@ public class VideoMergeService {
 
         String[] cmd = cmdList.toArray(new String[0]);
 
-        log.info("[合成] ffmpeg: {} trim=[{:.1f},{:.1f}] outDur={:.1f}", String.join(" ", cmd), trimStart, trimEnd, outDuration);
+        log.info("[合成] ffmpeg 启动 trim=[{},{}] outDur={}",
+                String.format("%.1f", trimStart), String.format("%.1f", trimEnd), String.format("%.1f", outDuration));
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
         Process process = pb.start();
 
+        StringBuilder ffmpegLog = new StringBuilder();
         try (var reader = new java.io.BufferedReader(
                 new java.io.InputStreamReader(process.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                log.debug("[ffmpeg] {}", line);
+                ffmpegLog.append(line).append("\n");
             }
         }
 
         int exitCode = process.waitFor();
         if (exitCode != 0 || !Files.exists(outputFile)) {
+            // 输出 ffmpeg 完整日志以排查问题
+            log.warn("[合成] ffmpeg 失败, 完整输出:\n{}", ffmpegLog);
             throw new RuntimeException("视频合成失败: exitCode=" + exitCode);
         }
 
         log.info("[合成] 完成: {} → {} (原声:{} BGM:{})",
                 videoPath, outputFile, String.format("%.0f%%", originalVol * 100), String.format("%.0f%%", bgmVolume * 100));
         return musicBaseUrl + "/" + outName;
+    }
+
+    /** 用 ffprobe 检测视频是否包含音频流 */
+    private boolean probeAudioStream(String videoPath) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "ffprobe", "-v", "error",
+                    "-select_streams", "a",
+                    "-show_entries", "stream=codec_type",
+                    "-of", "csv=p=0",
+                    videoPath
+            );
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            try (var reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(p.getInputStream()))) {
+                String line = reader.readLine();
+                p.waitFor();
+                return line != null && line.contains("audio");
+            }
+        } catch (Exception e) {
+            log.warn("[合成] ffprobe 检测音轨失败, 假定有音轨: {}", e.getMessage());
+            return true; // 兜底按有音轨处理
+        }
+    }
+
+    /** 用 ffprobe 检测视频编码格式 (如 h264, vp8, vp9, hevc) */
+    private String probeVideoCodec(String videoPath) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "ffprobe", "-v", "error",
+                    "-select_streams", "v:0",
+                    "-show_entries", "stream=codec_name",
+                    "-of", "csv=p=0",
+                    videoPath
+            );
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            try (var reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(p.getInputStream()))) {
+                String line = reader.readLine();
+                p.waitFor();
+                return line != null ? line.trim() : "unknown";
+            }
+        } catch (Exception e) {
+            log.warn("[合成] ffprobe 检测编码失败: {}", e.getMessage());
+            return "unknown";
+        }
+    }
+
+    /** MP4 容器原生支持的编码可以直接 copy, 不需要重编码 */
+    private boolean isMp4CompatibleCodec(String codec) {
+        return codec != null && (
+                codec.equals("h264") || codec.equals("avc1") ||
+                codec.equals("hevc") || codec.equals("hvc1") || codec.equals("hev1") ||
+                codec.equals("mpeg4") || codec.equals("msmpeg4") ||
+                codec.equals("mjpeg")
+        );
+    }
+
+    /**
+     * 检测可用 h264 编码器。
+     * 先用 ffmpeg 快速测试硬件编码器是否真正可用 (nvemc API 需要驱动 >=570, amf 需要 AMD 显卡),
+     * 不行就退回 libx264 软件编码。
+     */
+    private String detectH264Encoder() {
+        if (testEncoder("h264_nvenc")) return "h264_nvenc";
+        if (testEncoder("h264_amf"))  return "h264_amf";
+        return "libx264";
+    }
+
+    /** 用 2x2 纯色帧做一次快速编码测试, 确认编码器在运行时真正可用 */
+    private boolean testEncoder(String encoder) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "ffmpeg", "-y",
+                    "-f", "lavfi", "-i", "color=c=black:s=2x2:d=0.1",
+                    "-c:v", encoder,
+                    "-f", "null", "-"
+            );
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            p.getInputStream().transferTo(java.io.OutputStream.nullOutputStream());
+            int exit = p.waitFor();
+            return exit == 0;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**
@@ -157,7 +280,8 @@ public class VideoMergeService {
                 outputFile.toString()
         };
 
-        log.info("[裁剪] ffmpeg: {} ss={:.1f} t={:.1f}", String.join(" ", cmd), trimStart, outDuration);
+        log.info("[裁剪] ffmpeg: {} ss={} t={}", String.join(" ", cmd),
+                String.format("%.1f", trimStart), String.format("%.1f", outDuration));
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
         Process process = pb.start();

@@ -3,7 +3,9 @@ package com.douyin.kafka;
 import com.douyin.entity.Message;
 import com.douyin.entity.User;
 import com.douyin.kafka.dto.ChatMessageEvent;
+import com.douyin.kafka.dto.GroupMessageEvent;
 import com.douyin.kafka.dto.NotificationEvent;
+import com.douyin.service.GroupChatService;
 import com.douyin.service.MessageService;
 import com.douyin.service.UserService;
 import com.douyin.vo.UserVO;
@@ -31,13 +33,16 @@ import java.util.Map;
 public class KafkaMessageConsumer {
 
     private final MessageService messageService;
+    private final GroupChatService groupChatService;
     private final UserService userService;
     private final SessionManager sessionManager;
     private final ObjectMapper objectMapper;
 
-    public KafkaMessageConsumer(MessageService messageService, UserService userService,
-                                SessionManager sessionManager, ObjectMapper objectMapper) {
+    public KafkaMessageConsumer(MessageService messageService, GroupChatService groupChatService,
+                                UserService userService, SessionManager sessionManager,
+                                ObjectMapper objectMapper) {
         this.messageService = messageService;
+        this.groupChatService = groupChatService;
         this.userService = userService;
         this.sessionManager = sessionManager;
         this.objectMapper = objectMapper;
@@ -116,6 +121,56 @@ public class KafkaMessageConsumer {
         if (fromUser != null) {
             resp.put("from_user", UserVO.from(fromUser));
         }
+        return objectMapper.writeValueAsString(resp);
+    }
+
+    /** 消费群聊消息 — 3 个并发消费者 */
+    @KafkaListener(
+            topics = KafkaTopicConfig.TOPIC_GROUP_MESSAGE,
+            concurrency = "3",
+            containerFactory = "kafkaListenerContainerFactory")
+    public void onGroupMessage(GroupMessageEvent event, Acknowledgment ack) {
+        try {
+            log.debug("Consuming group chat: group={} from={}", event.getGroupId(), event.getFromUserId());
+
+            com.douyin.entity.GroupMessage msg = groupChatService.sendGroupMessage(
+                    event.getGroupId(),
+                    event.getFromUserId(),
+                    event.getContent(),
+                    event.getMsgType(),
+                    event.getExtra());
+
+            String json = buildGroupPushJson(msg, event);
+
+            java.util.List<Long> memberUids = groupChatService.getGroupMembers(event.getGroupId())
+                    .stream().map(com.douyin.vo.GroupMemberVO::getUserId).toList();
+            // 推送给所有群成员（含发送者，前端有 dedup 保护）
+            sessionManager.pushToGroupMembers(memberUids, null, json);
+
+            log.debug("Group chat processed: msgId={}, group={} from={}", msg.getId(),
+                    event.getGroupId(), event.getFromUserId());
+
+        } catch (Exception e) {
+            log.error("Group chat consume failed: group={} from={}", event.getGroupId(), event.getFromUserId(), e);
+        } finally {
+            ack.acknowledge();
+        }
+    }
+
+    private String buildGroupPushJson(com.douyin.entity.GroupMessage msg, GroupMessageEvent event) throws JsonProcessingException {
+        User fromUser = userService.getById(event.getFromUserId());
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("id", msg.getId());
+        resp.put("group_id", msg.getGroupId());
+        resp.put("from_user_id", msg.getFromUserId());
+        resp.put("content", msg.getContent());
+        resp.put("msg_type", msg.getMsgType());
+        resp.put("extra", msg.getExtra());
+        resp.put("create_time", msg.getCreateTime() != null ? msg.getCreateTime().toString() : null);
+        if (fromUser != null) {
+            resp.put("from_user", UserVO.from(fromUser));
+        }
+        resp.put("type", "group_message");
         return objectMapper.writeValueAsString(resp);
     }
 

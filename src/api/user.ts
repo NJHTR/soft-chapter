@@ -31,22 +31,41 @@ export function recommendedShop(params?: any, data?: any) {
 export function uploadVideo(file: File) {
   const formData = new FormData()
   formData.append('file', file)
-  return request({ url: '/upload/video', method: 'post', data: formData, headers: { 'Content-Type': 'multipart/form-data' } })
+  return request({
+    url: '/upload/video',
+    method: 'post',
+    data: formData /* let axios auto-set Content-Type with boundary */
+  })
 }
 
 export function uploadImage(file: Blob | File) {
   const formData = new FormData()
   formData.append('file', file)
-  return request({ url: '/upload/image', method: 'post', data: formData, headers: { 'Content-Type': 'multipart/form-data' } })
+  return request({
+    url: '/upload/image',
+    method: 'post',
+    data: formData /* let axios auto-set Content-Type with boundary */
+  })
 }
 
 export function uploadVoice(file: Blob | File) {
   const formData = new FormData()
   formData.append('file', file)
-  return request({ url: '/upload/voice', method: 'post', data: formData, headers: { 'Content-Type': 'multipart/form-data' } })
+  return request({
+    url: '/upload/voice',
+    method: 'post',
+    data: formData /* let axios auto-set Content-Type with boundary */
+  })
 }
 
-export function updateProfile(data: { nickname?: string; signature?: string; gender?: number; birthday?: string; province?: string; city?: string }) {
+export function updateProfile(data: {
+  nickname?: string
+  signature?: string
+  gender?: number
+  birthday?: string
+  province?: string
+  city?: string
+}) {
   return request({ url: '/user/profile', method: 'put', data })
 }
 

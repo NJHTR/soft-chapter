@@ -4,6 +4,7 @@ import com.douyin.common.Result;
 import com.douyin.service.FileService;
 import com.douyin.utils.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +15,7 @@ import java.util.Map;
 /**
  * 文件上传到 MinIO, 配置 minio.enabled=true 后生效
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/upload")
 @ConditionalOnProperty(name = "minio.enabled", havingValue = "true")
@@ -43,6 +45,7 @@ public class UploadController {
             String url = fileService.uploadVideo(file);
             return Result.ok(Map.of("url", url));
         } catch (Exception e) {
+            log.error("上传失败: {}", e.getMessage(), e);
             return Result.fail("上传失败: " + e.getMessage());
         }
     }
@@ -57,6 +60,7 @@ public class UploadController {
             String url = fileService.uploadImage(file);
             return Result.ok(Map.of("url", url));
         } catch (Exception e) {
+            log.error("上传失败: {}", e.getMessage(), e);
             return Result.fail("上传失败: " + e.getMessage());
         }
     }
@@ -71,6 +75,7 @@ public class UploadController {
             String url = fileService.uploadVideo(file);  // 音频也用 video 桶
             return Result.ok(Map.of("url", url));
         } catch (Exception e) {
+            log.error("上传失败: {}", e.getMessage(), e);
             return Result.fail("上传失败: " + e.getMessage());
         }
     }

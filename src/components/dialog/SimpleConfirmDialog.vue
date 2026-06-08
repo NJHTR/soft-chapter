@@ -65,7 +65,7 @@ const onDismiss = () => {
   .content {
     background: white;
     width: 80%;
-    border-radius: 2px;
+    border-radius: 12rem;
     box-sizing: border-box;
     padding: 15rem 20rem;
     font-size: 15rem;

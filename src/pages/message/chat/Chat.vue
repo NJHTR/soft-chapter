@@ -8,15 +8,25 @@
         </div>
         <div class="right">
           <img
-            @click="bus.emit(EVENT_KEY.SHOW_AUDIO_CALL)"
+            @click="startCall(false)"
             src="../../../assets/img/icon/message/chat/call.png"
             alt=""
           />
-          <img @click="_no" src="../../../assets/img/icon/message/chat/video-white.png" alt="" />
+          <img
+            @click="startCall(true)"
+            src="../../../assets/img/icon/message/chat/video-white.png"
+            alt=""
+          />
           <img
             src="../../../assets/img/icon/menu-white.png"
             alt=""
-            @click="nav('/message/chat/detail', { user_id: targetUserId, name: targetUserName, avatar: targetUserAvatar })"
+            @click="
+              nav('/message/chat/detail', {
+                user_id: targetUserId,
+                name: targetUserName,
+                avatar: targetUserAvatar
+              })
+            "
           />
         </div>
       </div>
@@ -31,9 +41,20 @@
       </div>
       <div class="footer">
         <!-- 隐藏的图片选择器 -->
-        <input ref="imageInput" type="file" accept="image/*" style="display:none" @change="handleImagePicked" />
+        <input
+          ref="imageInput"
+          type="file"
+          accept="image/*"
+          style="display: none"
+          @change="handleImagePicked"
+        />
         <div class="toolbar" v-if="!data.recording">
-          <img @click="pickImage()" src="../../../assets/img/icon/message/camera.png" alt="" class="camera" />
+          <img
+            @click="pickImage()"
+            src="../../../assets/img/icon/message/camera.png"
+            alt=""
+            class="camera"
+          />
           <input
             ref="inputRef"
             v-model="data.inputText"
@@ -43,17 +64,33 @@
           />
           <!-- 有文字: 表情包 + 发送按钮，隐藏语音和加号 -->
           <template v-if="data.inputText">
-            <img @click="toggleEmoji" src="../../../assets/img/icon/message/emoji-white.png" alt="" class="emoji" />
+            <img
+              @click="toggleEmoji"
+              src="../../../assets/img/icon/message/emoji-white.png"
+              alt=""
+              class="emoji"
+            />
             <div class="send-btn" @click="handleSend">
               <img src="../../../assets/img/icon/message/up.png" alt="" />
             </div>
           </template>
           <!-- 没文字: 语音 + 表情包 + 加号 -->
           <template v-else>
-            <img @click="startVoice" src="../../../assets/img/icon/message/voice-white.png" alt="" />
-            <img @click="toggleEmoji" src="../../../assets/img/icon/message/emoji-white.png" alt="" />
             <img
-              @click="data.showOption = !data.showOption; data.showEmoji = false"
+              @click="startVoice"
+              src="../../../assets/img/icon/message/voice-white.png"
+              alt=""
+            />
+            <img
+              @click="toggleEmoji"
+              src="../../../assets/img/icon/message/emoji-white.png"
+              alt=""
+            />
+            <img
+              @click="
+                data.showOption = !data.showOption
+                data.showEmoji = false
+              "
               src="../../../assets/img/icon/message/add-white.png"
               alt=""
             />
@@ -66,24 +103,38 @@
             <span v-else-if="voiceCancelled">松开 取消</span>
             <span v-else>松开 发送</span>
           </div>
-          <div class="record-bar"
+          <div
+            class="record-bar"
             @touchstart.prevent="voiceStart"
             @touchmove.prevent="voiceMove"
             @touchend.prevent="voiceEnd"
             @mousedown.prevent="voiceStart"
             @mousemove.prevent="voiceMove"
             @mouseup.prevent="voiceEnd"
-            @mouseleave.prevent="voiceEnd">
+            @mouseleave.prevent="voiceEnd"
+          >
             <div class="record-wave" :class="{ active: data.recordingActive }">
-              <span class="bar" v-for="i in 6" :key="i" :style="{ animationDelay: (i * 0.12) + 's' }"></span>
+              <span
+                class="bar"
+                v-for="i in 6"
+                :key="i"
+                :style="{ animationDelay: i * 0.12 + 's' }"
+              ></span>
             </div>
             <div class="record-duration" v-if="data.recordingActive">{{ voiceDuration }}″</div>
-            <img @click="cancelVoice" src="../../../assets/img/icon/message/keyboard.png" alt="" class="record-keyboard" />
+            <img
+              @click="cancelVoice"
+              src="../../../assets/img/icon/message/keyboard.png"
+              alt=""
+              class="record-keyboard"
+            />
           </div>
         </div>
         <!-- 表情包面板 -->
         <div class="emoji-panel" v-if="data.showEmoji">
-          <span class="emoji-item" v-for="e in emojiList" :key="e" @click="insertEmoji(e)">{{ e }}</span>
+          <span class="emoji-item" v-for="e in emojiList" :key="e" @click="insertEmoji(e)">{{
+            e
+          }}</span>
         </div>
         <div class="options" v-if="data.showOption">
           <div class="option-wrapper">
@@ -99,11 +150,23 @@
               <img src="../../../assets/img/icon/message/redpack.png" alt="" />
               <span>红包</span>
             </div>
-            <div class="option">
+            <div
+              class="option"
+              @click="
+                data.showOption = false
+                startCall(true)
+              "
+            >
               <img src="../../../assets/img/icon/message/video.png" alt="" />
               <span>视频通话</span>
             </div>
-            <div class="option">
+            <div
+              class="option"
+              @click="
+                data.showOption = false
+                startCall(false)
+              "
+            >
               <img src="../../../assets/img/icon/message/audio.png" alt="" />
               <span>语音通话</span>
             </div>
@@ -217,7 +280,17 @@
 </template>
 <script setup lang="ts">
 import ChatMessage from '../components/ChatMessage.vue'
-import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  watch
+} from 'vue'
 import Loading from '@/components/Loading.vue'
 import { useBaseStore } from '@/store/pinia'
 import { _checkImgUrl, _no, _notice, _sleep, cloneDeep } from '@/utils'
@@ -300,7 +373,62 @@ const data = reactive({
 const imageInput = ref<HTMLInputElement>()
 
 // 表情包列表
-const emojiList = ['😀','😂','🤣','😍','🥰','😘','😜','😎','🤩','😊','😏','🥺','😭','😡','🤬','👍','👎','👏','🙌','💪','🤝','❤️','💔','🔥','⭐','🎉','🎊','🙏','🤔','🤗','😱','😴','🤤','🫡','🫠','😶','🤐','😮‍💨','😵','🥴','🤧','💩','👻','💀','👀','👋','🫶','🌹','🌈','🍉','🎂','🍺','💰','🔞']
+const emojiList = [
+  '😀',
+  '😂',
+  '🤣',
+  '😍',
+  '🥰',
+  '😘',
+  '😜',
+  '😎',
+  '🤩',
+  '😊',
+  '😏',
+  '🥺',
+  '😭',
+  '😡',
+  '🤬',
+  '👍',
+  '👎',
+  '👏',
+  '🙌',
+  '💪',
+  '🤝',
+  '❤️',
+  '💔',
+  '🔥',
+  '⭐',
+  '🎉',
+  '🎊',
+  '🙏',
+  '🤔',
+  '🤗',
+  '😱',
+  '😴',
+  '🤤',
+  '🫡',
+  '🫠',
+  '😶',
+  '🤐',
+  '😮‍💨',
+  '😵',
+  '🥴',
+  '🤧',
+  '💩',
+  '👻',
+  '💀',
+  '👀',
+  '👋',
+  '🫶',
+  '🌹',
+  '🌈',
+  '🍉',
+  '🎂',
+  '🍺',
+  '💰',
+  '🔞'
+]
 
 // 语音录音相关
 let mediaRecorder: MediaRecorder | null = null
@@ -310,12 +438,27 @@ let voiceTimer: ReturnType<typeof setInterval> | null = null
 const voiceDuration = ref(0)
 const voiceCancelled = ref(false)
 
-function toggleEmoji() { data.showEmoji = !data.showEmoji; data.showOption = false }
-function insertEmoji(emoji: string) { data.inputText += emoji; data.showEmoji = false }
+function toggleEmoji() {
+  data.showEmoji = !data.showEmoji
+  data.showOption = false
+}
+function insertEmoji(emoji: string) {
+  data.inputText += emoji
+  data.showEmoji = false
+}
 
 function pickImage() {
   data.showOption = false
   imageInput.value?.click()
+}
+
+function startCall(isVideo: boolean) {
+  bus.emit(EVENT_KEY.SHOW_AUDIO_CALL, {
+    toUserId: targetUserId.value,
+    name: targetUserName.value,
+    avatar: targetUserAvatar.value,
+    isVideo
+  })
 }
 
 async function handleImagePicked(e: Event) {
@@ -325,16 +468,25 @@ async function handleImagePicked(e: Event) {
     data.loading = true
     const formData = new FormData()
     formData.append('file', file)
-    const resp = await fetch('/api/upload/image', { method: 'POST', body: formData, headers: { Authorization: 'Bearer ' + store.token } })
+    const resp = await fetch('/api/upload/image', {
+      method: 'POST',
+      body: formData,
+      headers: { Authorization: 'Bearer ' + store.token }
+    })
     const json = await resp.json()
     if (json.code === 200 && json.data?.url) {
-      const res = await sendMessage({ to_user_id: targetUserId.value as any, content: json.data.url, msg_type: 2 })
+      const res = await sendMessage({
+        to_user_id: targetUserId.value as any,
+        content: json.data.url,
+        msg_type: 2
+      })
       if (res.success && res.data) addMessageWithDedup(res.data)
     } else {
       _notice('图片上传失败')
     }
-  } catch { _notice('图片上传失败') }
-  finally {
+  } catch {
+    _notice('图片上传失败')
+  } finally {
     data.loading = false
     if (imageInput.value) imageInput.value.value = ''
   }
@@ -347,8 +499,14 @@ function startVoice() {
 }
 
 function cancelVoice() {
-  if (voiceTimer) { clearInterval(voiceTimer); voiceTimer = null }
-  if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.stop(); audioChunks = [] }
+  if (voiceTimer) {
+    clearInterval(voiceTimer)
+    voiceTimer = null
+  }
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop()
+    audioChunks = []
+  }
   data.recording = false
   data.recordingActive = false
   voiceCancelled.value = false
@@ -364,32 +522,56 @@ function voiceStart() {
   voiceTimer = setInterval(() => {
     voiceDuration.value = Math.round((Date.now() - voiceStartTime) / 1000)
   }, 200)
-  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
-    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data) }
-    mediaRecorder.onstop = async () => {
-      if (voiceTimer) { clearInterval(voiceTimer); voiceTimer = null }
-      stream.getTracks().forEach(t => t.stop())
-      if (audioChunks.length === 0 || voiceCancelled.value) return
-      const duration = Math.max(1, Math.round((Date.now() - voiceStartTime) / 1000))
-      const blob = new Blob(audioChunks, { type: 'audio/webm' })
-      const formData = new FormData()
-      formData.append('file', blob, 'voice.webm')
-      try {
-        data.loading = true
-        const resp = await fetch('/api/upload/image', { method: 'POST', body: formData, headers: { Authorization: 'Bearer ' + store.token } })
-        const json = await resp.json()
-        if (json.code === 200 && json.data?.url) {
-          const res = await sendMessage({ to_user_id: targetUserId.value as any, content: json.data.url, msg_type: 3, extra: String(duration) })
-          if (res.success && res.data) addMessageWithDedup(res.data)
-        } else {
-          _notice('语音上传失败')
+  navigator.mediaDevices
+    .getUserMedia({ audio: true })
+    .then((stream) => {
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunks.push(e.data)
+      }
+      mediaRecorder.onstop = async () => {
+        if (voiceTimer) {
+          clearInterval(voiceTimer)
+          voiceTimer = null
         }
-      } catch { _notice('语音发送失败') }
-      finally { data.loading = false }
-    }
-    mediaRecorder.start()
-  }).catch(() => { _notice('无法访问麦克风'); data.recording = false; data.recordingActive = false })
+        stream.getTracks().forEach((t) => t.stop())
+        if (audioChunks.length === 0 || voiceCancelled.value) return
+        const duration = Math.max(1, Math.round((Date.now() - voiceStartTime) / 1000))
+        const blob = new Blob(audioChunks, { type: 'audio/webm' })
+        const formData = new FormData()
+        formData.append('file', blob, 'voice.webm')
+        try {
+          data.loading = true
+          const resp = await fetch('/api/upload/image', {
+            method: 'POST',
+            body: formData,
+            headers: { Authorization: 'Bearer ' + store.token }
+          })
+          const json = await resp.json()
+          if (json.code === 200 && json.data?.url) {
+            const res = await sendMessage({
+              to_user_id: targetUserId.value as any,
+              content: json.data.url,
+              msg_type: 3,
+              extra: String(duration)
+            })
+            if (res.success && res.data) addMessageWithDedup(res.data)
+          } else {
+            _notice('语音上传失败')
+          }
+        } catch {
+          _notice('语音发送失败')
+        } finally {
+          data.loading = false
+        }
+      }
+      mediaRecorder.start()
+    })
+    .catch(() => {
+      _notice('无法访问麦克风')
+      data.recording = false
+      data.recordingActive = false
+    })
 }
 
 let _voiceStartY = 0
@@ -398,7 +580,7 @@ function voiceMove(e: TouchEvent | MouseEvent) {
   const y = 'touches' in e ? e.touches[0].clientY : e.clientY
   if (!_voiceStartY) _voiceStartY = y
   // 上滑超过 60px 判定为取消
-  voiceCancelled.value = (_voiceStartY - y) > 60
+  voiceCancelled.value = _voiceStartY - y > 60
 }
 
 function voiceEnd() {
@@ -407,18 +589,25 @@ function voiceEnd() {
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop()
   }
-  setTimeout(() => { data.recording = false; voiceCancelled.value = false }, 200)
+  setTimeout(() => {
+    data.recording = false
+    voiceCancelled.value = false
+  }, 200)
 }
 
-watch(() => route.query, () => {
-  console.log('[Chat] route.query changed:', JSON.stringify(route.query))
-  targetUserId.value = (route.query.user_id as string) || ''
-  targetUserName.value = (route.query.name as string) || '聊天'
-  targetUserAvatar.value = (route.query.avatar as string) || ''
-  console.log('[Chat] targetUserId set to:', targetUserId.value, 'name:', targetUserName.value)
-  data.messages = []
-  loadHistory()
-}, { deep: true, immediate: true })
+watch(
+  () => route.query,
+  () => {
+    console.log('[Chat] route.query changed:', JSON.stringify(route.query))
+    targetUserId.value = (route.query.user_id as string) || ''
+    targetUserName.value = (route.query.name as string) || '聊天'
+    targetUserAvatar.value = (route.query.avatar as string) || ''
+    console.log('[Chat] targetUserId set to:', targetUserId.value, 'name:', targetUserName.value)
+    data.messages = []
+    loadHistory()
+  },
+  { deep: true, immediate: true }
+)
 
 let unsubChat: (() => void) | null = null
 let unsubReadReceipt: (() => void) | null = null
@@ -431,8 +620,14 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (unsubChat) { unsubChat(); unsubChat = null }
-  if (unsubReadReceipt) { unsubReadReceipt(); unsubReadReceipt = null }
+  if (unsubChat) {
+    unsubChat()
+    unsubChat = null
+  }
+  if (unsubReadReceipt) {
+    unsubReadReceipt()
+    unsubReadReceipt = null
+  }
 })
 
 const isExpand = computed(() => {
@@ -446,7 +641,9 @@ const MSG_TYPE_MAP: Record<number, number> = {
   3: MESSAGE_TYPE.AUDIO,
   4: MESSAGE_TYPE.VIDEO,
   5: MESSAGE_TYPE.RED_PACKET,
-  9: MESSAGE_TYPE.DOUYIN_VIDEO
+  9: MESSAGE_TYPE.DOUYIN_VIDEO,
+  10: MESSAGE_TYPE.AUDIO_CALL,
+  11: MESSAGE_TYPE.VIDEO_CALL
 }
 
 // 映射后端消息到前端组件格式
@@ -458,10 +655,34 @@ function mapMsgToChatItem(msg: any) {
   const frontendType = MSG_TYPE_MAP[msg.msg_type] ?? MESSAGE_TYPE.TEXT
   // 音频消息需要 duration 字段给 ChatMessage 组件渲染
   let data: any = msg.content
+  let callState: number | undefined
   if (frontendType === MESSAGE_TYPE.AUDIO) {
     data = { url: msg.content, duration: Number(msg.extra) || 0 }
   } else if (frontendType === MESSAGE_TYPE.DOUYIN_VIDEO) {
-    try { data = JSON.parse(msg.content) } catch { data = {} }
+    try {
+      data = JSON.parse(msg.content)
+    } catch {
+      data = {}
+    }
+  } else if (frontendType === MESSAGE_TYPE.AUDIO_CALL || frontendType === MESSAGE_TYPE.VIDEO_CALL) {
+    try {
+      const extra = JSON.parse(msg.extra || '{}')
+      callState = extra.callState ?? 2 // NONE 兜底
+      const dur = Number(extra.duration) || 0
+      console.log('[Chat] call record:', {
+        msgType: msg.msg_type,
+        extra: msg.extra,
+        callState,
+        dur
+      })
+      if (dur > 0) {
+        const m = Math.floor(dur / 60)
+        const s = dur % 60
+        data = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+      }
+    } catch {
+      callState = 2
+    }
   }
   return {
     type: frontendType,
@@ -470,9 +691,10 @@ function mapMsgToChatItem(msg: any) {
     backendId: msg.id,
     fromUserId: msg.from_user_id,
     isRead: msg.is_read === 1,
+    state: callState,
     user: {
       id: isMyMsg ? myUid : targetUserId.value,
-      avatar: isMyMsg ? myAvatar : (fromUserAvatar || targetUserAvatar.value || '')
+      avatar: isMyMsg ? myAvatar : fromUserAvatar || targetUserAvatar.value || ''
     }
   }
 }
@@ -505,7 +727,7 @@ function formatChatTime(timeStr: string): string {
 
 function insertTimeDividers(messages: any[]) {
   if (!messages.length) return
-  const realMessages = messages.filter(m => m.type !== MESSAGE_TYPE.TIME)
+  const realMessages = messages.filter((m) => m.type !== MESSAGE_TYPE.TIME)
   const result: any[] = []
 
   for (let i = 0; i < realMessages.length; i++) {
@@ -534,7 +756,9 @@ function applyReadReceipts(messages: any[]) {
   const theirAvatar = targetUserAvatar.value || ''
 
   // 清除旧标记 (跳过时间分隔线)
-  messages.forEach(m => { if (m.type !== MESSAGE_TYPE.TIME) delete m.readByAvatar })
+  messages.forEach((m) => {
+    if (m.type !== MESSAGE_TYPE.TIME) delete m.readByAvatar
+  })
 
   // 找最后一条真实消息
   let lastRealIdx = messages.length - 1
@@ -572,7 +796,9 @@ async function loadHistory() {
     }
     // 标记已读并刷新底部徽章 (markRead 后对方消息全都已读，重新应用回执)
     await markRead(targetUserId.value)
-    data.messages.forEach(m => { if (m.fromUserId !== store.userinfo.uid) m.isRead = true })
+    data.messages.forEach((m) => {
+      if (m.fromUserId !== store.userinfo.uid) m.isRead = true
+    })
     applyReadReceipts(data.messages)
     bus.emit('REFRESH_UNREAD')
   } catch (e) {
@@ -581,7 +807,7 @@ async function loadHistory() {
 }
 
 function addMessageWithDedup(msg: any) {
-  if (msg.id && data.messages.some(m => m.backendId === msg.id)) {
+  if (msg.id && data.messages.some((m) => m.backendId === msg.id)) {
     console.log('[Chat] dup skipped, id=' + msg.id)
     return false
   }
@@ -593,26 +819,46 @@ function addMessageWithDedup(msg: any) {
 }
 
 function handleWsMessage(msg: any) {
-  console.log('[Chat] WS message received:', { from: msg.from_user_id, to: msg.to_user_id, target: targetUserId.value, myUid: store.userinfo.uid, msgId: msg.id, msgIdType: typeof msg.id })
+  console.log('[Chat] WS message received:', {
+    from: msg.from_user_id,
+    to: msg.to_user_id,
+    target: targetUserId.value,
+    myUid: store.userinfo.uid,
+    msgId: msg.id,
+    msgIdType: typeof msg.id
+  })
   // 检查是否是当前对话的消息
-  if (msg.from_user_id === targetUserId.value || (msg.to_user_id === targetUserId.value && msg.from_user_id === store.userinfo.uid)) {
+  if (
+    msg.from_user_id === targetUserId.value ||
+    (msg.to_user_id === targetUserId.value && msg.from_user_id === store.userinfo.uid)
+  ) {
     addMessageWithDedup(msg)
     // 正在看对话，自动标记已读并刷新徽章
     markRead(targetUserId.value).then(() => {
       // 收到新消息后自己的已读状态已变化，重新应用已读回执
-      data.messages.forEach(m => { if (m.fromUserId !== store.userinfo.uid) m.isRead = true })
+      data.messages.forEach((m) => {
+        if (m.fromUserId !== store.userinfo.uid) m.isRead = true
+      })
       applyReadReceipts(data.messages)
       bus.emit('REFRESH_UNREAD')
     })
   } else {
     console.log('[Chat] WS message ignored: not current conversation')
+    if (msg.from_user_id !== store.userinfo.uid) {
+      _notice({
+        title: msg.from_user?.nickname || '新消息',
+        content: msg.content || '',
+        avatar: msg.from_user?.avatar_168x168?.url_list?.[0] || '',
+        msgType: msg.msg_type
+      })
+    }
   }
 }
 
 function handleReadReceipt(msg: any) {
   // from_user_id = 读了消息的人（对方），to_user_id = 我（被读者）
   if (msg.from_user_id === targetUserId.value) {
-    data.messages.forEach(m => {
+    data.messages.forEach((m) => {
       if (m.fromUserId === store.userinfo.uid) m.isRead = true
     })
     applyReadReceipts(data.messages)
@@ -693,11 +939,23 @@ async function clickItem(e) {
       type: e.data.type || 'recommend-video',
       duration: e.data.duration || 0,
       image_urls: e.data.image_urls || [],
-      statistics: e.data.statistics || { digg_count: 0, comment_count: 0, share_count: 0, collect_count: 0, play_count: 0 },
+      statistics: e.data.statistics || {
+        digg_count: 0,
+        comment_count: 0,
+        share_count: 0,
+        collect_count: 0,
+        play_count: 0
+      },
       music: { title: '', play_url: { url_list: [] } }
     }
     store.routeData = cloneDeep({ list: [videoItem], index: 0 })
     router.push({ path: '/video-detail' })
+  }
+  if (e.type === data.MESSAGE_TYPE.AUDIO_CALL) {
+    startCall(false)
+  }
+  if (e.type === data.MESSAGE_TYPE.VIDEO_CALL) {
+    startCall(true)
   }
 }
 
@@ -859,53 +1117,97 @@ function showTooltip(e) {
       }
 
       .record {
-        display: flex; flex-direction: column; align-items: center; user-select: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        user-select: none;
 
         .record-hint {
-          height: 36rem; display: flex; align-items: center; justify-content: center;
-          font-size: 13rem; color: var(--second-text-color);
-          &.cancel { color: #fe2c55; }
+          height: 36rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 13rem;
+          color: var(--second-text-color);
+          &.cancel {
+            color: #fe2c55;
+          }
         }
 
         .record-bar {
-          box-sizing: border-box; height: 44rem; margin: 0 10rem; padding: 10rem 5rem;
-          background: @normal-bg-color; border-radius: 20rem;
-          display: flex; align-items: center; justify-content: center; position: relative;
-          cursor: pointer; width: calc(100% - 20rem);
+          box-sizing: border-box;
+          height: 44rem;
+          margin: 0 10rem;
+          padding: 10rem 5rem;
+          background: @normal-bg-color;
+          border-radius: 20rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          cursor: pointer;
+          width: calc(100% - 20rem);
 
           .record-keyboard {
-            right: 5rem; position: absolute; width: 24rem;
-            border-radius: 50%; margin-left: 15rem;
+            right: 5rem;
+            position: absolute;
+            width: 24rem;
+            border-radius: 50%;
+            margin-left: 15rem;
           }
 
           .record-duration {
-            font-size: 14rem; color: white; margin-left: 8rem;
+            font-size: 14rem;
+            color: white;
+            margin-left: 8rem;
           }
         }
 
         .record-wave {
-          display: flex; align-items: flex-end; gap: 2rem; height: 20rem;
+          display: flex;
+          align-items: flex-end;
+          gap: 2rem;
+          height: 20rem;
 
           .bar {
-            width: 2.5rem; border-radius: 2rem; background: rgba(255,255,255,0.3);
-            height: 6rem; transition: background 0.2s;
+            width: 2.5rem;
+            border-radius: 2rem;
+            background: rgba(255, 255, 255, 0.3);
+            height: 6rem;
+            transition: background 0.2s;
           }
 
           &.active .bar {
             background: #fe2c55;
             animation: wave 0.6s ease-in-out infinite alternate;
-            &:nth-child(1) { height: 10rem; }
-            &:nth-child(2) { height: 16rem; }
-            &:nth-child(3) { height: 20rem; }
-            &:nth-child(4) { height: 16rem; }
-            &:nth-child(5) { height: 10rem; }
-            &:nth-child(6) { height: 6rem; }
+            &:nth-child(1) {
+              height: 10rem;
+            }
+            &:nth-child(2) {
+              height: 16rem;
+            }
+            &:nth-child(3) {
+              height: 20rem;
+            }
+            &:nth-child(4) {
+              height: 16rem;
+            }
+            &:nth-child(5) {
+              height: 10rem;
+            }
+            &:nth-child(6) {
+              height: 6rem;
+            }
           }
         }
 
         @keyframes wave {
-          0% { transform: scaleY(0.4); }
-          100% { transform: scaleY(1); }
+          0% {
+            transform: scaleY(0.4);
+          }
+          100% {
+            transform: scaleY(1);
+          }
         }
       }
 

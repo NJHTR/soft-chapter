@@ -294,7 +294,7 @@ public class VideoController {
         boolean saved = videoService.save(video);
         log.info("publish: save result={}, videoId={}", saved, video.getId());
 
-        // 只有视频类型才提取封面和内容特征
+        // 视频: ffmpeg 抽取封面帧; 图文/文字: 已有封面或第一张图
         if (!"image".equals(contentType) && !"text".equals(contentType)) {
             try {
                 String coverUrl = coverService.extractAndUpload(video.getVideoUrl());
@@ -305,10 +305,10 @@ public class VideoController {
             } catch (Exception e) {
                 log.error("publish: cover extraction failed", e);
             }
-
-            // 异步提取视频内容特征
-            contentFeatureService.extractAsync(video);
         }
+
+        // 异步提取内容特征 (视频/图文/文字均支持)
+        contentFeatureService.extractAsync(video);
 
         // 发布成功系统通知
         try {

@@ -8,14 +8,26 @@
       {{ message.time }}
     </div>
     <template v-else>
-      <img v-if="!isMe" :src="_checkImgUrl(message.user.avatar)" alt="" class="avatar" @click.stop="goUserHome" />
+      <img
+        v-if="!isMe"
+        :src="_checkImgUrl(message.user.avatar)"
+        alt=""
+        class="avatar"
+        @click.stop="goUserHome"
+      />
       <div class="chat-wrapper" @click="$emit('itemClick', message)">
         <div class="chat-text" v-if="message.type === MESSAGE_TYPE.TEXT">
           {{ message.data }}
         </div>
 
         <div class="douyin_video" v-if="message.type === MESSAGE_TYPE.DOUYIN_VIDEO">
-          <img v-if="message.data.poster" class="poster" :src="_checkImgUrl(message.data.poster)" alt="" @error="e => e.target.style.display = 'none'" />
+          <img
+            v-if="message.data.poster"
+            class="poster"
+            :src="_checkImgUrl(message.data.poster)"
+            alt=""
+            @error="(e) => (e.target.style.display = 'none')"
+          />
           <div class="poster-placeholder" v-else></div>
           <div class="mask"></div>
           <div class="title">{{ message.data.title }}</div>
@@ -35,14 +47,24 @@
           <template v-if="isMe">
             <div class="duration">{{ message.data.duration }}″</div>
             <div class="wave-bars" :class="{ playing: audioPlaying }">
-              <span class="bar" v-for="i in 4" :key="i" :style="{ animationDelay: (i * 0.15) + 's' }"></span>
+              <span
+                class="bar"
+                v-for="i in 4"
+                :key="i"
+                :style="{ animationDelay: i * 0.15 + 's' }"
+              ></span>
             </div>
             <img src="../../../assets/img/icon/message/chat/rss2.png" alt="" class="audio-icon" />
           </template>
           <template v-else>
             <img src="../../../assets/img/icon/message/chat/rss.png" alt="" class="audio-icon" />
             <div class="wave-bars" :class="{ playing: audioPlaying }">
-              <span class="bar" v-for="i in 4" :key="i" :style="{ animationDelay: (i * 0.15) + 's' }"></span>
+              <span
+                class="bar"
+                v-for="i in 4"
+                :key="i"
+                :style="{ animationDelay: i * 0.15 + 's' }"
+              ></span>
             </div>
             <div class="duration">{{ message.data.duration }}″</div>
           </template>
@@ -54,15 +76,26 @@
             message.type === MESSAGE_TYPE.VIDEO_CALL || message.type === MESSAGE_TYPE.AUDIO_CALL
           "
         >
-          <div class="resolve" v-if="message.state === CALL_STATE.RESOLVE">
-            <img class="icon" src="../../../assets/img/icon/message/chat/video.png" alt="" />
-            <span>通话时长 05:32</span>
+          <div class="finish" v-if="message.state === CALL_STATE.RESOLVE">
+            <img
+              class="icon"
+              :src="message.type === MESSAGE_TYPE.AUDIO_CALL ? callIcon : videoIcon"
+              alt=""
+            />
+            <div class="notice">
+              <span class="state">通话时长 {{ message.data }}</span>
+              <span>点击回拨</span>
+            </div>
           </div>
           <div
             class="reject"
             v-if="message.state === CALL_STATE.REJECT || message.state === CALL_STATE.NONE"
           >
-            <img class="icon" src="../../../assets/img/icon/message/chat/video.png" alt="" />
+            <img
+              class="icon"
+              :src="message.type === MESSAGE_TYPE.AUDIO_CALL ? callIcon : videoIcon"
+              alt=""
+            />
             <div class="notice">
               <span class="state" v-if="message.state === CALL_STATE.REJECT">对方已拒绝</span>
               <span class="state" v-if="message.state === CALL_STATE.NONE">对方未接通</span>
@@ -116,7 +149,13 @@
           <span>已读</span>
         </div>
       </div>
-      <img v-if="isMe" :src="_checkImgUrl(message.user.avatar)" alt="" class="avatar" @click.stop="goUserHome" />
+      <img
+        v-if="isMe"
+        :src="_checkImgUrl(message.user.avatar)"
+        alt=""
+        class="avatar"
+        @click.stop="goUserHome"
+      />
     </template>
   </div>
 </template>
@@ -125,6 +164,8 @@
 import { mapState } from 'pinia'
 import { useBaseStore } from '@/store/pinia'
 import { _checkImgUrl } from '@/utils'
+import callIcon from '@/assets/img/icon/message/chat/call.png'
+import videoIcon from '@/assets/img/icon/message/chat/video-white.png'
 
 let CALL_STATE = {
   REJECT: 0,
@@ -178,6 +219,8 @@ export default {
       MESSAGE_TYPE,
       CALL_STATE,
       RED_PACKET_MODE,
+      callIcon,
+      videoIcon,
       audioPlaying: false,
       audioEl: null,
       showPreview: false
@@ -210,8 +253,14 @@ export default {
       this.audioEl = new Audio(url)
       this.audioEl.play()
       this.audioPlaying = true
-      this.audioEl.onended = () => { this.audioPlaying = false; this.audioEl = null }
-      this.audioEl.onerror = () => { this.audioPlaying = false; this.audioEl = null }
+      this.audioEl.onended = () => {
+        this.audioPlaying = false
+        this.audioEl = null
+      }
+      this.audioEl.onerror = () => {
+        this.audioPlaying = false
+        this.audioEl = null
+      }
     },
     previewImage() {
       this.showPreview = true
@@ -370,17 +419,9 @@ export default {
     display: flex;
     align-items: center;
     font-size: 14rem;
+    cursor: pointer;
 
-    .resolve {
-      display: flex;
-      align-items: center;
-
-      .icon {
-        margin-right: 10rem;
-        width: 20rem;
-      }
-    }
-
+    .finish,
     .reject {
       display: flex;
       align-items: center;
@@ -442,7 +483,7 @@ export default {
       .bar {
         width: 2.5rem;
         border-radius: 2rem;
-        background: rgba(255,255,255,0.4);
+        background: rgba(255, 255, 255, 0.4);
         height: 6rem;
         transition: height 0.2s;
       }
@@ -450,16 +491,28 @@ export default {
       &.playing .bar {
         animation: wave 0.8s ease-in-out infinite alternate;
 
-        &:nth-child(1) { height: 8rem; }
-        &:nth-child(2) { height: 14rem; }
-        &:nth-child(3) { height: 18rem; }
-        &:nth-child(4) { height: 10rem; }
+        &:nth-child(1) {
+          height: 8rem;
+        }
+        &:nth-child(2) {
+          height: 14rem;
+        }
+        &:nth-child(3) {
+          height: 18rem;
+        }
+        &:nth-child(4) {
+          height: 10rem;
+        }
       }
     }
 
     @keyframes wave {
-      0% { transform: scaleY(0.4); }
-      100% { transform: scaleY(1); }
+      0% {
+        transform: scaleY(0.4);
+      }
+      100% {
+        transform: scaleY(1);
+      }
     }
   }
 
@@ -493,7 +546,7 @@ export default {
       left: 0;
       right: 0;
       height: 60rem;
-      background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
       border-radius: 0 0 @border-radius @border-radius;
       pointer-events: none;
     }
@@ -514,7 +567,7 @@ export default {
       width: calc(100% - 16rem);
       left: 8rem;
       color: #fff;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
       word-break: break-word;
       display: -webkit-box;
       -webkit-line-clamp: 2;
@@ -539,14 +592,14 @@ export default {
         height: 18rem;
         border-radius: 50%;
         object-fit: cover;
-        border: 1px solid rgba(255,255,255,0.3);
+        border: 1px solid rgba(255, 255, 255, 0.3);
         flex-shrink: 0;
       }
 
       .name {
         color: #fff;
         font-size: 11rem;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
         text-overflow: ellipsis;
         overflow: hidden;
         white-space: nowrap;

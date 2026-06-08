@@ -44,35 +44,52 @@
       <div class="record-timer" v-if="isRecording">
         <span class="timer-dot"></span>
         {{ formatTime(recordSeconds) }}
-        <span v-if="curMode === 'segment'" class="seg-count">
-          {{ segmentList.length + 1 }}段
-        </span>
+        <span v-if="curMode === 'segment'" class="seg-count"> {{ segmentList.length + 1 }}段 </span>
       </div>
 
       <div class="bottom-zone" v-show="!isRecording">
         <div class="mode-tabs">
-          <span v-for="m in modes" :key="m.key"
+          <span
+            v-for="m in modes"
+            :key="m.key"
             :class="{ active: curMode === m.key }"
-            @click="switchMode(m.key)">{{ m.label }}</span>
+            @click="switchMode(m.key)"
+            >{{ m.label }}</span
+          >
         </div>
         <div class="action-row">
           <div class="side-action">
             <div class="side-icon-wrap"><Icon icon="mdi:magic" /></div>
             <span>特效</span>
           </div>
-          <div class="record-btn-wrap" @click="curMode === 'photo' ? capturePhoto() : null" @pointerdown="curMode !== 'photo' ? startRecord() : null">
+          <div
+            class="record-btn-wrap"
+            @click="curMode === 'photo' ? capturePhoto() : null"
+            @pointerdown="curMode !== 'photo' ? startRecord() : null"
+          >
             <div class="record-ring"></div>
             <div class="record-core" :class="coreClass">
               <!-- 拍照模式图标 -->
               <svg v-if="curMode === 'photo'" class="photo-icon" viewBox="0 0 24 24">
                 <circle cx="12" cy="13" r="3" fill="white" />
-                <path d="M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2z" fill="white" />
+                <path
+                  d="M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2z"
+                  fill="white"
+                />
               </svg>
               <!-- 分段拍图标 -->
               <svg v-else-if="curMode === 'segment'" class="segments-svg" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="38" fill="none" stroke="#ff3b30"
-                  stroke-width="18" stroke-dasharray="45 195"
-                  stroke-linecap="round" transform="rotate(-90 50 50)" />
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="38"
+                  fill="none"
+                  stroke="#ff3b30"
+                  stroke-width="18"
+                  stroke-dasharray="45 195"
+                  stroke-linecap="round"
+                  transform="rotate(-90 50 50)"
+                />
               </svg>
               <!-- 视频模式图标 -->
               <div v-else-if="curMode === 'video'" class="photo-dot"></div>
@@ -87,15 +104,24 @@
           </div>
         </div>
         <div class="footer-tabs">
-          <span v-for="t in footerTabs" :key="t.key"
+          <span
+            v-for="t in footerTabs"
+            :key="t.key"
             :class="{ active: curTab === t.key }"
-            @click="switchTab(t.key)">{{ t.label }}</span>
+            @click="switchTab(t.key)"
+            >{{ t.label }}</span
+          >
         </div>
       </div>
 
       <!-- 录完分段拍的撤销按钮 -->
-      <div class="undo-seg-bar" v-if="curMode === 'segment' && segmentList.length > 0 && !isRecording">
-        <span class="seg-summary">{{ segmentList.length }}段 · {{ formatTime(totalSegDuration) }}</span>
+      <div
+        class="undo-seg-bar"
+        v-if="curMode === 'segment' && segmentList.length > 0 && !isRecording"
+      >
+        <span class="seg-summary"
+          >{{ segmentList.length }}段 · {{ formatTime(totalSegDuration) }}</span
+        >
         <button class="undo-seg-btn" @click="removeLastSegment">
           <Icon icon="mingcute:back-line" />撤销上段
         </button>
@@ -103,11 +129,21 @@
       </div>
 
       <!-- 录像中UI -->
-      <div class="recording-ui" v-if="isRecording" @click="curMode === 'segment' ? stopRecord() : null" @pointerup="curMode !== 'segment' ? stopRecord() : null">
+      <div
+        class="recording-ui"
+        v-if="isRecording"
+        @click="curMode === 'segment' ? stopRecord() : null"
+        @pointerup="curMode !== 'segment' ? stopRecord() : null"
+      >
         <svg class="progress-ring" viewBox="0 0 120 120">
           <circle class="ring-bg" cx="60" cy="60" r="54" />
-          <circle class="ring-progress" cx="60" cy="60" r="54"
-            :style="{ strokeDashoffset: dashOffset }" />
+          <circle
+            class="ring-progress"
+            cx="60"
+            cy="60"
+            r="54"
+            :style="{ strokeDashoffset: dashOffset }"
+          />
         </svg>
         <div class="recording-core">
           <div class="recording-pause"></div>
@@ -123,7 +159,9 @@
         <div class="text-top-bar">
           <Icon class="close-btn" icon="mingcute:close-line" @click="close" />
           <span class="text-editor-title">文字</span>
-          <span class="done-btn" @click="finishTextEdit" :class="{ disabled: !textContent.trim() }">完成</span>
+          <span class="done-btn" @click="finishTextEdit" :class="{ disabled: !textContent.trim() }"
+            >完成</span
+          >
         </div>
         <div class="text-preview-area" :style="{ background: textBgGradient }">
           <textarea
@@ -142,9 +180,11 @@
               v-for="bg in textBackgrounds"
               :key="bg.name"
               class="bg-color-dot"
-              :class="{ selected: textBgIndex === textBackgrounds.findIndex(b => b.name === bg.name) }"
+              :class="{
+                selected: textBgIndex === textBackgrounds.findIndex((b) => b.name === bg.name)
+              }"
               :style="{ background: bg.gradient }"
-              @click="selectTextBg(textBackgrounds.findIndex(b => b.name === bg.name))"
+              @click="selectTextBg(textBackgrounds.findIndex((b) => b.name === bg.name))"
             ></div>
           </div>
         </div>
@@ -157,7 +197,8 @@
     <template v-if="showPreview && curMode === 'photo'">
       <!-- 多图轮播 -->
       <template v-if="photoList.length > 1">
-        <div class="carousel-container"
+        <div
+          class="carousel-container"
           @touchstart="onSwipeStart"
           @touchmove="onSwipeMove"
           @touchend="onSwipeEnd"
@@ -170,9 +211,13 @@
         </div>
         <!-- 指示点 -->
         <div class="carousel-dots">
-          <span v-for="(_, i) in photoList" :key="i"
-            class="dot" :class="{ active: i === carouselIdx }"
-            @click="carouselIdx = i"></span>
+          <span
+            v-for="(_, i) in photoList"
+            :key="i"
+            class="dot"
+            :class="{ active: i === carouselIdx }"
+            @click="carouselIdx = i"
+          ></span>
         </div>
         <!-- 图片序号 -->
         <div class="carousel-counter">{{ carouselIdx + 1 }} / {{ photoList.length }}</div>
@@ -182,7 +227,9 @@
 
       <div class="preview-top-bar">
         <Icon icon="material-symbols:arrow-back" @click="backToCamera" />
-        <span class="preview-label-text">{{ isTextPreview ? '文字' : (photoList.length > 1 ? `${photoList.length}张图片` : '照片预览') }}</span>
+        <span class="preview-label-text">{{
+          isTextPreview ? '文字' : photoList.length > 1 ? `${photoList.length}张图片` : '照片预览'
+        }}</span>
       </div>
 
       <!-- 多图排序工具栏 -->
@@ -190,10 +237,18 @@
         <button class="sort-btn" @click="movePhotoLeft(carouselIdx)" :disabled="carouselIdx === 0">
           <Icon icon="mingcute:arrow-left-circle-line" />左移
         </button>
-        <button class="sort-btn" @click="removePhotoAt(carouselIdx)" :disabled="photoList.length <= 1">
+        <button
+          class="sort-btn"
+          @click="removePhotoAt(carouselIdx)"
+          :disabled="photoList.length <= 1"
+        >
           <Icon icon="mingcute:delete-line" />删除
         </button>
-        <button class="sort-btn" @click="movePhotoRight(carouselIdx)" :disabled="carouselIdx === photoList.length - 1">
+        <button
+          class="sort-btn"
+          @click="movePhotoRight(carouselIdx)"
+          :disabled="carouselIdx === photoList.length - 1"
+        >
           右移<Icon icon="mingcute:arrow-right-circle-line" />
         </button>
       </div>
@@ -216,7 +271,7 @@
         <div class="add-more-btn" @click="selectMorePhotos" v-if="photoList.length < 9">
           <Icon icon="mingcute:add-circle-line" /><span>添加图片 ({{ photoList.length }}/9)</span>
         </div>
-        <div class="preview-bottom-row" style="justify-content: space-between;">
+        <div class="preview-bottom-row" style="justify-content: space-between">
           <div></div>
           <div class="next-btn" @click.stop="goPostEdit">下一步</div>
         </div>
@@ -227,11 +282,17 @@
     <!-- 预览态：视频回放 + 编辑入口                        -->
     <!-- ============================================ -->
     <template v-if="showPreview && curMode !== 'photo'">
-      <video ref="previewEl" class="camera-preview"
-        :src="previewSrc" loop playsinline muted
+      <video
+        ref="previewEl"
+        class="camera-preview"
+        :src="previewSrc"
+        loop
+        playsinline
+        muted
         @click="handlePreviewClick"
         @loadedmetadata="onPreviewMeta"
-        @ended="onPreviewEnded"></video>
+        @ended="onPreviewEnded"
+      ></video>
       <div v-if="previewMuted" class="unmute-hint" @click="unmutePreview">
         <Icon icon="flowbite:volume-mute-solid" />
         <span>点击取消静音</span>
@@ -242,7 +303,12 @@
         <span class="music-selector" @click="showMusicPicker = true">
           <Icon icon="vaadin:music" />
           <span class="music-name-text">{{ selectedMusic ? selectedMusic.name : '选择音乐' }}</span>
-          <Icon v-if="selectedMusic" icon="mingcute:close-circle-fill" class="remove-music-icon" @click.stop="removeMusic" />
+          <Icon
+            v-if="selectedMusic"
+            icon="mingcute:close-circle-fill"
+            class="remove-music-icon"
+            @click.stop="removeMusic"
+          />
         </span>
         <Icon icon="mdi:scissors" class="clip-btn" @click="goToEditor" />
       </div>
@@ -296,11 +362,7 @@
               <Icon icon="mingcute:close-line" @click="showMusicPicker = false" />
             </div>
             <div class="sheet-list" v-if="musicList.length">
-              <div
-                class="sheet-item"
-                :class="{ selected: !selectedMusic }"
-                @click="removeMusic"
-              >
+              <div class="sheet-item" :class="{ selected: !selectedMusic }" @click="removeMusic">
                 <div class="item-icon no-music-icon">
                   <Icon icon="mingcute:forbid-circle-line" />
                 </div>
@@ -321,7 +383,11 @@
                   <span class="item-name">{{ m.name }}</span>
                   <span class="item-artist">{{ m.artist || '未知歌手' }}</span>
                 </div>
-                <Icon v-if="selectedMusic?.id === m.id" icon="mingcute:check-circle-fill" class="check-icon" />
+                <Icon
+                  v-if="selectedMusic?.id === m.id"
+                  icon="mingcute:check-circle-fill"
+                  class="check-icon"
+                />
               </div>
             </div>
             <div v-else class="sheet-loading">
@@ -398,7 +464,14 @@
       <canvas ref="coverCanvas" style="display: none"></canvas>
     </template>
 
-    <input ref="fileInput" type="file" accept="video/*,image/*" multiple style="display: none" @change="onFileSelected" />
+    <input
+      ref="fileInput"
+      type="file"
+      accept="video/*,image/*"
+      multiple
+      style="display: none"
+      @change="onFileSelected"
+    />
   </div>
 </template>
 <script setup lang="ts">
@@ -442,7 +515,14 @@ const coverDataUrl = ref('')
 const postTitle = ref('')
 const postDesc = ref('')
 const showMusicPicker = ref(false)
-const selectedMusic = ref<{ id: number; name: string; artist?: string; cover_url?: string; play_url?: string; duration?: number } | null>(null)
+const selectedMusic = ref<{
+  id: number
+  name: string
+  artist?: string
+  cover_url?: string
+  play_url?: string
+  duration?: number
+} | null>(null)
 const musicList = ref<any[]>([])
 const bgmStartOffset = ref(0)
 const bgmVolume = ref(0.7)
@@ -461,8 +541,13 @@ const carouselIdx = ref(0)
 // 滑动相关
 let swipeStartX = 0
 let swipeMoved = 0
-function onSwipeStart(e: TouchEvent) { swipeStartX = e.touches[0].clientX; swipeMoved = 0 }
-function onSwipeMove(e: TouchEvent) { swipeMoved = e.touches[0].clientX - swipeStartX }
+function onSwipeStart(e: TouchEvent) {
+  swipeStartX = e.touches[0].clientX
+  swipeMoved = 0
+}
+function onSwipeMove(e: TouchEvent) {
+  swipeMoved = e.touches[0].clientX - swipeStartX
+}
 function onSwipeEnd() {
   const threshold = 60
   if (swipeMoved > threshold && carouselIdx.value > 0) {
@@ -477,7 +562,7 @@ function getPhotoUrl(blob: Blob | undefined): string {
   // 缓存 blob URL
   const key = '_blobUrl'
   if (!(blob as any)[key]) {
-    (blob as any)[key] = URL.createObjectURL(blob)
+    ;(blob as any)[key] = URL.createObjectURL(blob)
   }
   return (blob as any)[key]
 }
@@ -517,25 +602,27 @@ const textBackgrounds = [
   { name: '渐变蓝', gradient: 'linear-gradient(135deg, #2193b0, #6dd5ed)' },
   { name: '渐变绿', gradient: 'linear-gradient(135deg, #11998e, #38ef7d)' },
   { name: '纯黑', gradient: '#1a1a1a' },
-  { name: '纯白', gradient: '#f5f5f5' },
+  { name: '纯白', gradient: '#f5f5f5' }
 ]
-const textBgGradient = computed(() => textBackgrounds[textBgIndex.value]?.gradient || textBackgrounds[0].gradient)
+const textBgGradient = computed(
+  () => textBackgrounds[textBgIndex.value]?.gradient || textBackgrounds[0].gradient
+)
 
 const modes = [
   { key: 'segment', label: '分段拍' },
   { key: 'photo', label: '照片' },
-  { key: 'video', label: '视频' },
+  { key: 'video', label: '视频' }
 ]
 const footerTabs = [
   { key: 'text', label: '文字' },
   { key: 'camera', label: '相机' },
-  { key: 'live', label: '开直播' },
+  { key: 'live', label: '开直播' }
 ]
 
 const curMode = computed(() => modes[modeIndex.value]?.key || 'video')
 const curTab = computed(() => footerTabs[footerIndex.value]?.key || 'camera')
 
-const isTextPreview = computed(() => !!(textContent.value?.trim()))
+const isTextPreview = computed(() => !!textContent.value?.trim())
 
 const coreClass = computed(() => {
   if (isRecording.value) return 'recording'
@@ -576,10 +663,16 @@ function close() {
 
 function stopCamera() {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop()
-  if (recordTimer) { clearInterval(recordTimer); recordTimer = null }
-  if (progressTimer) { clearInterval(progressTimer); progressTimer = null }
+  if (recordTimer) {
+    clearInterval(recordTimer)
+    recordTimer = null
+  }
+  if (progressTimer) {
+    clearInterval(progressTimer)
+    progressTimer = null
+  }
   if (mediaStream) {
-    mediaStream.getTracks().forEach(t => t.stop())
+    mediaStream.getTracks().forEach((t) => t.stop())
     mediaStream = null
   }
 }
@@ -625,12 +718,12 @@ function toggleFlash() {
 
 function switchMode(key: string) {
   if (isRecording.value) return
-  const idx = modes.findIndex(m => m.key === key)
+  const idx = modes.findIndex((m) => m.key === key)
   if (idx >= 0) modeIndex.value = idx
 }
 
 function switchTab(key: string) {
-  const idx = footerTabs.findIndex(t => t.key === key)
+  const idx = footerTabs.findIndex((t) => t.key === key)
   if (idx >= 0) footerIndex.value = idx
 }
 
@@ -644,20 +737,28 @@ function capturePhoto() {
   const ctx = cvs.getContext('2d')
   if (!ctx) return
   ctx.drawImage(v, 0, 0, cvs.width, cvs.height)
-  cvs.toBlob((blob) => {
-    if (!blob) return
-    photoBlob.value = blob
-    photoList.value = [blob]
-    carouselIdx.value = 0
-    previewSrc.value = URL.createObjectURL(blob)
-    showPreview.value = true
-    stopCamera()
-  }, 'image/jpeg', 0.9)
+  cvs.toBlob(
+    (blob) => {
+      if (!blob) return
+      photoBlob.value = blob
+      photoList.value = [blob]
+      carouselIdx.value = 0
+      previewSrc.value = URL.createObjectURL(blob)
+      showPreview.value = true
+      stopCamera()
+    },
+    'image/jpeg',
+    0.9
+  )
 }
 
 // ======= 录制逻辑 =======
 function toggleRecord() {
-  if (isRecording.value) { stopRecord() } else { startRecord() }
+  if (isRecording.value) {
+    stopRecord()
+  } else {
+    startRecord()
+  }
 }
 
 function startRecord() {
@@ -695,7 +796,12 @@ function startRecord() {
       break
     }
   }
-  console.log('[Record] 使用 mimeType:', selectedMime, '音轨数:', mediaStream.getAudioTracks().length)
+  console.log(
+    '[Record] 使用 mimeType:',
+    selectedMime,
+    '音轨数:',
+    mediaStream.getAudioTracks().length
+  )
 
   try {
     mediaRecorder = new MediaRecorder(mediaStream, {
@@ -705,7 +811,9 @@ function startRecord() {
   } catch {
     mediaRecorder = new MediaRecorder(mediaStream)
   }
-  mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data)
+  }
   mediaRecorder.onstop = () => {
     actualDuration = (Date.now() - recordStartTime) / 1000
     const mime = selectedMime || mediaRecorder?.mimeType || 'video/webm'
@@ -740,7 +848,10 @@ function stopRecord() {
   if (curMode.value === 'segment' && mediaRecorder.state === 'recording') {
     // 分段拍：暂停而不是停止
     mediaRecorder.pause()
-    if (recordTimer) { clearInterval(recordTimer); recordTimer = null }
+    if (recordTimer) {
+      clearInterval(recordTimer)
+      recordTimer = null
+    }
     isRecording.value = false
     // 保存当前段
     if (chunks.length > 0) {
@@ -754,7 +865,10 @@ function stopRecord() {
     return
   }
   if (mediaRecorder.state !== 'inactive') mediaRecorder.stop()
-  if (recordTimer) { clearInterval(recordTimer); recordTimer = null }
+  if (recordTimer) {
+    clearInterval(recordTimer)
+    recordTimer = null
+  }
   isRecording.value = false
 }
 
@@ -765,7 +879,7 @@ function removeLastSegment() {
 function finishSegmentRecording() {
   if (segmentList.value.length === 0) return
   // 合并所有片段为一个 Blob
-  const allBlobs = segmentList.value.map(s => s.blob)
+  const allBlobs = segmentList.value.map((s) => s.blob)
   const merged = new Blob(allBlobs, { type: allBlobs[0].type || 'video/webm' })
   actualDuration = totalSegDuration.value
   recordedBlob.value = merged
@@ -794,10 +908,10 @@ function finishTextEdit() {
   if (bg.gradient.includes('linear-gradient')) {
     // 简单纯色填充，避免解析CSS渐变
     const colors: Record<string, string> = {
-      '渐变红': '#ff416c',
-      '渐变紫': '#667eea',
-      '渐变蓝': '#2193b0',
-      '渐变绿': '#11998e',
+      渐变红: '#ff416c',
+      渐变紫: '#667eea',
+      渐变蓝: '#2193b0',
+      渐变绿: '#11998e'
     }
     ctx.fillStyle = colors[bg.name] || '#ff416c'
   } else {
@@ -823,15 +937,19 @@ function finishTextEdit() {
     ctx.fillText(line, cvs.width / 2, startY + i * lineHeight)
   })
 
-  cvs.toBlob((blob) => {
-    if (!blob) return
-    photoBlob.value = blob
-    photoList.value = [blob]
-    carouselIdx.value = 0
-    previewSrc.value = URL.createObjectURL(blob)
-    showPreview.value = true
-    curMode.value = 'photo' // 复用照片预览
-  }, 'image/jpeg', 0.9)
+  cvs.toBlob(
+    (blob) => {
+      if (!blob) return
+      photoBlob.value = blob
+      photoList.value = [blob]
+      carouselIdx.value = 0
+      previewSrc.value = URL.createObjectURL(blob)
+      showPreview.value = true
+      curMode.value = 'photo' // 复用照片预览
+    },
+    'image/jpeg',
+    0.9
+  )
 }
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
@@ -1013,7 +1131,10 @@ function goToEditor() {
     sessionStorage.removeItem('video_editor_music')
   }
   stopPreviewMusic()
-  if (progressTimer) { clearInterval(progressTimer); progressTimer = null }
+  if (progressTimer) {
+    clearInterval(progressTimer)
+    progressTimer = null
+  }
   if (v) v.pause()
   router.push('/video-editor')
 }
@@ -1040,7 +1161,9 @@ function onPreviewMeta() {
   }
 }
 
-function onPreviewEnded() { previewProgress.value = 100 }
+function onPreviewEnded() {
+  previewProgress.value = 100
+}
 
 function backToCamera() {
   showPreview.value = false
@@ -1051,7 +1174,10 @@ function backToCamera() {
   carouselIdx.value = 0
   previewMuted.value = true
   stopPreviewMusic()
-  if (progressTimer) { clearInterval(progressTimer); progressTimer = null }
+  if (progressTimer) {
+    clearInterval(progressTimer)
+    progressTimer = null
+  }
   if (curTab.value === 'text') {
     textContent.value = ''
   }
@@ -1061,8 +1187,13 @@ function backToCamera() {
 function goPostEdit() {
   showPreview.value = false
   stopPreviewMusic()
-  if (progressTimer) { clearInterval(progressTimer); progressTimer = null }
-  if (previewEl.value) { previewEl.value.pause() }
+  if (progressTimer) {
+    clearInterval(progressTimer)
+    progressTimer = null
+  }
+  if (previewEl.value) {
+    previewEl.value.pause()
+  }
   showPostEdit.value = true
   // 只有视频才抓封面，照片直接用预览图（多图用第一张）
   if (curMode.value !== 'photo' && previewSrc.value) {
@@ -1159,11 +1290,11 @@ function onFileSelected(e: Event) {
   if (!input.files || input.files.length === 0) return
 
   const files = Array.from(input.files)
-  const allImages = files.every(f => f.type.startsWith('image/'))
+  const allImages = files.every((f) => f.type.startsWith('image/'))
 
   if (allImages || curMode.value === 'photo') {
     // 照片/图集模式：支持多选
-    const newBlobs = files.filter(f => f.type.startsWith('image/'))
+    const newBlobs = files.filter((f) => f.type.startsWith('image/'))
     if (newBlobs.length === 0) return
     // 限制最多9张
     const remaining = 9 - photoList.value.length
@@ -1197,26 +1328,40 @@ async function doUpload() {
   try {
     if (isPhoto || isText) {
       // 图片/文字/图集作品
-      const images = photoList.value.length > 0 ? photoList.value : (photoBlob.value ? [photoBlob.value] : [])
-      if (images.length === 0) { _notice('暂无内容可发布'); return }
+      const images =
+        photoList.value.length > 0 ? photoList.value : photoBlob.value ? [photoBlob.value] : []
+      if (images.length === 0) {
+        _notice('暂无内容可发布')
+        return
+      }
 
       // 上传所有图片
       const urls: string[] = []
       for (const blob of images) {
-        const file = new File([blob], `photo_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`, { type: 'image/jpeg' })
+        const file = new File(
+          [blob],
+          `photo_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`,
+          { type: 'image/jpeg' }
+        )
         const uploadRes = await uploadImage(file)
         if (uploadRes.success) {
           urls.push(uploadRes.data.url)
         }
       }
-      if (urls.length === 0) { _notice('上传图片失败，请重试'); return }
+      if (urls.length === 0) {
+        _notice('上传图片失败，请重试')
+        return
+      }
 
-      const desc = [postTitle.value, postDesc.value].filter(Boolean).join('\n') || (textContent.value || '分享图片')
+      const desc =
+        [postTitle.value, postDesc.value].filter(Boolean).join('\n') ||
+        textContent.value ||
+        '分享图片'
       const pubRes = await publishVideo({
         video_url: urls[0],
         desc,
         duration: 0,
-        music_title: isText ? '文字' : (images.length > 1 ? `${images.length}张图片` : '图片'),
+        music_title: isText ? '文字' : images.length > 1 ? `${images.length}张图片` : '图片',
         type: isText ? 'text' : 'image',
         image_urls: urls.length > 1 ? JSON.stringify(urls) : undefined
       } as any)
@@ -1229,23 +1374,40 @@ async function doUpload() {
       }
     } else {
       // 视频作品
-      const blob = recordedBlob.value || segmentList.value.length > 0
-        ? new Blob(segmentList.value.map(s => s.blob), { type: 'video/webm' })
-        : null
-      if (!blob && !recordedBlob.value) { _notice('暂无视频可发布'); return }
+      const blob =
+        recordedBlob.value || segmentList.value.length > 0
+          ? new Blob(
+              segmentList.value.map((s) => s.blob),
+              { type: 'video/webm' }
+            )
+          : null
+      if (!blob && !recordedBlob.value) {
+        _notice('暂无视频可发布')
+        return
+      }
 
       const videoBlob = recordedBlob.value || blob!
-      const ext = videoBlob.type === 'video/webm' ? 'webm' : 'mp4'
-      const file = new File([videoBlob], `video_${Date.now()}.${ext}`, { type: videoBlob.type || 'video/mp4' })
+      const isWebm = videoBlob.type && videoBlob.type.includes('webm')
+      const ext = isWebm ? 'webm' : 'mp4'
+      const file = new File([videoBlob], `video_${Date.now()}.${ext}`, {
+        type: videoBlob.type || 'video/mp4'
+      })
       const uploadRes = await uploadVideo(file)
-      if (!uploadRes.success) { _notice('上传视频失败，请重试'); return }
+      if (!uploadRes.success) {
+        _notice('上传视频失败，请重试')
+        return
+      }
 
-      const desc = [postTitle.value, postDesc.value].filter(Boolean).join('\n') || '拍摄于 ' + new Date().toLocaleString()
+      const desc =
+        [postTitle.value, postDesc.value].filter(Boolean).join('\n') ||
+        '拍摄于 ' + new Date().toLocaleString()
       const pubRes = await publishVideo({
         video_url: uploadRes.data.url,
         desc,
         duration: Math.max(actualDuration, 1),
-        music_title: selectedMusic.value ? (selectedMusic.value.name + ' - ' + (selectedMusic.value.artist || '')) : '原创',
+        music_title: selectedMusic.value
+          ? selectedMusic.value.name + ' - ' + (selectedMusic.value.artist || '')
+          : '原创',
         music_id: selectedMusic.value?.id,
         bgm_volume: bgmVolume.value,
         bgm_start_offset: bgmStartOffset.value,
@@ -1298,14 +1460,22 @@ onActivated(() => {
   if (musicId === '') {
     selectedMusic.value = null
   } else if (rawMusic) {
-    try { selectedMusic.value = JSON.parse(rawMusic) } catch { /* keep current */ }
+    try {
+      selectedMusic.value = JSON.parse(rawMusic)
+    } catch {
+      /* keep current */
+    }
   }
   if (offset) bgmStartOffset.value = Number(offset)
   if (vol) bgmVolume.value = Number(vol)
   if (tStart) trimStart.value = Number(tStart)
   if (tEnd) trimEnd.value = Number(tEnd)
   if (segsJson) {
-    try { editorSegments.value = JSON.parse(segsJson) } catch { editorSegments.value = [] }
+    try {
+      editorSegments.value = JSON.parse(segsJson)
+    } catch {
+      editorSegments.value = []
+    }
   }
 
   initPreviewMusic()
@@ -1317,7 +1487,10 @@ onActivated(() => {
       previewEl.value.muted = false
     }
     previewEl.value.play().catch(() => {})
-    if (progressTimer) { clearInterval(progressTimer); progressTimer = null }
+    if (progressTimer) {
+      clearInterval(progressTimer)
+      progressTimer = null
+    }
     progressTimer = setInterval(() => {
       const v = previewEl.value
       if (v && v.duration && !v.paused) {
@@ -1336,169 +1509,337 @@ onBeforeUnmount(() => {
 @import '../../assets/less/index';
 
 .Publish {
-  position: fixed; inset: 0; overflow: hidden; color: white; background: black;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  color: white;
+  background: black;
 
   .camera-preview {
-    width: 100%; height: 100%; object-fit: cover;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 
   // ========== 拍摄态 ==========
   .top-bar {
-    position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
     padding: 20rem 20rem 0;
-    display: flex; align-items: flex-start; justify-content: space-between;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
 
-    .close-btn { font-size: 28rem; margin-top: 2rem; }
+    .close-btn {
+      font-size: 28rem;
+      margin-top: 2rem;
+    }
 
     .music-btn {
-      position: absolute; left: 50%; top: 20rem; transform: translateX(-50%);
-      border-radius: 20rem; background: rgba(0,0,0,0.4);
-      padding: 5rem 15rem; display: flex; align-items: center;
-      font-size: 14rem; white-space: nowrap;
-      svg { font-size: 16rem; margin-right: 5rem; }
+      position: absolute;
+      left: 50%;
+      top: 20rem;
+      transform: translateX(-50%);
+      border-radius: 20rem;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 5rem 15rem;
+      display: flex;
+      align-items: center;
+      font-size: 14rem;
+      white-space: nowrap;
+      svg {
+        font-size: 16rem;
+        margin-right: 5rem;
+      }
     }
 
     .right-tools {
-      display: flex; flex-direction: column; gap: 22rem; align-items: center;
+      display: flex;
+      flex-direction: column;
+      gap: 22rem;
+      align-items: center;
       .tool-item {
-        display: flex; flex-direction: column; align-items: center; gap: 2rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2rem;
         font-size: 24rem;
-        .tool-label { font-size: 10rem; }
+        .tool-label {
+          font-size: 10rem;
+        }
       }
     }
   }
 
   .record-timer {
-    position: absolute; top: 60rem; left: 50%; transform: translateX(-50%);
-    z-index: 10; font-size: 18rem; font-weight: 600;
-    display: flex; align-items: center; gap: 6rem;
+    position: absolute;
+    top: 60rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    font-size: 18rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6rem;
     .timer-dot {
-      width: 8rem; height: 8rem; border-radius: 50%; background: #ff4444;
+      width: 8rem;
+      height: 8rem;
+      border-radius: 50%;
+      background: #ff4444;
       animation: blink 1s infinite;
     }
     @keyframes blink {
-      0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
+      0%,
+      100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.3;
+      }
     }
   }
 
   .bottom-zone {
-    position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
     padding-bottom: 20rem;
   }
 
   .mode-tabs {
-    display: flex; justify-content: center;
-    font-size: 15rem; color: rgba(255,255,255,0.5); font-weight: 500;
+    display: flex;
+    justify-content: center;
+    font-size: 15rem;
+    color: rgba(255, 255, 255, 0.5);
+    font-weight: 500;
     margin-bottom: 24rem;
-    span { width: 80rem; text-align: center; }
-    .active { color: white; }
+    span {
+      width: 80rem;
+      text-align: center;
+    }
+    .active {
+      color: white;
+    }
   }
 
   .footer-tabs {
-    display: flex; justify-content: center;
-    font-size: 15rem; color: rgba(255,255,255,0.5); font-weight: 500;
-    span { width: 80rem; text-align: center; }
-    .active { color: white; }
+    display: flex;
+    justify-content: center;
+    font-size: 15rem;
+    color: rgba(255, 255, 255, 0.5);
+    font-weight: 500;
+    span {
+      width: 80rem;
+      text-align: center;
+    }
+    .active {
+      color: white;
+    }
   }
 
   .action-row {
-    display: grid; grid-template-columns: 1fr auto 1fr;
-    align-items: center; margin-bottom: 24rem; padding: 0 20rem;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    margin-bottom: 24rem;
+    padding: 0 20rem;
 
     .side-action {
-      display: flex; flex-direction: column; align-items: center; gap: 6rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6rem;
       font-size: 12rem;
 
       .side-icon-wrap {
-        width: 44rem; height: 44rem; border-radius: 50%;
-        background: rgba(255,255,255,0.15);
-        display: flex; align-items: center; justify-content: center;
-        svg { font-size: 24rem; }
+        width: 44rem;
+        height: 44rem;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        svg {
+          font-size: 24rem;
+        }
       }
       .album-thumb {
-        width: 44rem; height: 44rem; border-radius: 4rem; overflow: hidden;
-        background: rgba(255,255,255,0.15);
-        display: flex; align-items: center; justify-content: center;
-        img { width: 100%; height: 100%; object-fit: cover; }
+        width: 44rem;
+        height: 44rem;
+        border-radius: 4rem;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
       }
     }
-    .record-btn-wrap { justify-self: center; }
+    .record-btn-wrap {
+      justify-self: center;
+    }
   }
 
   .record-btn-wrap {
-    position: relative; width: 78rem; height: 78rem; cursor: pointer;
+    position: relative;
+    width: 78rem;
+    height: 78rem;
+    cursor: pointer;
 
     .record-ring {
-      position: absolute; inset: 0; border-radius: 50%; border: 6rem solid white;
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 6rem solid white;
     }
     .record-core {
-      position: absolute; top: 8rem; left: 8rem;
-      width: 62rem; height: 62rem; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
+      position: absolute;
+      top: 8rem;
+      left: 8rem;
+      width: 62rem;
+      height: 62rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
-      &.is-video { background: #ff3b30; }
-      &.is-photo { background: white; }
+      &.is-video {
+        background: #ff3b30;
+      }
+      &.is-photo {
+        background: white;
+      }
       &.is-segment {
         background: #ff3b30;
-        .segments-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+        .segments-svg {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+        }
       }
-      .photo-dot { width: 100%; height: 100%; border-radius: 50%; background: white; }
+      .photo-dot {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        background: white;
+      }
       &.recording {
-        width: 34rem; height: 34rem; top: 22rem; left: 22rem;
-        border-radius: 8rem; background: #ff3b30;
+        width: 34rem;
+        height: 34rem;
+        top: 22rem;
+        left: 22rem;
+        border-radius: 8rem;
+        background: #ff3b30;
       }
     }
   }
 
   .recording-ui {
-    position: absolute; bottom: 80rem; left: 50%; transform: translateX(-50%);
-    z-index: 10; width: 90rem; height: 90rem; cursor: pointer;
+    position: absolute;
+    bottom: 80rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    width: 90rem;
+    height: 90rem;
+    cursor: pointer;
 
     .progress-ring {
-      position: absolute; top: -15rem; left: -15rem;
-      width: 120rem; height: 120rem; transform: rotate(-90deg);
-      circle { fill: none; stroke-width: 5; }
-      .ring-bg { stroke: rgba(255,255,255,0.2); }
+      position: absolute;
+      top: -15rem;
+      left: -15rem;
+      width: 120rem;
+      height: 120rem;
+      transform: rotate(-90deg);
+      circle {
+        fill: none;
+        stroke-width: 5;
+      }
+      .ring-bg {
+        stroke: rgba(255, 255, 255, 0.2);
+      }
       .ring-progress {
-        stroke: white; stroke-dasharray: 339.29; stroke-dashoffset: 0;
-        transition: stroke-dashoffset 0.3s linear; stroke-linecap: round;
+        stroke: white;
+        stroke-dasharray: 339.29;
+        stroke-dashoffset: 0;
+        transition: stroke-dashoffset 0.3s linear;
+        stroke-linecap: round;
       }
     }
     .recording-core {
-      position: absolute; inset: 0; border-radius: 50%; background: white;
-      display: flex; align-items: center; justify-content: center;
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       .recording-pause {
-        width: 22rem; height: 22rem; border-radius: 5rem; background: #ff3b30;
+        width: 22rem;
+        height: 22rem;
+        border-radius: 5rem;
+        background: #ff3b30;
       }
     }
   }
 
   // ========== 预览态 ==========
   .unmute-hint {
-    position: absolute; top: 60rem; left: 50%; transform: translateX(-50%);
+    position: absolute;
+    top: 60rem;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 10;
-    background: rgba(0,0,0,0.65); border-radius: 24rem;
+    background: rgba(0, 0, 0, 0.65);
+    border-radius: 24rem;
     padding: 10rem 20rem;
-    display: flex; align-items: center; gap: 8rem;
-    font-size: 14rem; cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8rem;
+    font-size: 14rem;
+    cursor: pointer;
     animation: unmutePulse 1.5s ease-in-out infinite;
-    svg { font-size: 20rem; }
+    svg {
+      font-size: 20rem;
+    }
   }
   @keyframes unmutePulse {
-    0%, 100% { opacity: 0.8; }
-    50% { opacity: 1; }
+    0%,
+    100% {
+      opacity: 0.8;
+    }
+    50% {
+      opacity: 1;
+    }
   }
 
   .preview-top-bar {
-    position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
     padding: 20rem 20rem 0;
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     font-size: 26rem;
 
     .music-selector {
       font-size: 14rem;
-      background: rgba(0,0,0,0.35);
+      background: rgba(0, 0, 0, 0.35);
       padding: 6rem 14rem;
       border-radius: 20rem;
       display: flex;
@@ -1517,7 +1858,7 @@ onBeforeUnmount(() => {
 
       .remove-music-icon {
         font-size: 16rem;
-        color: rgba(255,255,255,0.6);
+        color: rgba(255, 255, 255, 0.6);
         flex-shrink: 0;
       }
     }
@@ -1529,176 +1870,293 @@ onBeforeUnmount(() => {
   }
 
   .preview-toolbar {
-    position: absolute; right: 12rem; top: 50%; transform: translateY(-50%);
-    z-index: 10; display: flex; flex-direction: column; gap: 36rem;
+    position: absolute;
+    right: 12rem;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 36rem;
     align-items: center;
 
     .pt-item {
-      display: flex; flex-direction: column; align-items: center; gap: 4rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4rem;
       font-size: 11rem;
       .pt-icon-wrap {
-        width: 40rem; height: 40rem; border-radius: 50%;
-        background: rgba(255,255,255,0.12);
-        display: flex; align-items: center; justify-content: center;
-        svg { font-size: 20rem; }
+        width: 40rem;
+        height: 40rem;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        svg {
+          font-size: 20rem;
+        }
       }
     }
   }
 
   .preview-bottom {
-    position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
     padding: 0 16rem 24rem;
 
     .progress-bar {
-      padding: 0 8rem; margin-bottom: 16rem;
+      padding: 0 8rem;
+      margin-bottom: 16rem;
       .progress-track {
-        height: 3rem; background: rgba(255,255,255,0.25); border-radius: 2rem;
+        height: 3rem;
+        background: rgba(255, 255, 255, 0.25);
+        border-radius: 2rem;
         position: relative;
         .progress-fill {
-          height: 100%; background: white; border-radius: 2rem;
+          height: 100%;
+          background: white;
+          border-radius: 2rem;
           transition: width 0.1s linear;
         }
         .progress-thumb {
-          position: absolute; top: 50%; transform: translate(-50%, -50%);
-          width: 12rem; height: 12rem; border-radius: 50%; background: white;
+          position: absolute;
+          top: 50%;
+          transform: translate(-50%, -50%);
+          width: 12rem;
+          height: 12rem;
+          border-radius: 50%;
+          background: white;
         }
       }
     }
 
     .preview-bottom-row {
-      display: flex; align-items: center; justify-content: space-between;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
 
     .daily-btn {
-      display: flex; align-items: center; gap: 8rem;
-      background: rgba(255,255,255,0.15);
+      display: flex;
+      align-items: center;
+      gap: 8rem;
+      background: rgba(255, 255, 255, 0.15);
       backdrop-filter: blur(10px);
-      padding: 8rem 16rem 8rem 8rem; border-radius: 24rem;
-      font-size: 13rem; white-space: nowrap;
+      padding: 8rem 16rem 8rem 8rem;
+      border-radius: 24rem;
+      font-size: 13rem;
+      white-space: nowrap;
 
       .daily-avatar {
-        width: 28rem; height: 28rem; border-radius: 50%; object-fit: cover;
+        width: 28rem;
+        height: 28rem;
+        border-radius: 50%;
+        object-fit: cover;
       }
     }
 
     .play-pause-btn {
-      width: 44rem; height: 44rem; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      svg { font-size: 22rem; }
+      width: 44rem;
+      height: 44rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      svg {
+        font-size: 22rem;
+      }
     }
 
     .glass-btn {
-      background: rgba(255,255,255,0.15);
+      background: rgba(255, 255, 255, 0.15);
       backdrop-filter: blur(10px);
       border: none;
     }
 
     .next-btn {
-      background: #ff3b30; border-radius: 24rem;
-      padding: 10rem 28rem; font-size: 15rem; font-weight: 600;
+      background: #ff3b30;
+      border-radius: 24rem;
+      padding: 10rem 28rem;
+      font-size: 15rem;
+      font-weight: 600;
       cursor: pointer;
     }
   }
 
   // ========== 发布编辑态 ==========
   .post-edit-cover {
-    width: 100%; height: 55%;
-    position: relative; overflow: hidden;
+    width: 100%;
+    height: 55%;
+    position: relative;
+    overflow: hidden;
     background: #1a1a1a;
 
     .cover-img {
-      width: 100%; height: 100%; object-fit: cover;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
 
     .cover-placeholder {
-      width: 100%; height: 100%;
+      width: 100%;
+      height: 100%;
     }
 
     .edit-cover-btn {
-      position: absolute; bottom: 20rem; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.5);
-      border: 1rem solid rgba(255,255,255,0.3);
-      padding: 6rem 20rem; border-radius: 20rem;
-      font-size: 13rem; color: #ccc;
+      position: absolute;
+      bottom: 20rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.5);
+      border: 1rem solid rgba(255, 255, 255, 0.3);
+      padding: 6rem 20rem;
+      border-radius: 20rem;
+      font-size: 13rem;
+      color: #ccc;
     }
   }
 
   .post-edit-top-bar {
-    position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
     padding: 20rem 20rem 0;
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     font-size: 26rem;
 
     .preview-label {
       font-size: 15rem;
-      background: rgba(0,0,0,0.4);
-      padding: 6rem 16rem; border-radius: 20rem;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 6rem 16rem;
+      border-radius: 20rem;
     }
   }
 
   .post-edit-inputs {
-    position: absolute; top: 58%; left: 0; right: 0;
+    position: absolute;
+    top: 58%;
+    left: 0;
+    right: 0;
     padding: 16rem 20rem;
 
     .input-title {
-      width: 100%; background: transparent; border: none; outline: none;
-      color: #888; font-size: 17rem; padding: 4rem 0;
-      &::placeholder { color: #888; }
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #888;
+      font-size: 17rem;
+      padding: 4rem 0;
+      &::placeholder {
+        color: #888;
+      }
     }
 
     .input-desc {
-      width: 100%; background: transparent; border: none; outline: none;
-      color: #666; font-size: 14rem; padding: 4rem 0;
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #666;
+      font-size: 14rem;
+      padding: 4rem 0;
       resize: none;
-      &::placeholder { color: #666; }
+      &::placeholder {
+        color: #666;
+      }
     }
   }
 
   .post-edit-options {
-    position: absolute; top: calc(58% + 140rem); left: 0; right: 0;
+    position: absolute;
+    top: calc(58% + 140rem);
+    left: 0;
+    right: 0;
     padding: 0 20rem;
-    display: flex; flex-wrap: wrap; gap: 6rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6rem;
 
     .opt-item {
-      padding: 6rem 14rem; border-radius: 4rem;
-      background: rgba(255,255,255,0.08);
-      font-size: 13rem; color: #ccc;
+      padding: 6rem 14rem;
+      border-radius: 4rem;
+      background: rgba(255, 255, 255, 0.08);
+      font-size: 13rem;
+      color: #ccc;
       cursor: pointer;
     }
   }
 
   .draft-tip {
-    position: absolute; top: calc(58% + 190rem); left: 20rem;
-    font-size: 12rem; color: #555;
+    position: absolute;
+    top: calc(58% + 190rem);
+    left: 20rem;
+    font-size: 12rem;
+    color: #555;
   }
 
   .post-edit-bottom {
-    position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
     padding: 20rem 20rem 30rem;
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 
     .share-btn {
-      display: flex; flex-direction: column; align-items: center; gap: 4rem;
-      font-size: 13rem; color: #ccc; cursor: pointer;
-      svg { font-size: 28rem; }
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4rem;
+      font-size: 13rem;
+      color: #ccc;
+      cursor: pointer;
+      svg {
+        font-size: 28rem;
+      }
     }
 
     .daily-post-btn {
-      display: flex; align-items: center; gap: 10rem;
-      background: rgba(255,255,255,0.12);
-      padding: 14rem 24rem; border-radius: 28rem;
-      font-size: 16rem; color: #ddd; cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10rem;
+      background: rgba(255, 255, 255, 0.12);
+      padding: 14rem 24rem;
+      border-radius: 28rem;
+      font-size: 16rem;
+      color: #ddd;
+      cursor: pointer;
 
       .daily-avatar-sm {
-        width: 32rem; height: 32rem; border-radius: 50%; object-fit: cover;
+        width: 32rem;
+        height: 32rem;
+        border-radius: 50%;
+        object-fit: cover;
       }
     }
 
     .publish-btn {
-      background: #ff3b30; border-radius: 28rem;
-      padding: 14rem 40rem; font-size: 17rem; font-weight: 600;
+      background: #ff3b30;
+      border-radius: 28rem;
+      padding: 14rem 40rem;
+      font-size: 17rem;
+      font-weight: 600;
       cursor: pointer;
-      &.loading { opacity: 0.6; }
+      &.loading {
+        opacity: 0.6;
+      }
     }
   }
 
@@ -1844,157 +2302,323 @@ onBeforeUnmount(() => {
 
   // ========== 分段指示器 ==========
   .segment-indicators {
-    position: absolute; top: 22rem; left: 20rem; right: 20rem; z-index: 10;
-    height: 4rem; background: rgba(255,255,255,0.15); border-radius: 2rem;
-    display: flex; gap: 3rem; overflow: hidden;
+    position: absolute;
+    top: 22rem;
+    left: 20rem;
+    right: 20rem;
+    z-index: 10;
+    height: 4rem;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2rem;
+    display: flex;
+    gap: 3rem;
+    overflow: hidden;
     .seg-dot {
-      height: 100%; background: #ff3b30; border-radius: 2rem; transition: width 0.2s;
-      &.active { background: #ff6b5b; }
+      height: 100%;
+      background: #ff3b30;
+      border-radius: 2rem;
+      transition: width 0.2s;
+      &.active {
+        background: #ff6b5b;
+      }
     }
   }
 
   .seg-count {
-    margin-left: 4rem; font-size: 13rem; color: rgba(255,255,255,0.7);
+    margin-left: 4rem;
+    font-size: 13rem;
+    color: rgba(255, 255, 255, 0.7);
   }
 
   .undo-seg-bar {
-    position: absolute; bottom: 140rem; left: 50%; transform: translateX(-50%);
-    z-index: 10; display: flex; align-items: center; gap: 12rem;
-    background: rgba(0,0,0,0.6); border-radius: 24rem; padding: 10rem 20rem;
+    position: absolute;
+    bottom: 140rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 12rem;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 24rem;
+    padding: 10rem 20rem;
 
-    .seg-summary { font-size: 13rem; color: #ccc; }
+    .seg-summary {
+      font-size: 13rem;
+      color: #ccc;
+    }
     .undo-seg-btn {
-      background: rgba(255,255,255,0.15); border: none; color: #fff;
-      padding: 6rem 14rem; border-radius: 16rem; font-size: 13rem;
-      display: flex; align-items: center; gap: 4rem; cursor: pointer;
-      svg { font-size: 14rem; }
+      background: rgba(255, 255, 255, 0.15);
+      border: none;
+      color: #fff;
+      padding: 6rem 14rem;
+      border-radius: 16rem;
+      font-size: 13rem;
+      display: flex;
+      align-items: center;
+      gap: 4rem;
+      cursor: pointer;
+      svg {
+        font-size: 14rem;
+      }
     }
     .done-seg-btn {
-      background: #ff3b30; border: none; color: #fff;
-      padding: 6rem 18rem; border-radius: 16rem; font-size: 13rem;
-      cursor: pointer; font-weight: 600;
+      background: #ff3b30;
+      border: none;
+      color: #fff;
+      padding: 6rem 18rem;
+      border-radius: 16rem;
+      font-size: 13rem;
+      cursor: pointer;
+      font-weight: 600;
     }
   }
 
   // ========== 拍照预览 ==========
   .photo-preview {
-    width: 100%; height: 100%; object-fit: contain; background: #000;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
   }
 
   .preview-label-text {
     font-size: 15rem;
-    background: rgba(0,0,0,0.35);
+    background: rgba(0, 0, 0, 0.35);
     padding: 6rem 14rem;
     border-radius: 20rem;
   }
 
   .photo-toolbar {
-    position: absolute; right: 12rem; top: 50%; transform: translateY(-50%);
-    z-index: 10; display: flex; flex-direction: column; gap: 36rem; align-items: center;
+    position: absolute;
+    right: 12rem;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 36rem;
+    align-items: center;
 
     .pt-item {
-      display: flex; flex-direction: column; align-items: center; gap: 4rem;
-      font-size: 11rem; cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4rem;
+      font-size: 11rem;
+      cursor: pointer;
       .pt-icon-wrap {
-        width: 40rem; height: 40rem; border-radius: 50%;
-        background: rgba(255,255,255,0.12);
-        display: flex; align-items: center; justify-content: center;
-        svg { font-size: 20rem; }
+        width: 40rem;
+        height: 40rem;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        svg {
+          font-size: 20rem;
+        }
       }
     }
   }
 
   // ========== 文字编辑器 ==========
   .text-editor {
-    position: fixed; inset: 0; background: #121212; z-index: 10;
-    display: flex; flex-direction: column;
+    position: fixed;
+    inset: 0;
+    background: #121212;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
 
     .text-top-bar {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 12rem 16rem 8rem; font-size: 26rem; flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12rem 16rem 8rem;
+      font-size: 26rem;
+      flex-shrink: 0;
       color: #fff;
-      .text-editor-title { font-size: 17rem; font-weight: 600; }
+      .text-editor-title {
+        font-size: 17rem;
+        font-weight: 600;
+      }
       .done-btn {
-        font-size: 15rem; color: #ffcc00; font-weight: 600; cursor: pointer;
-        &.disabled { color: #555; cursor: default; }
+        font-size: 15rem;
+        color: #ffcc00;
+        font-weight: 600;
+        cursor: pointer;
+        &.disabled {
+          color: #555;
+          cursor: default;
+        }
       }
     }
 
     .text-preview-area {
-      flex: 1; display: flex; align-items: center; justify-content: center;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       padding: 40rem;
     }
 
     .text-content-input {
-      width: 100%; max-width: 600rem; background: transparent; border: none; outline: none;
-      color: #fff; text-align: center; resize: none;
-      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
-      &::placeholder { color: rgba(255,255,255,0.4); }
-      &.large { font-size: 48rem; line-height: 1.3; }
-      &.small { font-size: 24rem; line-height: 1.5; }
+      width: 100%;
+      max-width: 600rem;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #fff;
+      text-align: center;
+      resize: none;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      &::placeholder {
+        color: rgba(255, 255, 255, 0.4);
+      }
+      &.large {
+        font-size: 48rem;
+        line-height: 1.3;
+      }
+      &.small {
+        font-size: 24rem;
+        line-height: 1.5;
+      }
     }
 
     .text-bg-picker {
-      display: flex; align-items: center; gap: 12rem;
-      padding: 16rem 20rem 30rem; flex-shrink: 0;
-      .bg-label { font-size: 13rem; color: #888; flex-shrink: 0; }
-      .bg-colors { display: flex; gap: 10rem; }
+      display: flex;
+      align-items: center;
+      gap: 12rem;
+      padding: 16rem 20rem 30rem;
+      flex-shrink: 0;
+      .bg-label {
+        font-size: 13rem;
+        color: #888;
+        flex-shrink: 0;
+      }
+      .bg-colors {
+        display: flex;
+        gap: 10rem;
+      }
       .bg-color-dot {
-        width: 32rem; height: 32rem; border-radius: 50%; cursor: pointer;
-        border: 2rem solid transparent; transition: border-color 0.2s;
-        &.selected { border-color: #ffcc00; }
+        width: 32rem;
+        height: 32rem;
+        border-radius: 50%;
+        cursor: pointer;
+        border: 2rem solid transparent;
+        transition: border-color 0.2s;
+        &.selected {
+          border-color: #ffcc00;
+        }
       }
     }
   }
 
   // 拍照按钮图标
   .photo-icon {
-    width: 32rem; height: 32rem;
+    width: 32rem;
+    height: 32rem;
   }
 
   // ========== 多图轮播 ==========
   .carousel-container {
-    width: 100%; height: 70%; overflow: hidden; background: #000;
+    width: 100%;
+    height: 70%;
+    overflow: hidden;
+    background: #000;
     touch-action: pan-y;
   }
   .carousel-track {
-    display: flex; height: 100%; transition: transform 0.3s ease;
+    display: flex;
+    height: 100%;
+    transition: transform 0.3s ease;
   }
   .carousel-slide {
-    min-width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    min-width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .carousel-img {
-    width: 100%; height: 100%; object-fit: contain;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
   .carousel-dots {
-    position: absolute; bottom: 70rem; left: 50%; transform: translateX(-50%);
-    z-index: 10; display: flex; flex-direction: row; gap: 8rem;
+    position: absolute;
+    bottom: 70rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: row;
+    gap: 8rem;
     .dot {
-      width: 6rem; height: 6rem; border-radius: 50%;
-      background: rgba(255,255,255,0.4); cursor: pointer; transition: all 0.2s;
-      &.active { background: #fff; transform: scale(1.4); }
+      width: 6rem;
+      height: 6rem;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.4);
+      cursor: pointer;
+      transition: all 0.2s;
+      &.active {
+        background: #fff;
+        transform: scale(1.4);
+      }
     }
   }
   .carousel-counter {
-    position: absolute; top: 50rem; left: 50%; transform: translateX(-50%);
-    z-index: 10; font-size: 13rem; background: rgba(0,0,0,0.5);
-    padding: 4rem 12rem; border-radius: 12rem;
+    position: absolute;
+    top: 50rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    font-size: 13rem;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 4rem 12rem;
+    border-radius: 12rem;
   }
   .carousel-sort-bar {
-    position: absolute; bottom: 160rem; left: 50%; transform: translateX(-50%);
-    z-index: 10; display: flex; gap: 8rem;
+    position: absolute;
+    bottom: 160rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    gap: 8rem;
     .sort-btn {
-      background: rgba(0,0,0,0.55); border: none; color: #fff;
-      padding: 6rem 12rem; border-radius: 16rem; font-size: 12rem;
-      display: flex; align-items: center; gap: 3rem; cursor: pointer;
-      svg { font-size: 14rem; }
-      &:disabled { opacity: 0.3; cursor: default; }
+      background: rgba(0, 0, 0, 0.55);
+      border: none;
+      color: #fff;
+      padding: 6rem 12rem;
+      border-radius: 16rem;
+      font-size: 12rem;
+      display: flex;
+      align-items: center;
+      gap: 3rem;
+      cursor: pointer;
+      svg {
+        font-size: 14rem;
+      }
+      &:disabled {
+        opacity: 0.3;
+        cursor: default;
+      }
     }
   }
   .add-more-btn {
-    display: flex; align-items: center; justify-content: center; gap: 6rem;
-    padding: 8rem 0 12rem; color: #aaa; font-size: 13rem; cursor: pointer;
-    svg { font-size: 18rem; }
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6rem;
+    padding: 8rem 0 12rem;
+    color: #aaa;
+    font-size: 13rem;
+    cursor: pointer;
+    svg {
+      font-size: 18rem;
+    }
   }
 }
 </style>

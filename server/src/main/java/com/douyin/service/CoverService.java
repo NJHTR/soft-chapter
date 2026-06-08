@@ -94,9 +94,22 @@ public class CoverService {
             );
             pb.redirectErrorStream(true);
             Process process = pb.start();
+
+            // 必须消费 stdout, 否则管道缓冲区满会导致 ffmpeg 卡死
+            StringBuilder ffmpegOut = new StringBuilder();
+            try (var reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    ffmpegOut.append(line).append("\n");
+                }
+            }
+
             boolean finished = process.waitFor(15, TimeUnit.SECONDS);
             if (!finished || !tempCover.toFile().exists() || tempCover.toFile().length() == 0) {
-                log.warn("FFmpeg 封面提取失败, 请确认 FFmpeg 已安装");
+                log.warn("FFmpeg 封面提取失败, 请确认 FFmpeg 已安装, exit={}, output={}",
+                        finished ? process.exitValue() : "timeout",
+                        ffmpegOut.length() > 500 ? ffmpegOut.substring(0, 500) : ffmpegOut);
                 return null;
             }
 

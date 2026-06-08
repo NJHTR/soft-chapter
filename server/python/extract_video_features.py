@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """
-视频内容特征提取流水线 v2
-- 视觉理解: Chinese-CLIP ViT-L/14 (transformers 直出视觉向量, 零样本文本分类)
-- 文本理解: Chinese-CLIP 文本编码 + BGE-M3 深度语义
-- 音频分析: librosa (BPM / MFCC / 能量 / 效价)
-- 向量融合: CLIP 视觉+文本 → 融合音频 → 512 维内容向量
+内容特征提取流水线 v2.1
+支持三种模式:
+  video — 视频分析: CLIP 视觉(抽帧) + 音频(librosa) + 文本(jieba/BGE-M3) → 512d 向量
+  image — 图文分析: CLIP 视觉(图片) + 文本(jieba/BGE-M3) → 512d 向量 (无音频)
+  text  — 纯文字分析: jieba + BGE-M3 → 512d 向量 (无视觉/音频)
 
-用法: python extract_video_features.py --video-url <url> --video-id <id> [--desc ...] [--music-title ...]
-RTX 4060 8GB + i9-14900, 首次需下载模型(~3GB), 后续单视频 ~3-5 秒
+用法:
+  python extract_video_features.py --mode video --video-url <url> --video-id <id> [--desc ...] [--music-title ...]
+  python extract_video_features.py --mode image --image-urls '<json_array>' --video-id <id> [--desc ...]
+  python extract_video_features.py --mode text --video-id <id> --desc <text>
+
+RTX 4060 8GB + i9-14900, 首次需下载模型(~3GB), 后续单条 ~2-5 秒
 """
 
 import argparse
@@ -32,7 +36,7 @@ import torch
 CLIP_MODEL = "OFA-Sys/chinese-clip-vit-large-patch14-336px"  # 中文 CLIP, 1024-dim
 TEXT_EMBED_MODEL = "BAAI/bge-m3"  # 深度文本语义, 1024-dim
 
-FRAME_COUNT = 16          # 采样帧数
+FRAME_COUNT = 16          # 视频采样帧数
 FRAME_SIZE = 336          # Chinese-CLIP ViT-L 原生分辨率
 CLIP_DIM = 1024           # ViT-L 输出维度
 AUDIO_SR = 22050
@@ -82,12 +86,12 @@ def ensure_ffmpeg():
         sys.exit(1)
 
 
-def download_video(url: str, dest: str):
+def download_url(url: str, dest: str):
     print(f"  [下载] {url[:80]}...")
     import urllib.request
     urllib.request.urlretrieve(url, dest)
     size_mb = os.path.getsize(dest) / 1024 / 1024
-    print(f"  [下载] 完成, {size_mb:.1f} MB")
+    print(f"  [下载] 完成, {size_mb:.2f} MB")
 
 
 def _get_video_duration(video_path: str) -> float:
@@ -140,6 +144,21 @@ def extract_audio(video_path: str, output_path: str, max_duration: int = AUDIO_D
     return output_path
 
 
+def download_images(image_urls: list[str], dest_dir: str) -> list[str]:
+    """下载多张图片, 返回本地路径列表"""
+    paths = []
+    for i, url in enumerate(image_urls):
+        ext = ".jpg"
+        if url.lower().endswith(".png"):
+            ext = ".png"
+        elif url.lower().endswith(".webp"):
+            ext = ".webp"
+        dest = os.path.join(dest_dir, f"image_{i:02d}{ext}")
+        download_url(url, dest)
+        paths.append(dest)
+    return paths
+
+
 # ===================== 视觉分析 (Chinese-CLIP) =====================
 
 def _get_clip():
@@ -159,27 +178,47 @@ def _tensor_from_clip(output):
         return output.pooler_output
     if isinstance(output, torch.Tensor):
         return output
-    # dict-like
     if hasattr(output, 'last_hidden_state'):
         return output.last_hidden_state[:, 0, :]
     raise TypeError(f"Unexpected CLIP output type: {type(output)}")
 
 
+def _zero_shot_classify(model, processor, visual_array: np.ndarray, label_texts: list[str]) -> np.ndarray:
+    """对所有图像做零样本分类, 返回 (N_images, N_labels) 平均概率"""
+    text_inputs = processor(text=label_texts, return_tensors="pt", padding=True).to(DEVICE)
+    text_embeds = _tensor_from_clip(model.get_text_features(**text_inputs))  # (L, 1024)
+    text_embeds = text_embeds / text_embeds.norm(dim=-1, keepdim=True)
+
+    visual_t = torch.from_numpy(visual_array).to(DEVICE).float()  # (N, 1024)
+    logits = visual_t @ text_embeds.T * model.logit_scale.exp()    # (N, L)
+    probs = logits.softmax(dim=-1).cpu().numpy()
+    return probs.mean(axis=0)
+
+
+def _top_labels(labels: list[str], probs: np.ndarray, threshold: float = 0.08, top_k: int = 5) -> list[str]:
+    idxs = np.argsort(probs)[::-1]
+    result = []
+    for i in idxs:
+        if probs[i] >= threshold and len(result) < top_k:
+            result.append(labels[i])
+    return result
+
+
 @torch.no_grad()
-def analyze_frames_clip(frame_paths: list[str]) -> dict:
+def analyze_images_clip(image_paths: list[str]) -> dict:
     """
-    Chinese-CLIP 视觉分析:
-    1. 逐帧提取 1024-dim 视觉 embedding
+    Chinese-CLIP 视觉分析 (通用: 视频帧 / 图文图片):
+    1. 逐张提取 1024-dim 视觉 embedding
     2. 零样本分类: 品类 / 场景 / 物体 / 情绪 / 风格 / 画质
     返回: { visual_embedding, visual_desc, scene_tags, object_tags, category, mood, style, quality_label }
     """
     model, processor = _get_clip()
 
-    # --- 1. 提取每帧视觉向量 ---
+    # --- 1. 提取每张图视觉向量 ---
     all_visual_embeds = []
     batch_size = 8
-    for start in range(0, len(frame_paths), batch_size):
-        batch_paths = frame_paths[start:start + batch_size]
+    for start in range(0, len(image_paths), batch_size):
+        batch_paths = image_paths[start:start + batch_size]
         images = [Image.open(fp).convert("RGB") for fp in batch_paths]
         inputs = processor(images=images, return_tensors="pt", padding=True).to(DEVICE)
         img_embeds = _tensor_from_clip(model.get_image_features(**inputs))  # (B, 1024)
@@ -187,40 +226,20 @@ def analyze_frames_clip(frame_paths: list[str]) -> dict:
         all_visual_embeds.append(img_embeds.cpu().numpy())
 
     visual_array = np.concatenate(all_visual_embeds, axis=0)  # (N, 1024)
-    visual_embedding = visual_array.mean(axis=0)               # (1024,) 视频级均值
+    visual_embedding = visual_array.mean(axis=0)               # (1024,) 全局均值
     visual_embedding = visual_embedding / (np.linalg.norm(visual_embedding) + 1e-8)
 
     # --- 2. 零样本分类 ---
-    def zero_shot_classify(label_texts: list[str]) -> np.ndarray:
-        """对所有帧做零样本分类, 返回 (N_frames, N_labels) 平均概率"""
-        text_inputs = processor(text=label_texts, return_tensors="pt", padding=True).to(DEVICE)
-        text_embeds = _tensor_from_clip(model.get_text_features(**text_inputs))  # (L, 1024)
-        text_embeds = text_embeds / text_embeds.norm(dim=-1, keepdim=True)
-
-        visual_t = torch.from_numpy(visual_array).to(DEVICE).float()  # (N, 1024)
-        logits = visual_t @ text_embeds.T * model.logit_scale.exp()    # (N, L)
-        probs = logits.softmax(dim=-1).cpu().numpy()
-        return probs.mean(axis=0)  # 均值聚合各帧
-
-    cat_probs = zero_shot_classify(CATEGORY_LABELS)
-    scene_probs = zero_shot_classify(SCENE_LABELS)
-    object_probs = zero_shot_classify(OBJECT_LABELS)
-    mood_probs = zero_shot_classify(MOOD_LABELS)
-    style_probs = zero_shot_classify(STYLE_LABELS)
-    quality_probs = zero_shot_classify(QUALITY_LABELS)
-
-    # --- 3. 提取标签(置信度 > 阈值) ---
-    def top_labels(labels: list[str], probs: np.ndarray, threshold: float = 0.08, top_k: int = 5) -> list[str]:
-        idxs = np.argsort(probs)[::-1]
-        result = []
-        for i in idxs:
-            if probs[i] >= threshold and len(result) < top_k:
-                result.append(labels[i])
-        return result
+    cat_probs = _zero_shot_classify(model, processor, visual_array, CATEGORY_LABELS)
+    scene_probs = _zero_shot_classify(model, processor, visual_array, SCENE_LABELS)
+    object_probs = _zero_shot_classify(model, processor, visual_array, OBJECT_LABELS)
+    mood_probs = _zero_shot_classify(model, processor, visual_array, MOOD_LABELS)
+    style_probs = _zero_shot_classify(model, processor, visual_array, STYLE_LABELS)
+    quality_probs = _zero_shot_classify(model, processor, visual_array, QUALITY_LABELS)
 
     category_top = CATEGORY_LABELS[int(np.argmax(cat_probs))]
-    scene_tags = top_labels(SCENE_LABELS, scene_probs, threshold=0.05)
-    object_tags = top_labels(OBJECT_LABELS, object_probs, threshold=0.05)
+    scene_tags = _top_labels(SCENE_LABELS, scene_probs, threshold=0.05)
+    object_tags = _top_labels(OBJECT_LABELS, object_probs, threshold=0.05)
     mood_top = MOOD_LABELS[int(np.argmax(mood_probs))]
     style_top = STYLE_LABELS[int(np.argmax(style_probs))]
     quality_label = QUALITY_LABELS[int(np.argmax(quality_probs))]
@@ -231,11 +250,11 @@ def analyze_frames_clip(frame_paths: list[str]) -> dict:
         if val:
             enriched_scene.append(f"{prefix}{val}")
 
-    # 生成结构化视觉描述
     visual_desc = f"品类: {category_top} | 场景: {', '.join(scene_tags[:3])} | "
     visual_desc += f"物体: {', '.join(object_tags[:3])} | 情绪: {mood_top} | 风格: {style_top}"
 
-    print(f"  [视觉] 品类={category_top} 场景={scene_tags[:3]} 物体={object_tags[:3]} 情绪={mood_top}")
+    label = "帧" if len(image_paths) > 3 else "图"
+    print(f"  [视觉] {len(image_paths)}{label} 品类={category_top} 场景={scene_tags[:3]} 物体={object_tags[:3]} 情绪={mood_top}")
 
     return {
         "visual_embedding": visual_embedding.round(6).tolist(),
@@ -246,7 +265,6 @@ def analyze_frames_clip(frame_paths: list[str]) -> dict:
         "mood": mood_top,
         "style": style_top,
         "quality_label": quality_label,
-        # 原始分类概率, 用于质量评分
         "_cat_probs": {l: round(float(p), 4) for l, p in zip(CATEGORY_LABELS, cat_probs)},
         "_frame_diversity": float(np.mean(np.std(visual_array, axis=0))),
     }
@@ -316,13 +334,11 @@ def analyze_text(visual_desc: str, clip_category: str, clip_tags: list[str],
     print(f"  [文本] 加载 BGE-M3...")
     model = _get_text_embedder()
 
-    # 拼接所有文本
     tags_str = " ".join(clip_tags) if clip_tags else ""
     combined = f"{original_desc} {music_title} {clip_category} {tags_str} {visual_desc}"
     if not combined.strip():
         return _empty_text_features()
 
-    # jieba 关键词
     words = jieba.cut(combined)
     word_freq = {}
     for w in words:
@@ -334,10 +350,8 @@ def analyze_text(visual_desc: str, clip_category: str, clip_tags: list[str],
     top_words = sorted(word_freq.items(), key=lambda x: -x[1])[:15]
     keywords = [w for w, _ in top_words]
 
-    # BGE-M3 文本向量 (深度语义, 与 CLIP 互补)
     embedding = model.encode(combined[:1024], normalize_embeddings=True).tolist()
 
-    # 品类: 优先使用 CLIP 零样本结果 (视觉比文本规则更准)
     category = clip_category if clip_category and clip_category != "综合" else _classify_text(combined, keywords)
 
     print(f"  [文本] 品类={category} 关键词={keywords[:8]}")
@@ -350,7 +364,6 @@ def analyze_text(visual_desc: str, clip_category: str, clip_tags: list[str],
 
 
 def _classify_text(text: str, keywords: list[str]) -> str:
-    """规则兜底分类 (CLIP 分类失效时启用)"""
     text_lower = text.lower()
     kw_set = set(k.lower() for k in keywords)
 
@@ -415,37 +428,50 @@ def _stop_words() -> set:
 # ===================== 向量融合 =====================
 
 def fuse_content_vector(
-    visual_embedding: list[float],   # CLIP 视觉 (1024-dim, CLIP 空间)
-    clip_text_embedding: list[float], # CLIP 文本 (1024-dim, 同一空间)
-    mfcc: list[float],
-    bpm: float,
-    energy: float,
-    valence: float
+    visual_embedding: list[float] = None,
+    clip_text_embedding: list[float] = None,
+    bge_text_embedding: list[float] = None,
+    mfcc: list[float] = None,
+    bpm: float = 0,
+    energy: float = 0,
+    valence: float = 0,
+    has_visual: bool = True,
+    has_audio: bool = True,
 ) -> list[float]:
     """
-    高质量融合:
-    1. CLIP 视觉 + CLIP 文本 → 加权平均 (同空间可直接融合)
-    2. 取前 496 维 + 音频 16 维 → 512 维 L2 归一化
+    融合视觉 + 文本 + 音频 → 512 维内容向量
+    - 有视觉: CLIP 视觉 + CLIP 文本加权平均 → 取前 496 维
+    - 无视觉: BGE-M3 文本向量 → 取前 496 维
+    - 有音频: 追加 16 维音频特征
+    - 无音频: 追加 16 维零向量
     """
-    vis = np.array(visual_embedding, dtype=np.float64)
-    txt = np.array(clip_text_embedding, dtype=np.float64)
-
-    # CLIP 空间内加权融合
-    if len(txt) == 0 or np.allclose(txt, 0):
-        combined = vis
+    # 视觉/文本部分 (496 维)
+    if has_visual and visual_embedding and clip_text_embedding:
+        vis = np.array(visual_embedding, dtype=np.float64)
+        txt = np.array(clip_text_embedding, dtype=np.float64)
+        if len(txt) == 0 or np.allclose(txt, 0):
+            combined = vis
+        else:
+            combined = CLIP_VISUAL_WEIGHT * vis + CLIP_TEXT_WEIGHT * txt
+            combined = combined / (np.linalg.norm(combined) + 1e-8)
+        clip_part = combined[:496] if len(combined) >= 496 else np.pad(combined, (0, 496 - len(combined)))
+    elif bge_text_embedding:
+        bge = np.array(bge_text_embedding, dtype=np.float64)
+        bge = bge / (np.linalg.norm(bge) + 1e-8)
+        clip_part = bge[:496] if len(bge) >= 496 else np.pad(bge, (0, 496 - len(bge)))
     else:
-        combined = CLIP_VISUAL_WEIGHT * vis + CLIP_TEXT_WEIGHT * txt
-        combined = combined / (np.linalg.norm(combined) + 1e-8)
+        clip_part = np.zeros(496, dtype=np.float64)
 
-    # 取前 496 维
-    clip_part = combined[:496] if len(combined) >= 496 else np.pad(combined, (0, 496 - len(combined)))
+    # 音频部分 (16 维)
+    if has_audio and mfcc:
+        bpm_norm = min(1.0, (bpm or 0) / 200.0)
+        audio_part = list(mfcc)[:13] + [bpm_norm, energy or 0, valence or 0]
+        audio_part = audio_part + [0.0] * (16 - len(audio_part))
+    else:
+        audio_part = [0.0] * 16
 
-    # 音频特征
-    bpm_norm = min(1.0, (bpm or 0) / 200.0)
-    audio_part = list(mfcc)[:13] + [bpm_norm, energy or 0, valence or 0]
-    audio_part = audio_part + [0.0] * (16 - len(audio_part))
-
-    fused = np.concatenate([clip_part, audio_part])
+    audio_arr = np.array(audio_part, dtype=np.float64)
+    fused = np.concatenate([clip_part, audio_arr])
     norm = np.linalg.norm(fused)
     if norm > 0:
         fused = fused / norm
@@ -454,130 +480,50 @@ def fuse_content_vector(
 
 # ===================== 质量评分 =====================
 
-def estimate_quality(visual_result: dict, audio_features: dict, text_features: dict) -> float:
+def estimate_quality(visual_result: dict, audio_features: dict, text_features: dict,
+                     has_visual: bool = True, has_audio: bool = True) -> float:
     """多维度质量评分 0-1"""
     score = 0.5
 
-    # 1. 画质 (CLIP 零样本画质评估)
-    quality_label = visual_result.get("quality_label", "")
-    if "精良" in quality_label:
-        score += 0.15
-    elif "清晰" in quality_label:
-        score += 0.08
+    if has_visual:
+        quality_label = visual_result.get("quality_label", "")
+        if "精良" in quality_label:
+            score += 0.15
+        elif "清晰" in quality_label:
+            score += 0.08
 
-    # 2. 帧间多样性 (静态画面 = 低质量)
-    frame_div = visual_result.get("_frame_diversity", 0)
-    if frame_div > 0.15:
-        score += 0.10
-    elif frame_div > 0.08:
-        score += 0.05
-
-    # 3. 分类置信度
-    cat_probs = visual_result.get("_cat_probs", {})
-    if cat_probs:
-        top_conf = max(cat_probs.values())
-        if top_conf > 0.5:
+        frame_div = visual_result.get("_frame_diversity", 0)
+        if frame_div > 0.15:
             score += 0.10
-        elif top_conf > 0.3:
+        elif frame_div > 0.08:
             score += 0.05
 
-    # 4. 内容丰富度
-    scene_count = len(visual_result.get("scene_tags", []))
-    object_count = len(visual_result.get("object_tags", []))
-    if scene_count >= 3:
-        score += 0.05
-    if object_count >= 2:
-        score += 0.05
+        cat_probs = visual_result.get("_cat_probs", {})
+        if cat_probs:
+            top_conf = max(cat_probs.values())
+            if top_conf > 0.5:
+                score += 0.10
+            elif top_conf > 0.3:
+                score += 0.05
 
-    # 5. 音频
-    if audio_features.get("music_bpm", 0) > 0:
-        score += 0.05
+        scene_count = len(visual_result.get("scene_tags", []))
+        object_count = len(visual_result.get("object_tags", []))
+        if scene_count >= 3:
+            score += 0.05
+        if object_count >= 2:
+            score += 0.05
+
+    if has_audio:
+        if audio_features.get("music_bpm", 0) > 0:
+            score += 0.05
+
     if len(text_features.get("keywords", [])) >= 3:
         score += 0.05
 
     return round(min(1.0, score), 3)
 
 
-# ===================== 主流程 =====================
-
-def process_video(video_url: str, video_id: int, api_base: str = "http://localhost:9191") -> dict:
-    t_start = time.time()
-    features = {"video_id": video_id}
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        video_path = os.path.join(tmpdir, "video.mp4")
-        frames_dir = os.path.join(tmpdir, "frames")
-        audio_path = os.path.join(tmpdir, "audio.wav")
-        os.makedirs(frames_dir, exist_ok=True)
-
-        try:
-            # 1. 下载
-            download_video(video_url, video_path)
-
-            # 2. 抽帧 + CLIP 视觉分析
-            frame_paths = extract_frames(video_path, frames_dir)
-            visual = analyze_frames_clip(frame_paths)
-            features.update({k: v for k, v in visual.items() if not k.startswith("_")})
-
-            # 3. 音频分析
-            audio_file = extract_audio(video_path, audio_path)
-            audio_feats = analyze_audio(audio_file)
-            features.update(audio_feats)
-
-            # 4. 文本分析 (jieba + BGE-M3)
-            text_feats = analyze_text(
-                visual_desc=visual["visual_desc"],
-                clip_category=visual["category"],
-                clip_tags=visual.get("scene_tags", []) + visual.get("object_tags", []),
-                original_desc=os.environ.get("VIDEO_DESC", ""),
-                music_title=os.environ.get("MUSIC_TITLE", "")
-            )
-            features.update(text_feats)
-
-            # 5. CLIP 文本向量 (与视觉同一空间)
-            clip_text_emb = _encode_clip_text(
-                f"{os.environ.get('VIDEO_DESC', '')} {os.environ.get('MUSIC_TITLE', '')} {visual['visual_desc']}"
-            )
-            features["clip_text_embedding"] = clip_text_emb
-
-            # 6. 融合内容向量
-            content_vector = fuse_content_vector(
-                visual_embedding=visual["visual_embedding"],
-                clip_text_embedding=clip_text_emb,
-                mfcc=audio_feats.get("music_mfcc", [0] * 13),
-                bpm=audio_feats.get("music_bpm", 0),
-                energy=audio_feats.get("music_energy", 0),
-                valence=audio_feats.get("music_valence", 0)
-            )
-            features["content_vector"] = content_vector
-
-            # 7. 质量评分
-            features["quality_score"] = estimate_quality(visual, audio_feats, text_feats)
-
-        except Exception as e:
-            traceback.print_exc()
-            features["extract_status"] = 2
-            features["error"] = str(e)
-            return features
-
-    elapsed_ms = int((time.time() - t_start) * 1000)
-    features["extract_status"] = 1
-    features["extract_time_ms"] = elapsed_ms
-    print(f"\n[完成] 视频 {video_id} 特征提取完成, 耗时 {elapsed_ms}ms")
-
-    # 清理内部字段
-    features.pop("_cat_probs", None)
-    features.pop("_frame_diversity", None)
-    features.pop("category", None)
-    features.pop("mood", None)
-    features.pop("style", None)
-    features.pop("quality_label", None)
-    features.pop("clip_text_embedding", None)
-
-    # 8. 写回 Java 后端
-    save_to_backend(features, api_base)
-    return features
-
+# ===================== CLIP 文本编码 =====================
 
 def _encode_clip_text(text: str) -> list[float]:
     """用 CLIP 文本编码器编码文本 (与视觉同一空间)"""
@@ -593,6 +539,214 @@ def _encode_clip_text(text: str) -> list[float]:
         return [0.0] * CLIP_DIM
 
 
+# ===================== 主流程 =====================
+
+def process_video(video_url: str, video_id: int, desc: str = "", music_title: str = "",
+                  api_base: str = "http://localhost:9191") -> dict:
+    t_start = time.time()
+    features = {"video_id": video_id}
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        video_path = os.path.join(tmpdir, "video.mp4")
+        frames_dir = os.path.join(tmpdir, "frames")
+        audio_path = os.path.join(tmpdir, "audio.wav")
+        os.makedirs(frames_dir, exist_ok=True)
+
+        try:
+            download_url(video_url, video_path)
+            frame_paths = extract_frames(video_path, frames_dir)
+            visual = analyze_images_clip(frame_paths)
+            features.update({k: v for k, v in visual.items() if not k.startswith("_")})
+
+            audio_file = extract_audio(video_path, audio_path)
+            audio_feats = analyze_audio(audio_file)
+            features.update(audio_feats)
+
+            text_feats = analyze_text(
+                visual_desc=visual["visual_desc"],
+                clip_category=visual["category"],
+                clip_tags=visual.get("scene_tags", []) + visual.get("object_tags", []),
+                original_desc=desc,
+                music_title=music_title
+            )
+            features.update(text_feats)
+
+            clip_text_emb = _encode_clip_text(
+                f"{desc} {music_title} {visual['visual_desc']}"
+            )
+            features["clip_text_embedding"] = clip_text_emb
+
+            content_vector = fuse_content_vector(
+                visual_embedding=visual["visual_embedding"],
+                clip_text_embedding=clip_text_emb,
+                mfcc=audio_feats.get("music_mfcc", [0] * 13),
+                bpm=audio_feats.get("music_bpm", 0),
+                energy=audio_feats.get("music_energy", 0),
+                valence=audio_feats.get("music_valence", 0),
+                has_visual=True,
+                has_audio=True,
+            )
+            features["content_vector"] = content_vector
+
+            features["quality_score"] = estimate_quality(visual, audio_feats, text_feats,
+                                                         has_visual=True, has_audio=True)
+
+        except Exception as e:
+            traceback.print_exc()
+            features["extract_status"] = 2
+            features["error"] = str(e)
+            return features
+
+    elapsed_ms = int((time.time() - t_start) * 1000)
+    features["extract_status"] = 1
+    features["extract_time_ms"] = elapsed_ms
+    print(f"\n[完成] 视频 {video_id} 特征提取完成, 耗时 {elapsed_ms}ms")
+
+    _cleanup_internal(features)
+    save_to_backend(features, api_base)
+    return features
+
+
+def process_image(image_urls: list[str], video_id: int, desc: str = "",
+                  api_base: str = "http://localhost:9191") -> dict:
+    """图文模式: 下载图片 → CLIP 视觉 + 文本 → 融合 (无音频)"""
+    t_start = time.time()
+    features = {"video_id": video_id}
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            image_paths = download_images(image_urls, tmpdir)
+            visual = analyze_images_clip(image_paths)
+            features.update({k: v for k, v in visual.items() if not k.startswith("_")})
+
+            # 图文模式无音频
+            audio_feats = _empty_audio_features()
+            features.update(audio_feats)
+
+            text_feats = analyze_text(
+                visual_desc=visual["visual_desc"],
+                clip_category=visual["category"],
+                clip_tags=visual.get("scene_tags", []) + visual.get("object_tags", []),
+                original_desc=desc,
+                music_title=""
+            )
+            features.update(text_feats)
+
+            clip_text_emb = _encode_clip_text(
+                f"{desc} {visual['visual_desc']}"
+            )
+            features["clip_text_embedding"] = clip_text_emb
+
+            content_vector = fuse_content_vector(
+                visual_embedding=visual["visual_embedding"],
+                clip_text_embedding=clip_text_emb,
+                has_visual=True,
+                has_audio=False,
+            )
+            features["content_vector"] = content_vector
+
+            features["quality_score"] = estimate_quality(visual, audio_feats, text_feats,
+                                                         has_visual=True, has_audio=False)
+
+        except Exception as e:
+            traceback.print_exc()
+            features["extract_status"] = 2
+            features["error"] = str(e)
+            return features
+
+    elapsed_ms = int((time.time() - t_start) * 1000)
+    features["extract_status"] = 1
+    features["extract_time_ms"] = elapsed_ms
+    print(f"\n[完成] 图文 {video_id} 特征提取完成, 耗时 {elapsed_ms}ms")
+
+    _cleanup_internal(features)
+    save_to_backend(features, api_base)
+    return features
+
+
+def process_text_only(video_id: int, desc: str, api_base: str = "http://localhost:9191") -> dict:
+    """纯文本模式: jieba 关键词 + BGE-M3 语义向量 → 512d (无视觉/音频)"""
+    t_start = time.time()
+    features = {"video_id": video_id}
+
+    try:
+        # 无视觉分析
+        visual = {
+            "visual_embedding": [0.0] * CLIP_DIM,
+            "visual_desc": desc or "",
+            "scene_tags": [],
+            "object_tags": [],
+            "category": "综合",
+            "mood": "",
+            "style": "",
+            "quality_label": "",
+            "_frame_diversity": 0,
+            "_cat_probs": {},
+        }
+        features.update({k: v for k, v in visual.items() if not k.startswith("_")})
+
+        audio_feats = _empty_audio_features()
+        features.update(audio_feats)
+
+        # 文本分析 (仅基于 desc)
+        text_feats = analyze_text(
+            visual_desc="",
+            clip_category="综合",
+            clip_tags=[],
+            original_desc=desc,
+            music_title=""
+        )
+        # 兜底: 如果 desc 为空或只有空白, 补充默认值
+        if not text_feats.get("keywords") and desc:
+            words = jieba.cut(desc)
+            kw = [w.strip() for w in words if len(w.strip()) >= 2 and w.strip() not in _stop_words()]
+            text_feats["keywords"] = kw[:15]
+            text_feats["text_category"] = _classify_text(desc, kw[:15])
+        features.update(text_feats)
+
+        # CLIP 文本向量 (无视觉时用空)
+        clip_text_emb = [0.0] * CLIP_DIM
+        features["clip_text_embedding"] = clip_text_emb
+
+        # 内容向量 = BGE-M3 文本 embedding[:496] + 零音频
+        content_vector = fuse_content_vector(
+            bge_text_embedding=text_feats.get("text_embedding", [0] * 1024),
+            has_visual=False,
+            has_audio=False,
+        )
+        features["content_vector"] = content_vector
+
+        features["quality_score"] = estimate_quality(visual, audio_feats, text_feats,
+                                                     has_visual=False, has_audio=False)
+
+    except Exception as e:
+        traceback.print_exc()
+        features["extract_status"] = 2
+        features["error"] = str(e)
+        return features
+
+    elapsed_ms = int((time.time() - t_start) * 1000)
+    features["extract_status"] = 1
+    features["extract_time_ms"] = elapsed_ms
+    print(f"\n[完成] 纯文字 {video_id} 特征提取完成, 耗时 {elapsed_ms}ms")
+
+    _cleanup_internal(features)
+    save_to_backend(features, api_base)
+    return features
+
+
+def _cleanup_internal(features: dict):
+    features.pop("_cat_probs", None)
+    features.pop("_frame_diversity", None)
+    features.pop("category", None)
+    features.pop("mood", None)
+    features.pop("style", None)
+    features.pop("quality_label", None)
+    features.pop("clip_text_embedding", None)
+
+
+# ===================== 后端保存 =====================
+
 def save_to_backend(features: dict, api_base: str):
     try:
         url = f"{api_base}/api/video/content-features"
@@ -605,24 +759,60 @@ def save_to_backend(features: dict, api_base: str):
         print(f"  [保存] 请求失败: {e}", file=sys.stderr)
 
 
+# ===================== 入口 =====================
+
 def main():
-    parser = argparse.ArgumentParser(description="视频内容特征提取流水线 v2")
-    parser.add_argument("--video-url", required=True, help="视频文件 URL")
-    parser.add_argument("--video-id", required=True, type=int, help="视频 ID")
-    parser.add_argument("--desc", default="", help="视频描述")
-    parser.add_argument("--music-title", default="", help="音乐标题")
+    parser = argparse.ArgumentParser(description="内容特征提取流水线 v2.1")
+    parser.add_argument("--mode", default="video", choices=["video", "image", "text"],
+                        help="内容类型: video(视频) / image(图文) / text(纯文字)")
+    parser.add_argument("--video-url", default="", help="视频文件 URL (mode=video)")
+    parser.add_argument("--image-urls", default="", help="图片 URL 列表, JSON数组字符串 (mode=image)")
+    parser.add_argument("--video-id", required=True, type=int, help="内容 ID")
+    parser.add_argument("--desc", default="", help="描述/正文文本")
+    parser.add_argument("--music-title", default="", help="音乐标题 (mode=video)")
     parser.add_argument("--api-base", default="http://localhost:9191", help="Java 后端地址")
     args = parser.parse_args()
 
-    os.environ["VIDEO_DESC"] = args.desc
-    os.environ["MUSIC_TITLE"] = args.music_title
-    # 国内 Hugging Face 镜像 (Java ProcessBuilder 已设置，这里做兜底)
+    # Hugging Face 国内镜像
     if not os.environ.get("HF_ENDPOINT"):
         os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
-    ensure_ffmpeg()
-
-    result = process_video(args.video_url, args.video_id, args.api_base)
+    if args.mode == "video":
+        ensure_ffmpeg()
+        if not args.video_url:
+            print("[ERROR] mode=video 需要 --video-url", file=sys.stderr)
+            sys.exit(1)
+        result = process_video(
+            video_url=args.video_url,
+            video_id=args.video_id,
+            desc=args.desc,
+            music_title=args.music_title,
+            api_base=args.api_base,
+        )
+    elif args.mode == "image":
+        if not args.image_urls:
+            print("[ERROR] mode=image 需要 --image-urls (JSON数组)", file=sys.stderr)
+            sys.exit(1)
+        try:
+            image_urls = json.loads(args.image_urls)
+        except json.JSONDecodeError:
+            # 也支持逗号分隔的纯 URL 列表
+            image_urls = [u.strip() for u in args.image_urls.split(",") if u.strip()]
+        if not image_urls:
+            print("[ERROR] --image-urls 解析后无有效URL", file=sys.stderr)
+            sys.exit(1)
+        result = process_image(
+            image_urls=image_urls,
+            video_id=args.video_id,
+            desc=args.desc,
+            api_base=args.api_base,
+        )
+    elif args.mode == "text":
+        result = process_text_only(
+            video_id=args.video_id,
+            desc=args.desc,
+            api_base=args.api_base,
+        )
 
     json_output = {k: v for k, v in result.items()
                    if k not in ("text_embedding", "content_vector", "visual_embedding",

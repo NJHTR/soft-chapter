@@ -10,8 +10,8 @@ export const axiosInstance = axios.create({
 // request拦截器
 axiosInstance.interceptors.request.use(
   (config) => {
-    // 如果没有设置Content-Type，默认application/json
-    if (!config.headers['Content-Type']) {
+    // 如果没有设置Content-Type，默认application/json (FormData交由axios自动设置multipart)
+    if (!config.headers['Content-Type'] && !(config.data instanceof FormData)) {
       config.headers['Content-Type'] = 'application/json'
     }
     const token = localStorage.getItem('token')
