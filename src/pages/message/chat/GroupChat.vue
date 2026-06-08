@@ -75,10 +75,7 @@
               alt=""
             />
             <img
-              @click="
-                data.showOption = !data.showOption
-                data.showEmoji = false
-              "
+              @click="toggleOption"
               src="../../../assets/img/icon/message/add-white.png"
               alt=""
             />
@@ -136,23 +133,11 @@
               <img src="../../../assets/img/icon/message/redpack.png" alt="" />
               <span>红包</span>
             </div>
-            <div
-              class="option"
-              @click="
-                data.showOption = false
-                startGroupCall(true)
-              "
-            >
+            <div class="option" @click="startOptionGroupCall(true)">
               <img src="../../../assets/img/icon/message/video.png" alt="" />
               <span>视频通话</span>
             </div>
-            <div
-              class="option"
-              @click="
-                data.showOption = false
-                startGroupCall(false)
-              "
-            >
+            <div class="option" @click="startOptionGroupCall(false)">
               <img src="../../../assets/img/icon/message/audio.png" alt="" />
               <span>语音通话</span>
             </div>
@@ -305,6 +290,10 @@ const voiceCancelled = ref(false)
 function toggleEmoji() {
   data.showEmoji = !data.showEmoji
   data.showOption = false
+}
+function toggleOption() {
+  data.showOption = !data.showOption
+  data.showEmoji = false
 }
 function insertEmoji(emoji: string) {
   data.inputText += emoji
@@ -546,6 +535,11 @@ function startGroupCall(isVideo: boolean) {
     isVideo,
     roomName: data.groupName
   })
+}
+
+function startOptionGroupCall(isVideo: boolean) {
+  data.showOption = false
+  startGroupCall(isVideo)
 }
 
 function pickImage() {

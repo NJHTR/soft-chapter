@@ -87,10 +87,7 @@
               alt=""
             />
             <img
-              @click="
-                data.showOption = !data.showOption
-                data.showEmoji = false
-              "
+              @click="toggleOption"
               src="../../../assets/img/icon/message/add-white.png"
               alt=""
             />
@@ -150,23 +147,11 @@
               <img src="../../../assets/img/icon/message/redpack.png" alt="" />
               <span>红包</span>
             </div>
-            <div
-              class="option"
-              @click="
-                data.showOption = false
-                startCall(true)
-              "
-            >
+            <div class="option" @click="startOptionCall(true)">
               <img src="../../../assets/img/icon/message/video.png" alt="" />
               <span>视频通话</span>
             </div>
-            <div
-              class="option"
-              @click="
-                data.showOption = false
-                startCall(false)
-              "
-            >
+            <div class="option" @click="startOptionCall(false)">
               <img src="../../../assets/img/icon/message/audio.png" alt="" />
               <span>语音通话</span>
             </div>
@@ -442,6 +427,10 @@ function toggleEmoji() {
   data.showEmoji = !data.showEmoji
   data.showOption = false
 }
+function toggleOption() {
+  data.showOption = !data.showOption
+  data.showEmoji = false
+}
 function insertEmoji(emoji: string) {
   data.inputText += emoji
   data.showEmoji = false
@@ -459,6 +448,10 @@ function startCall(isVideo: boolean) {
     avatar: targetUserAvatar.value,
     isVideo
   })
+}
+function startOptionCall(isVideo: boolean) {
+  data.showOption = false
+  startCall(isVideo)
 }
 
 async function handleImagePicked(e: Event) {
