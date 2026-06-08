@@ -7,6 +7,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -76,5 +79,36 @@ public class FileService {
         if (filename == null) return "";
         int i = filename.lastIndexOf('.');
         return i == -1 ? "" : filename.substring(i);
+    }
+
+    /** 上传本地文件到 MinIO 并返回预签名 URL */
+    public String uploadLocalFile(Path filePath, String bucket, String contentType) throws Exception {
+        boolean found = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucket).build());
+        if (!found) {
+            minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
+        }
+
+        String ext = getExtension(filePath.getFileName().toString());
+        String objectName = UUID.randomUUID() + ext;
+
+        try (InputStream is = Files.newInputStream(filePath)) {
+            minioClient.putObject(
+                    PutObjectArgs.builder()
+                            .bucket(bucket)
+                            .object(objectName)
+                            .stream(is, Files.size(filePath), -1)
+                            .contentType(contentType)
+                            .build()
+            );
+        }
+
+        return minioClient.getPresignedObjectUrl(
+                GetPresignedObjectUrlArgs.builder()
+                        .bucket(bucket)
+                        .object(objectName)
+                        .method(Method.GET)
+                        .expiry(7, TimeUnit.DAYS)
+                        .build()
+        );
     }
 }

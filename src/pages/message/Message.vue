@@ -432,10 +432,7 @@
                     class="suggest-item"
                     v-for="(item, index) in data.suggestions"
                     :key="'s_' + index"
-                    @click="
-                      data.searching = false
-                      navToChat({ target_user: item })
-                    "
+                    @click="((data.searching = false), navToChat({ target_user: item }))"
                   >
                     <img class="avatar" :src="_checkImgUrl(item.avatar)" alt="" />
                     <div class="info">
@@ -450,10 +447,7 @@
                   <div
                     v-for="item in data.chatResults.slice(0, 5)"
                     :key="'chat_' + item.uid"
-                    @click="
-                      data.searching = false
-                      navToChat({ target_user: item })
-                    "
+                    @click="((data.searching = false), navToChat({ target_user: item }))"
                   >
                     <People mode="search" :searchKey="data.searchKey" :people="item" />
                   </div>
@@ -464,10 +458,7 @@
                   <div
                     v-for="item in data.contactResults.slice(0, 5)"
                     :key="'contact_' + item.uid"
-                    @click="
-                      data.searching = false
-                      navToChat({ target_user: item })
-                    "
+                    @click="((data.searching = false), navToChat({ target_user: item }))"
                   >
                     <People mode="search" :searchKey="data.searchKey" :people="item" />
                   </div>
@@ -492,10 +483,7 @@
                     v-for="item in data.sysMsgResults"
                     :key="'sys_' + item.id"
                     class="search-item"
-                    @click="
-                      data.searching = false
-                      nav(item.route)
-                    "
+                    @click="((data.searching = false), nav(item.route))"
                   >
                     <img class="avatar" :src="item.avatar" alt="" />
                     <div class="info">
@@ -520,10 +508,7 @@
                 <!-- 直达全局搜索 -->
                 <div
                   class="goto-search-page"
-                  @click="
-                    data.searching = false
-                    nav('/home/search', { key: data.searchKey })
-                  "
+                  @click="((data.searching = false), nav('/home/search', { key: data.searchKey }))"
                 >
                   <img class="icon" src="../../assets/img/icon/search-light.png" alt="" />
                   <div class="right">
@@ -553,21 +538,12 @@
         <div class="plus-menu" @click.stop>
           <div
             class="menu-item"
-            @click="
-              data.showPlusMenu = false
-              data.createChatDialog = true
-            "
+            @click="((data.showPlusMenu = false), (data.createChatDialog = true))"
           >
             <Icon icon="fluent:people-team-20-filled" />
             <span>发起群聊</span>
           </div>
-          <div
-            class="menu-item"
-            @click="
-              data.showPlusMenu = false
-              nav('/message/add-friend')
-            "
-          >
+          <div class="menu-item" @click="((data.showPlusMenu = false), nav('/message/add-friend'))">
             <Icon icon="fluent:person-add-20-filled" />
             <span>添加朋友</span>
           </div>
@@ -655,9 +631,7 @@
             :key="'joined_' + i"
             v-for="(item, i) in data.groupConversations"
             @click="
-              data.createChatDialog = false
-              data.showJoinedChat = false
-              navToGroupChat(item)
+              ((data.createChatDialog = false), (data.showJoinedChat = false), navToGroupChat(item))
             "
           >
             <GroupAvatar :avatars="item.member_avatars || []" :size="48" class="left-avatar" />
@@ -678,9 +652,9 @@
           <div
             class="chat-item"
             @click="
-              data.createChatDialog = false
-              data.showJoinedChat = false
-              nav('/message/share-to-friend')
+              ((data.createChatDialog = false),
+              (data.showJoinedChat = false),
+              nav('/message/share-to-friend'))
             "
           >
             <img

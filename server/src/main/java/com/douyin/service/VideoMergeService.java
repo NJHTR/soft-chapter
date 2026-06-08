@@ -1,6 +1,8 @@
 package com.douyin.service;
 
+import com.douyin.config.MinioConfig;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -13,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.UUID;
 
 /**
@@ -32,6 +35,12 @@ public class VideoMergeService {
 
     @org.springframework.beans.factory.annotation.Value("${music.local.base-url:/music}")
     private String musicBaseUrl;
+
+    @Autowired(required = false)
+    private FileService fileService;
+
+    @Autowired
+    private MinioConfig minioConfig;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -163,6 +172,25 @@ public class VideoMergeService {
 
         log.info("[合成] 完成: {} → {} (原声:{} BGM:{})",
                 videoPath, outputFile, String.format("%.0f%%", originalVol * 100), String.format("%.0f%%", bgmVolume * 100));
+
+        // 上传到 MinIO 并删除本地文件
+        if (minioConfig.isEnabled() && fileService != null) {
+            try {
+                String minioUrl = fileService.uploadLocalFile(outputFile, minioConfig.getBucketVideo(), "video/mp4");
+                log.info("[合成] 已上传至 MinIO: {}", minioUrl);
+                // 删除临时音乐文件
+                deleteDir(tempDir);
+                // 删除合成的本地文件
+                Files.deleteIfExists(outputFile);
+                log.info("[合成] 本地临时文件已清理");
+                return minioUrl;
+            } catch (Exception e) {
+                log.error("[合成] MinIO上传失败, 回退到本地文件: {}", e.getMessage());
+            }
+        } else {
+            // 没有 MinIO 时至少清理临时 BGM 下载目录
+            deleteDir(tempDir);
+        }
         return musicBaseUrl + "/" + outName;
     }
 
@@ -299,6 +327,17 @@ public class VideoMergeService {
         }
 
         log.info("[裁剪] 完成: {} → {}", videoPath, outputFile);
+
+        if (minioConfig.isEnabled() && fileService != null) {
+            try {
+                String minioUrl = fileService.uploadLocalFile(outputFile, minioConfig.getBucketVideo(), "video/mp4");
+                log.info("[裁剪] 已上传至 MinIO: {}", minioUrl);
+                Files.deleteIfExists(outputFile);
+                return minioUrl;
+            } catch (Exception e) {
+                log.error("[裁剪] MinIO上传失败, 回退到本地文件: {}", e.getMessage());
+            }
+        }
         return musicBaseUrl + "/" + outName;
     }
 
@@ -326,6 +365,21 @@ public class VideoMergeService {
             return outputFile.toString();
         }
         return null;
+    }
+
+    /** 递归删除目录 */
+    private void deleteDir(Path dir) {
+        try {
+            if (Files.exists(dir)) {
+                try (var stream = Files.walk(dir)) {
+                    stream.sorted(Comparator.reverseOrder())
+                            .map(Path::toFile)
+                            .forEach(File::delete);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[合成] 清理临时目录失败: {}", e.getMessage());
+        }
     }
 
     private void downloadFile(String url, Path dest) throws Exception {
