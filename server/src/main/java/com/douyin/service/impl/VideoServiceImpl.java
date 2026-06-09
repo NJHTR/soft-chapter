@@ -1,4 +1,4 @@
-package com.douyin.service.impl;
+﻿package com.douyin.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -74,9 +74,10 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
             }
         }
 
-        // 非首页 / 未登录 / 引擎无结果 → 简单时间排序兜底
+        // 非首�?/ 未登�?/ 引擎无结�?�?简单时间排序兜�?
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .in(Video::getType, List.of("recommend-video", "image", "text"))
+                .eq(Video::getStatus, "APPROVED")
                 .orderByDesc(Video::getCreateTime);
         if (minDuration != null) wrapper.ge(Video::getDuration, minDuration);
         int pageNo = start / pageSize + 1;
@@ -97,6 +98,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .in(Video::getAuthorUserId, followedIds)
                 .in(Video::getType, List.of("recommend-video", "image", "text"))
+                .eq(Video::getStatus, "APPROVED")
                 .orderByDesc(Video::getCreateTime);
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
         List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
@@ -107,6 +109,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     public PageDTO<VideoVO> getTrendingVideos(Long viewerUserId, int pageNo, int pageSize) {
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .in(Video::getType, List.of("recommend-video", "image", "text"))
+                .eq(Video::getStatus, "APPROVED")
                 .orderByDesc(Video::getLikeCount)
                 .orderByDesc(Video::getCreateTime);
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
@@ -118,6 +121,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     public PageDTO<VideoVO> getUserVideos(Long viewerUserId, Long userId, int pageNo, int pageSize) {
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .eq(Video::getAuthorUserId, userId)
+                .eq(Video::getStatus, "APPROVED")
                 .orderByDesc(Video::getCreateTime);
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
         List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
@@ -126,12 +130,17 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
 
     @Override
     public PageDTO<VideoVO> getMyVideos(Long viewerUserId, Long userId, int pageNo, int pageSize) {
-        return getUserVideos(viewerUserId, userId, pageNo, pageSize);
+        LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
+                .eq(Video::getAuthorUserId, userId)
+                .orderByDesc(Video::getCreateTime);
+        IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
+        List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
+        return new PageDTO<>(page.getTotal(), pageNo, pageSize, voList);
     }
 
     @Override
     public PageDTO<VideoVO> getLikedVideos(Long userId, int pageNo, int pageSize) {
-        // 从 t_like 查出该用户点赞的所有视频ID
+        // �?t_like 查出该用户点赞的所有视频ID
         LambdaQueryWrapper<Like> likeWrapper = new LambdaQueryWrapper<Like>()
                 .eq(Like::getUserId, userId)
                 .orderByDesc(Like::getCreateTime);
@@ -142,7 +151,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
         if (videoIds.isEmpty()) return new PageDTO<>(likePage.getTotal(), pageNo, pageSize, List.of());
 
         List<Video> videos = listByIds(videoIds);
-        // 按点赞顺序排列
+        // 按点赞顺序排�?
         Map<Long, Video> videoMap = videos.stream()
                 .collect(Collectors.toMap(Video::getId, v -> v, (a, b) -> a, LinkedHashMap::new));
         List<Video> ordered = videoIds.stream()
@@ -206,9 +215,10 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
             }
         }
 
-        // 兜底：简单时间排序
+        // 兜底：简单时间排�?
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .in(Video::getType, List.of("image", "text"))
+                .eq(Video::getStatus, "APPROVED")
                 .orderByDesc(Video::getCreateTime);
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
         List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
@@ -220,18 +230,18 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
         return new PageDTO<>(0, pageNo, pageSize, List.of());
     }
 
-    /** 将 Video 列表转换为 VideoVO 列表, 嵌入 author 信息, 批量查询当前用户的点赞状态 */
+    /** �?Video 列表转换�?VideoVO 列表, 嵌入 author 信息, 批量查询当前用户的点赞状�?*/
     private List<VideoVO> toVideoVOList(List<Video> videos, Long viewerUserId) {
         if (videos.isEmpty()) return List.of();
 
-        // 批量查询作者信息
+        // 批量查询作者信�?
         List<Long> authorIds = videos.stream()
                 .map(Video::getAuthorUserId).distinct().toList();
         List<User> users = userMapper.selectBatchIds(authorIds);
         Map<Long, UserVO> userMap = users.stream()
                 .collect(Collectors.toMap(User::getUid, UserVO::from));
 
-        // 批量查询当前用户的点赞状态
+        // 批量查询当前用户的点赞状�?
         Set<Long> likedVideoIds = Set.of();
         if (viewerUserId != null) {
             List<Long> videoIds = videos.stream().map(Video::getId).toList();
@@ -242,7 +252,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
                     .collect(Collectors.toSet());
         }
 
-        // 批量查询当前用户是否关注了这些作者
+        // 批量查询当前用户是否关注了这些作�?
         Set<Long> finalLiked = likedVideoIds;
         Set<Long> followedAuthorIds = Set.of();
         if (viewerUserId != null && !authorIds.isEmpty()) {
@@ -254,7 +264,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
         }
         Set<Long> finalFollowed = followedAuthorIds;
 
-        // 批量查询当前用户的收藏状态
+        // 批量查询当前用户的收藏状�?
         Set<Long> collectedVideoIds = Set.of();
         if (viewerUserId != null) {
             List<Long> videoIds = videos.stream().map(Video::getId).toList();

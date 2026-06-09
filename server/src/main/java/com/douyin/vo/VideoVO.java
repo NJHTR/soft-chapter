@@ -15,6 +15,118 @@ public class VideoVO {
     @JsonProperty("aweme_id")
     private Long awemeId;
 
+    public Long getAwemeId() {
+        return awemeId;
+    }
+
+    public void setAwemeId(Long awemeId) {
+        this.awemeId = awemeId;
+    }
+
+    public String getDesc() {
+        return desc;
+    }
+
+    public void setDesc(String desc) {
+        this.desc = desc;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public Long getDuration() {
+        return duration;
+    }
+
+    public void setDuration(Long duration) {
+        this.duration = duration;
+    }
+
+    public VideoInfo getVideo() {
+        return video;
+    }
+
+    public void setVideo(VideoInfo video) {
+        this.video = video;
+    }
+
+    public Statistics getStatistics() {
+        return statistics;
+    }
+
+    public void setStatistics(Statistics statistics) {
+        this.statistics = statistics;
+    }
+
+    public UserVO getAuthor() {
+        return author;
+    }
+
+    public void setAuthor(UserVO author) {
+        this.author = author;
+    }
+
+    public Music getMusic() {
+        return music;
+    }
+
+    public void setMusic(Music music) {
+        this.music = music;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public String getAddress() {
+        return address;
+    }
+
+    public void setAddress(String address) {
+        this.address = address;
+    }
+
+    public List<String> getImageUrls() {
+        return imageUrls;
+    }
+
+    public void setImageUrls(List<String> imageUrls) {
+        this.imageUrls = imageUrls;
+    }
+
+    public Boolean getLoved() {
+        return isLoved;
+    }
+
+    public void setLoved(Boolean loved) {
+        isLoved = loved;
+    }
+
+    public Boolean getAttention() {
+        return isAttention;
+    }
+
+    public void setAttention(Boolean attention) {
+        isAttention = attention;
+    }
+
+    public Boolean getCollect() {
+        return isCollect;
+    }
+
+    public void setCollect(Boolean collect) {
+        isCollect = collect;
+    }
+
     private String desc;
 
     /** 内容类型: recommend-video, long-video, image, text */
@@ -56,6 +168,30 @@ public class VideoVO {
         private UrlList cover;
 
         private String poster;
+
+        public UrlList getPlayAddr() {
+            return playAddr;
+        }
+
+        public void setPlayAddr(UrlList playAddr) {
+            this.playAddr = playAddr;
+        }
+
+        public UrlList getCover() {
+            return cover;
+        }
+
+        public void setCover(UrlList cover) {
+            this.cover = cover;
+        }
+
+        public String getPoster() {
+            return poster;
+        }
+
+        public void setPoster(String poster) {
+            this.poster = poster;
+        }
     }
 
     @Data
@@ -75,6 +211,46 @@ public class VideoVO {
         @JsonProperty("digg_count")
         private Long diggCount;
 
+        public Long getDiggCount() {
+            return diggCount;
+        }
+
+        public void setDiggCount(Long diggCount) {
+            this.diggCount = diggCount;
+        }
+
+        public Long getCommentCount() {
+            return commentCount;
+        }
+
+        public void setCommentCount(Long commentCount) {
+            this.commentCount = commentCount;
+        }
+
+        public Long getShareCount() {
+            return shareCount;
+        }
+
+        public void setShareCount(Long shareCount) {
+            this.shareCount = shareCount;
+        }
+
+        public Long getCollectCount() {
+            return collectCount;
+        }
+
+        public void setCollectCount(Long collectCount) {
+            this.collectCount = collectCount;
+        }
+
+        public Long getPlayCount() {
+            return playCount;
+        }
+
+        public void setPlayCount(Long playCount) {
+            this.playCount = playCount;
+        }
+
         @JsonProperty("comment_count")
         private Long commentCount;
 
@@ -92,6 +268,30 @@ public class VideoVO {
     public static class Music {
         private String title;
         private String cover;
+
+        public String getTitle() {
+            return title;
+        }
+
+        public void setTitle(String title) {
+            this.title = title;
+        }
+
+        public String getCover() {
+            return cover;
+        }
+
+        public void setCover(String cover) {
+            this.cover = cover;
+        }
+
+        public UrlList getPlayUrl() {
+            return playUrl;
+        }
+
+        public void setPlayUrl(UrlList playUrl) {
+            this.playUrl = playUrl;
+        }
 
         @JsonProperty("play_url")
         private UrlList playUrl;
