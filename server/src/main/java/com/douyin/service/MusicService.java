@@ -89,6 +89,7 @@ public class MusicService {
         music.setDuration(getDuration(dest));
         music.setSource("local");
         music.setPlayUrl(musicBaseUrl + "/" + fileName);
+        music.setStatus("PENDING");
         musicMapper.insert(music);
         log.info("音乐上传完成: id={} name={} path={}", music.getId(), music.getName(), dest);
         return music;

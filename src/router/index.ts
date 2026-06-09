@@ -16,9 +16,26 @@ const router = createRouter({
   }
 })
 router.beforeEach((to, from) => {
+  // Admin route guard
+  if (to.path.startsWith('/admin')) {
+    const baseStore = useBaseStore()
+    if (!baseStore.isAdmin) {
+      return { path: '/home', replace: true }
+    }
+  }
   const baseStore = useBaseStore()
   //footer下面的5个按钮，对跳不要用动画
-  const noAnimation = ['/', '/home', '/me', '/shop', '/message', '/publish', '/home/live', '/test', '/slide']
+  const noAnimation = [
+    '/',
+    '/home',
+    '/me',
+    '/shop',
+    '/message',
+    '/publish',
+    '/home/live',
+    '/test',
+    '/slide'
+  ]
   if (noAnimation.indexOf(from.path) !== -1 && noAnimation.indexOf(to.path) !== -1) {
     return true
   }

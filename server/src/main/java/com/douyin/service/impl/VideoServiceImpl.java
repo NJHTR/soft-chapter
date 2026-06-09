@@ -77,6 +77,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
         // 非首页 / 未登录 / 引擎无结果 → 简单时间排序兜底
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .in(Video::getType, List.of("recommend-video", "image", "text"))
+                .eq(Video::getStatus, "APPROVED")
                 .orderByDesc(Video::getCreateTime);
         if (minDuration != null) wrapper.ge(Video::getDuration, minDuration);
         int pageNo = start / pageSize + 1;
@@ -97,6 +98,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .in(Video::getAuthorUserId, followedIds)
                 .in(Video::getType, List.of("recommend-video", "image", "text"))
+                .eq(Video::getStatus, "APPROVED")
                 .orderByDesc(Video::getCreateTime);
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
         List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
@@ -107,6 +109,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     public PageDTO<VideoVO> getTrendingVideos(Long viewerUserId, int pageNo, int pageSize) {
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .in(Video::getType, List.of("recommend-video", "image", "text"))
+                .eq(Video::getStatus, "APPROVED")
                 .orderByDesc(Video::getLikeCount)
                 .orderByDesc(Video::getCreateTime);
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
@@ -118,6 +121,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     public PageDTO<VideoVO> getUserVideos(Long viewerUserId, Long userId, int pageNo, int pageSize) {
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .eq(Video::getAuthorUserId, userId)
+                .eq(Video::getStatus, "APPROVED")
                 .orderByDesc(Video::getCreateTime);
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
         List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
@@ -126,7 +130,12 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
 
     @Override
     public PageDTO<VideoVO> getMyVideos(Long viewerUserId, Long userId, int pageNo, int pageSize) {
-        return getUserVideos(viewerUserId, userId, pageNo, pageSize);
+        LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
+                .eq(Video::getAuthorUserId, userId)
+                .orderByDesc(Video::getCreateTime);
+        IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
+        List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
+        return new PageDTO<>(page.getTotal(), pageNo, pageSize, voList);
     }
 
     @Override
@@ -209,6 +218,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
         // 兜底：简单时间排序
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .in(Video::getType, List.of("image", "text"))
+                .eq(Video::getStatus, "APPROVED")
                 .orderByDesc(Video::getCreateTime);
         IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
         List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);

@@ -279,7 +279,8 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/home/search',
     component: () => import('@/pages/home/SearchPage.vue')
-  }
+  }, // Admin review page
+  { path: '/admin/review', component: () => import('@/pages/admin/Review.vue') }
 ]
 
 export default routes

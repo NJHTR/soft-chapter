@@ -67,13 +67,17 @@ export const useBaseStore = defineStore('base', {
             url_list: []
           }
         ],
-        has_password: false
+        has_password: false,
+        role: 'user'
       },
       friends: resource.users,
       message: ''
     }
   },
   getters: {
+    isAdmin(): boolean {
+      return this.userinfo.role === 'ADMIN'
+    },
     selectFriends() {
       return this.friends.all.filter((v) => v.select)
     }
@@ -160,7 +164,8 @@ export const useBaseStore = defineStore('base', {
         avatar_300x300: { url_list: [] },
         cover_url: [{ url_list: [] }],
         white_cover_url: [{ url_list: [] }],
-        has_password: false
+        has_password: false,
+        role: 'user'
       }
       _notice('已退出登录')
     },

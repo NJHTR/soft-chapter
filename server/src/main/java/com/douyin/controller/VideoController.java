@@ -291,6 +291,7 @@ public class VideoController {
                 }
             } catch (Exception ignored) {}
         }
+        video.setStatus("PENDING");
         boolean saved = videoService.save(video);
         log.info("publish: save result={}, videoId={}", saved, video.getId());
 

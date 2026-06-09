@@ -33,4 +33,47 @@ public class Music {
     private String lyric;
 
     private LocalDateTime createTime;
+    /** Review status: PENDING/APPROVED/REJECTED */
+    private String status;
+
+    /** Review comment / reject reason */
+    private String reviewComment;
+
+    /** Reviewer user ID */
+    private Long reviewedBy;
+
+    /** Review timestamp */
+    private LocalDateTime reviewTime;
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public String getReviewComment() {
+        return reviewComment;
+    }
+
+    public void setReviewComment(String reviewComment) {
+        this.reviewComment = reviewComment;
+    }
+
+    public Long getReviewedBy() {
+        return reviewedBy;
+    }
+
+    public void setReviewedBy(Long reviewedBy) {
+        this.reviewedBy = reviewedBy;
+    }
+
+    public LocalDateTime getReviewTime() {
+        return reviewTime;
+    }
+
+    public void setReviewTime(LocalDateTime reviewTime) {
+        this.reviewTime = reviewTime;
+    }
 }
