@@ -5,13 +5,13 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.douyin.common.PageDTO;
 import com.douyin.common.Result;
-import com.douyin.entity.User;
 import com.douyin.entity.Music;
+import com.douyin.entity.User;
 import com.douyin.entity.Video;
 import com.douyin.mapper.MusicMapper;
 import com.douyin.mapper.UserMapper;
-import com.douyin.service.SystemNoticeService;
 import com.douyin.service.MusicService;
+import com.douyin.service.SystemNoticeService;
 import com.douyin.service.VideoService;
 import com.douyin.utils.JwtUtil;
 import com.douyin.vo.VideoVO;
@@ -62,13 +62,15 @@ public class AdminController {
         return user;
     }
 
+    // ========== Video/Post Review ==========
+
     @GetMapping("/videos/pending")
     public Result<PageDTO<VideoVO>> pendingVideos(
             @RequestParam(defaultValue = "1") int pageNo,
             @RequestParam(defaultValue = "10") int pageSize,
             HttpServletRequest req) {
         User admin = checkAdmin(req);
-        if (admin == null) return Result.fail("无管理员权限");
+        if (admin == null) return Result.fail("No admin permission");
 
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .eq(Video::getStatus, "PENDING")
@@ -101,7 +103,7 @@ public class AdminController {
             vo.setStatistics(stats);
 
             VideoVO.Music music = new VideoVO.Music();
-            music.setTitle(v.getMusicTitle() != null ? v.getMusicTitle() : "原创");
+            music.setTitle(v.getMusicTitle() != null ? v.getMusicTitle() : "Original");
             vo.setMusic(music);
 
             if (v.getAuthorUserId() != null) {
@@ -118,11 +120,11 @@ public class AdminController {
     @PostMapping("/videos/{id}/approve")
     public Result<?> approve(@PathVariable Long id, HttpServletRequest req) {
         User admin = checkAdmin(req);
-        if (admin == null) return Result.fail("无管理员权限");
+        if (admin == null) return Result.fail("No admin permission");
 
         Video video = videoService.getById(id);
-        if (video == null) return Result.fail("视频不存�?);
-        if (!"PENDING".equals(video.getStatus())) return Result.fail("该视频不在待审核状�?);
+        if (video == null) return Result.fail("Video not found");
+        if (!"PENDING".equals(video.getStatus())) return Result.fail("Video not in pending status");
 
         video.setStatus("APPROVED");
         video.setReviewedBy(admin.getUid());
@@ -132,9 +134,9 @@ public class AdminController {
 
         log.info("Admin {} approved video {}", admin.getUid(), id);
 
-        // 发送通知给作�?        sendReviewNotice(video, true, "");
+        sendReviewNotice(video, true, "");
 
-        return Result.ok(Map.of("status", "APPROVED", "message", "审核通过"));
+        return Result.ok(Map.of("status", "APPROVED", "message", "Approved"));
     }
 
     @PostMapping("/videos/{id}/reject")
@@ -142,13 +144,13 @@ public class AdminController {
                             @RequestBody Map<String, String> body,
                             HttpServletRequest req) {
         User admin = checkAdmin(req);
-        if (admin == null) return Result.fail("无管理员权限");
+        if (admin == null) return Result.fail("No admin permission");
 
         Video video = videoService.getById(id);
-        if (video == null) return Result.fail("视频不存�?);
-        if (!"PENDING".equals(video.getStatus())) return Result.fail("该视频不在待审核状�?);
+        if (video == null) return Result.fail("Video not found");
+        if (!"PENDING".equals(video.getStatus())) return Result.fail("Video not in pending status");
 
-        String reason = body.getOrDefault("reason", "内容不符合平台规�?);
+        String reason = body.getOrDefault("reason", "Content violates platform rules");
         video.setStatus("REJECTED");
         video.setReviewComment(reason);
         video.setReviewedBy(admin.getUid());
@@ -157,13 +159,12 @@ public class AdminController {
 
         log.info("Admin {} rejected video {}: {}", admin.getUid(), id, reason);
 
-        // 发送通知给作�?        sendReviewNotice(video, false, reason);
+        sendReviewNotice(video, false, reason);
 
-        return Result.ok(Map.of("status", "REJECTED", "message", "已驳�?));
+        return Result.ok(Map.of("status", "REJECTED", "message", "Rejected"));
     }
 
-
-    // ========== ������� ==========
+    // ========== Music Review ==========
 
     @GetMapping("/music/pending")
     public Result<PageDTO<Map<String, Object>>> pendingMusic(
@@ -171,7 +172,7 @@ public class AdminController {
             @RequestParam(defaultValue = "10") int pageSize,
             HttpServletRequest req) {
         User admin = checkAdmin(req);
-        if (admin == null) return Result.fail("�޹���ԱȨ��");
+        if (admin == null) return Result.fail("No admin permission");
 
         LambdaQueryWrapper<Music> wrapper = new LambdaQueryWrapper<Music>()
                 .eq(Music::getStatus, "PENDING")
@@ -200,11 +201,11 @@ public class AdminController {
     @PostMapping("/music/{id}/approve")
     public Result<?> approveMusic(@PathVariable Long id, HttpServletRequest req) {
         User admin = checkAdmin(req);
-        if (admin == null) return Result.fail("�޹���ԱȨ��");
+        if (admin == null) return Result.fail("No admin permission");
 
         Music music = musicService.getById(id);
-        if (music == null) return Result.fail("���ֲ�����");
-        if (!"PENDING".equals(music.getStatus())) return Result.fail("�����ֲ��ڴ����״̬");
+        if (music == null) return Result.fail("Music not found");
+        if (!"PENDING".equals(music.getStatus())) return Result.fail("Music not in pending status");
 
         music.setStatus("APPROVED");
         music.setReviewedBy(admin.getUid());
@@ -216,13 +217,13 @@ public class AdminController {
 
         try {
             systemNoticeService.send(null, "review_approved",
-                    "������Ʒ���ͨ��",
-                    "���ϴ������֡�" + (music.getName() != null ? music.getName() : "δ֪") + "����ͨ����ˣ����ѹ���������");
+                    "Music review approved",
+                    "Your music \"" + (music.getName() != null ? music.getName() : "Unknown") + "\" has been approved and published.");
         } catch (Exception e) {
             log.error("Failed to send review notice for music {}", id, e);
         }
 
-        return Result.ok(Map.of("status", "APPROVED", "message", "���ͨ��"));
+        return Result.ok(Map.of("status", "APPROVED", "message", "Approved"));
     }
 
     @PostMapping("/music/{id}/reject")
@@ -230,13 +231,13 @@ public class AdminController {
                                  @RequestBody Map<String, String> body,
                                  HttpServletRequest req) {
         User admin = checkAdmin(req);
-        if (admin == null) return Result.fail("�޹���ԱȨ��");
+        if (admin == null) return Result.fail("No admin permission");
 
         Music music = musicService.getById(id);
-        if (music == null) return Result.fail("���ֲ�����");
-        if (!"PENDING".equals(music.getStatus())) return Result.fail("�����ֲ��ڴ����״̬");
+        if (music == null) return Result.fail("Music not found");
+        if (!"PENDING".equals(music.getStatus())) return Result.fail("Music not in pending status");
 
-        String reason = body.getOrDefault("reason", "���ݲ�����ƽ̨�淶");
+        String reason = body.getOrDefault("reason", "Content violates platform rules");
         music.setStatus("REJECTED");
         music.setReviewComment(reason);
         music.setReviewedBy(admin.getUid());
@@ -247,19 +248,21 @@ public class AdminController {
 
         try {
             systemNoticeService.send(null, "review_rejected",
-                    "������Ʒδͨ�����",
-                    "���ϴ������֡�" + (music.getName() != null ? music.getName() : "δ֪") + "��δͨ����ˡ�ԭ��" + reason);
+                    "Music review rejected",
+                    "Your music \"" + (music.getName() != null ? music.getName() : "Unknown") + "\" was rejected. Reason: " + reason);
         } catch (Exception e) {
             log.error("Failed to send review notice for music {}", id, e);
         }
 
-        return Result.ok(Map.of("status", "REJECTED", "message", "�Ѳ���"));
+        return Result.ok(Map.of("status", "REJECTED", "message", "Rejected"));
     }
+
+    // ========== Stats ==========
 
     @GetMapping("/stats")
     public Result<Map<String, Object>> stats(HttpServletRequest req) {
         User admin = checkAdmin(req);
-        if (admin == null) return Result.fail("无管理员权限");
+        if (admin == null) return Result.fail("No admin permission");
 
         long pendingCount = videoService.count(new LambdaQueryWrapper<Video>()
                 .eq(Video::getStatus, "PENDING"));
@@ -288,19 +291,19 @@ public class AdminController {
 
     private void sendReviewNotice(Video video, boolean approved, String reason) {
         try {
-            String typeLabel = "image".equals(video.getType()) ? "图片" :
-                               "text".equals(video.getType()) ? "文字" : "视频";
+            String typeLabel = "image".equals(video.getType()) ? "Image" :
+                               "text".equals(video.getType()) ? "Text" : "Video";
             String desc = video.getDesc();
-            if (desc == null || desc.isEmpty()) desc = "无描�?;
+            if (desc == null || desc.isEmpty()) desc = "No description";
 
             if (approved) {
                 systemNoticeService.send(video.getAuthorUserId(), "review_approved",
-                        typeLabel + "作品审核通过",
-                        "您的" + typeLabel + "作品�? + desc + "》已通过审核，现已公开发布�?);
+                        typeLabel + " review approved",
+                        "Your " + typeLabel + " \"" + desc + "\" has been approved and published.");
             } else {
                 systemNoticeService.send(video.getAuthorUserId(), "review_rejected",
-                        typeLabel + "作品未通过审核",
-                        "您的" + typeLabel + "作品�? + desc + "》未通过审核。原因：" + reason);
+                        typeLabel + " review rejected",
+                        "Your " + typeLabel + " \"" + desc + "\" was rejected. Reason: " + reason);
             }
         } catch (Exception e) {
             log.error("Failed to send review notice for video {}", video.getId(), e);

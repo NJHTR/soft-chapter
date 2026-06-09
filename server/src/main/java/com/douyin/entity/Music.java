@@ -33,17 +33,16 @@ public class Music {
     private String lyric;
 
     private LocalDateTime createTime;
-
-    /** 审核状态: PENDING/APPROVED/REJECTED */
+    /** Review status: PENDING/APPROVED/REJECTED */
     private String status;
 
-    /** 审核意见/驳回原因 */
+    /** Review comment / reject reason */
     private String reviewComment;
 
-    /** 审核人ID */
+    /** Reviewer user ID */
     private Long reviewedBy;
 
-    /** 审核时间 */
+    /** Review timestamp */
     private LocalDateTime reviewTime;
 
     public String getStatus() {
