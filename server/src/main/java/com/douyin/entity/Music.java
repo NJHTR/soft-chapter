@@ -33,4 +33,48 @@ public class Music {
     private String lyric;
 
     private LocalDateTime createTime;
+
+    /** 审核状态: PENDING/APPROVED/REJECTED */
+    private String status;
+
+    /** 审核意见/驳回原因 */
+    private String reviewComment;
+
+    /** 审核人ID */
+    private Long reviewedBy;
+
+    /** 审核时间 */
+    private LocalDateTime reviewTime;
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public String getReviewComment() {
+        return reviewComment;
+    }
+
+    public void setReviewComment(String reviewComment) {
+        this.reviewComment = reviewComment;
+    }
+
+    public Long getReviewedBy() {
+        return reviewedBy;
+    }
+
+    public void setReviewedBy(Long reviewedBy) {
+        this.reviewedBy = reviewedBy;
+    }
+
+    public LocalDateTime getReviewTime() {
+        return reviewTime;
+    }
+
+    public void setReviewTime(LocalDateTime reviewTime) {
+        this.reviewTime = reviewTime;
+    }
 }
