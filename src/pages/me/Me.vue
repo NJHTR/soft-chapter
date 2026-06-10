@@ -316,6 +316,10 @@
               <img src="../../assets/img/icon/newicon/left_menu/setting-one.png" alt="" />
               <span>设置</span>
             </div>
+            <div class="li" v-if="isAdmin" @click="$nav('/admin/review')">
+              <img src="../../assets/img/icon/newicon/left_menu/setting-one.png" alt="" />
+              <span>审核管理</span>
+            </div>
             <div class="line"></div>
             <div class="li" v-if="isLoggedIn" @click="doLogout">
               <img src="../../assets/img/icon/newicon/left_menu/time.png" alt="" />
@@ -496,7 +500,7 @@ export default {
       if (this.tempScroll || this.isScroll) return { overflow: 'auto' }
       return { overflow: 'hidden' }
     },
-    ...mapState(useBaseStore, ['userinfo', 'bodyHeight', 'bodyWidth', 'isLoggedIn']),
+    ...mapState(useBaseStore, ['userinfo', 'bodyHeight', 'bodyWidth', 'isLoggedIn', 'isAdmin']),
     ...mapActions(useBaseStore, ['logout'])
   },
   watch: {

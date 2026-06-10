@@ -10,7 +10,7 @@ import java.util.List;
 
 public interface VideoMapper extends BaseMapper<Video> {
 
-    @Select("SELECT * FROM t_video WHERE is_delete = 0 AND `desc` LIKE CONCAT('%', #{keyword}, '%') ORDER BY create_time DESC LIMIT 20")
+    @Select("SELECT * FROM t_video WHERE is_delete = 0 AND status = 'APPROVED' AND `desc` LIKE CONCAT('%', #{keyword}, '%') ORDER BY create_time DESC LIMIT 20")
     List<Video> searchByKeyword(String keyword);
 
     /** 最近常看：根据用户的点赞/评论/收藏记录，找出最近互动的作者ID */
@@ -21,7 +21,7 @@ public interface VideoMapper extends BaseMapper<Video> {
             "  UNION ALL SELECT video_id, create_time FROM t_video_collect WHERE user_id = #{userId}" +
             ") a GROUP BY video_id" +
             ") r JOIN t_video v ON v.id = r.video_id " +
-            "WHERE v.author_user_id != #{userId} " +
+            "WHERE v.status = 'APPROVED' AND v.is_delete = 0 AND v.author_user_id != #{userId} " +
             "GROUP BY v.author_user_id " +
             "ORDER BY MAX(r.create_time) DESC LIMIT #{limit}")
     List<Long> findRecentAuthorIds(@Param("userId") Long userId, @Param("limit") int limit);
@@ -29,7 +29,7 @@ public interface VideoMapper extends BaseMapper<Video> {
     /** 召回用: 按品类查询视频(排除已曝光), 有内容特征的优先 */
     @Select("<script>SELECT v.* FROM t_video v " +
             "LEFT JOIN t_video_content vc ON v.id = vc.video_id " +
-            "WHERE v.type IN ('recommend-video', 'image', 'text') " +
+            "WHERE v.status = 'APPROVED' AND v.is_delete = 0 AND v.type IN ('recommend-video', 'image', 'text') " +
             "<if test='excludeIds != null and excludeIds.size() > 0'>" +
             "AND v.id NOT IN <foreach collection='excludeIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> " +
             "</if>" +

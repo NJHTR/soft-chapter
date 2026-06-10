@@ -1,5 +1,7 @@
 <template>
-  <div class="Mask" :class="mode"></div>
+  <div class="Mask" :class="mode" @click.self="$emit('close')">
+    <slot></slot>
+  </div>
 </template>
 <script>
 //未以组件的方式使用，FromBottomDialog.vue里面是用js append到dom里面去的，

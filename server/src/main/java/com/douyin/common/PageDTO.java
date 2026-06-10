@@ -16,9 +16,6 @@ public class PageDTO<T> {
     private int pageSize;
     private List<T> list;
 
-    public PageDTO(long total, int pageNo, int pageSize, List<T> voList) {
-    }
-
     public static <T> PageDTO<T> of(IPage<T> page) {
         return new PageDTO<>(
                 page.getTotal(),

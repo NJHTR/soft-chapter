@@ -40,9 +40,9 @@
       <!-- 视频 Tab -->
       <div v-show="currentTab === `video`" class="tab-content">
         <div v-if="videoList.length === 0 && !videoLoading" class="empty">暂无待审核视频</div>
-        <div v-for="item in videoList" :key="`v-` + item.id" class="review-card">
+        <div v-for="item in videoList" :key="`v-` + item.aweme_id" class="review-card">
           <div class="card-left">
-            <img v-if="item.cover" :src="item.cover" class="thumb" />
+            <img v-if="item.video?.poster" :src="item.video.poster" class="thumb" />
             <div v-else class="thumb-placeholder">🎬</div>
           </div>
           <div class="card-center">
@@ -56,8 +56,8 @@
             </div>
           </div>
           <div class="card-right">
-            <button class="btn-approve" @click="doApproveVideo(item.id)">通过</button>
-            <button class="btn-reject" @click="openReject(`video`, item.id)">驳回</button>
+            <button class="btn-approve" @click="doApproveVideo(item.aweme_id)">通过</button>
+            <button class="btn-reject" @click="openReject(`video`, item.aweme_id)">驳回</button>
           </div>
         </div>
         <div v-if="videoLoading" class="loading-text">加载中...</div>
@@ -67,9 +67,9 @@
       <!-- 图文 Tab -->
       <div v-show="currentTab === `post`" class="tab-content">
         <div v-if="postList.length === 0 && !postLoading" class="empty">暂无待审图文</div>
-        <div v-for="item in postList" :key="`p-` + item.id" class="review-card">
+        <div v-for="item in postList" :key="`p-` + item.aweme_id" class="review-card">
           <div class="card-left">
-            <img v-if="item.cover" :src="item.cover" class="thumb" />
+            <img v-if="item.video?.poster" :src="item.video.poster" class="thumb" />
             <div v-else class="thumb-placeholder">📷</div>
           </div>
           <div class="card-center">
@@ -84,8 +84,8 @@
             </div>
           </div>
           <div class="card-right">
-            <button class="btn-approve" @click="doApproveVideo(item.id)">通过</button>
-            <button class="btn-reject" @click="openReject(`post`, item.id)">驳回</button>
+            <button class="btn-approve" @click="doApproveVideo(item.aweme_id)">通过</button>
+            <button class="btn-reject" @click="openReject(`post`, item.aweme_id)">驳回</button>
           </div>
         </div>
         <div v-if="postLoading" class="loading-text">加载中...</div>
@@ -220,8 +220,7 @@ async function loadVideos() {
       const data = res.data
       const records = data?.records || data?.list || []
       const filtered = records.filter(
-        (v: any) =>
-          v.type === `recommend-video` || v.type === `long-video` || !v.type || v.type === `video`
+        (v: any) => v.type === `recommend-video` || v.type === `long-video` || v.type === `video`
       )
       videoList.value = videoPage.value === 1 ? filtered : [...videoList.value, ...filtered]
       if (filtered.length < videoPageSize) videoNoMore.value = true
@@ -259,7 +258,7 @@ async function doApproveVideo(id: number) {
   const res: any = await approveVideo(id)
   if (res.success) {
     _notice(`审核通过`)
-    removeFromList(id)
+    reloadCurrentTab()
   }
 }
 
@@ -283,17 +282,30 @@ async function doReject() {
     }
     if (res.success) {
       _notice(`已驳回`)
-      removeFromList(id)
+      reloadCurrentTab()
     }
   } catch (e) {
     console.error(e)
   }
 }
 
-function removeFromList(id: number) {
-  videoList.value = videoList.value.filter((v) => v.id !== id)
-  postList.value = postList.value.filter((v) => v.id !== id)
-  musicList.value = musicList.value.filter((v) => v.id !== id)
+function reloadCurrentTab() {
+  if (currentTab.value === `video`) {
+    videoPage.value = 1
+    videoNoMore.value = false
+    videoList.value = []
+    loadVideos()
+  } else if (currentTab.value === `post`) {
+    postPage.value = 1
+    postNoMore.value = false
+    postList.value = []
+    loadPosts()
+  } else if (currentTab.value === `music`) {
+    musicPage.value = 1
+    musicNoMore.value = false
+    musicList.value = []
+    loadMusics()
+  }
   loadStats()
 }
 
@@ -321,7 +333,7 @@ async function doApproveMusic(id: number) {
   const res: any = await approveMusic(id)
   if (res.success) {
     _notice(`审核通过`)
-    removeFromList(id)
+    reloadCurrentTab()
   }
 }
 
@@ -370,6 +382,9 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   background: #f5f5f5;
+  padding-top: var(--common-header-height);
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .header-title {
@@ -584,6 +599,11 @@ onMounted(() => {
   padding: 20rem;
   width: 300rem;
   max-width: 90vw;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
 }
 
 .dialog-title {

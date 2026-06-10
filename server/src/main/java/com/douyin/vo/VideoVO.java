@@ -127,6 +127,14 @@ public class VideoVO {
         isCollect = collect;
     }
 
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
     private String desc;
 
     /** 内容类型: recommend-video, long-video, image, text */
@@ -146,6 +154,9 @@ public class VideoVO {
 
     private String city;
     private String address;
+
+    /** 审核状态: pending/approved/rejected */
+    private String status;
 
     /** 多图URL列表 (用于图文轮播帖子) */
     @JsonProperty("image_urls")
@@ -341,6 +352,7 @@ public class VideoVO {
 
         vo.city = "";
         vo.address = "";
+        vo.status = v.getStatus();
         vo.isLoved = isLoved;
         vo.isAttention = isAttention;
         vo.isCollect = isCollect;

@@ -19,6 +19,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/home/MusicRankList.vue')
   },
   { path: '/home/live', component: () => import('@/pages/home/LivePage.vue') },
+  { path: '/live/create', component: () => import('@/pages/live/LiveCreate.vue') },
+  { path: '/live/:id', component: () => import('@/pages/live/LiveWatch.vue') },
 
   { path: '/shop', component: () => import('@/pages/shop/Shop.vue') },
   {

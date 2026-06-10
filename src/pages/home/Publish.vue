@@ -723,6 +723,10 @@ function switchMode(key: string) {
 }
 
 function switchTab(key: string) {
+  if (key === 'live') {
+    router.push('/live/create')
+    return
+  }
   const idx = footerTabs.findIndex((t) => t.key === key)
   if (idx >= 0) footerIndex.value = idx
 }

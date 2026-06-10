@@ -217,8 +217,8 @@ public class AdminController {
 
         try {
             systemNoticeService.send(null, "review_approved",
-                    "Music review approved",
-                    "Your music \"" + (music.getName() != null ? music.getName() : "Unknown") + "\" has been approved and published.");
+                    "音乐 审核通过",
+                    "音乐《" + (music.getName() != null ? music.getName() : "未知歌曲") + "》已审核通过并发布。");
         } catch (Exception e) {
             log.error("Failed to send review notice for music {}", id, e);
         }
@@ -248,8 +248,8 @@ public class AdminController {
 
         try {
             systemNoticeService.send(null, "review_rejected",
-                    "Music review rejected",
-                    "Your music \"" + (music.getName() != null ? music.getName() : "Unknown") + "\" was rejected. Reason: " + reason);
+                    "音乐 审核驳回",
+                    "音乐《" + (music.getName() != null ? music.getName() : "未知歌曲") + "》未通过审核。原因：" + reason);
         } catch (Exception e) {
             log.error("Failed to send review notice for music {}", id, e);
         }
@@ -291,19 +291,19 @@ public class AdminController {
 
     private void sendReviewNotice(Video video, boolean approved, String reason) {
         try {
-            String typeLabel = "image".equals(video.getType()) ? "Image" :
-                               "text".equals(video.getType()) ? "Text" : "Video";
+            String typeLabel = "image".equals(video.getType()) ? "图文" :
+                               "text".equals(video.getType()) ? "文字" : "视频";
             String desc = video.getDesc();
-            if (desc == null || desc.isEmpty()) desc = "No description";
+            if (desc == null || desc.isEmpty()) desc = "无描述";
 
             if (approved) {
                 systemNoticeService.send(video.getAuthorUserId(), "review_approved",
-                        typeLabel + " review approved",
-                        "Your " + typeLabel + " \"" + desc + "\" has been approved and published.");
+                        typeLabel + " 审核通过",
+                        "您的" + typeLabel + "作品《" + desc + "》已审核通过并发布。");
             } else {
                 systemNoticeService.send(video.getAuthorUserId(), "review_rejected",
-                        typeLabel + " review rejected",
-                        "Your " + typeLabel + " \"" + desc + "\" was rejected. Reason: " + reason);
+                        typeLabel + " 审核驳回",
+                        "您的" + typeLabel + "作品《" + desc + "》未通过审核。原因：" + reason);
             }
         } catch (Exception e) {
             log.error("Failed to send review notice for video {}", video.getId(), e);

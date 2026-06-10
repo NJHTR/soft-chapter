@@ -19,7 +19,8 @@ router.beforeEach((to, from) => {
   // Admin route guard
   if (to.path.startsWith('/admin')) {
     const baseStore = useBaseStore()
-    if (!baseStore.isAdmin) {
+    const isAdmin = baseStore.isAdmin || localStorage.getItem('role') === 'ADMIN'
+    if (!isAdmin) {
       return { path: '/home', replace: true }
     }
   }
