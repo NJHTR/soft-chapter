@@ -9,6 +9,7 @@ import com.douyin.entity.LiveRoom;
 import com.douyin.entity.User;
 import com.douyin.mapper.UserMapper;
 import com.douyin.service.LiveService;
+import com.douyin.utils.JwtUtil;
 import com.douyin.vo.UserVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -24,24 +25,31 @@ public class LiveController {
 
     private final LiveService liveService;
     private final UserMapper userMapper;
+    private final JwtUtil jwtUtil;
 
-    public LiveController(LiveService liveService, UserMapper userMapper) {
+    public LiveController(LiveService liveService, UserMapper userMapper, JwtUtil jwtUtil) {
         this.liveService = liveService;
         this.userMapper = userMapper;
+        this.jwtUtil = jwtUtil;
     }
 
     private Long getLoginUserId(HttpServletRequest req) {
-        try {
-            Object uid = req.getAttribute("uid");
-            if (uid != null) return Long.parseLong(uid.toString());
-        } catch (Exception ignored) {}
-        return 1L; // 临时: 未登录返回1
+        String auth = req.getHeader("Authorization");
+        if (auth != null && auth.startsWith("Bearer ")) {
+            String token = auth.substring(7);
+            try {
+                return jwtUtil.getUserIdFromToken(token);
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
     }
 
     /** 创建直播间 */
     @PostMapping("/create")
     public Result<LiveRoom> create(@RequestBody Map<String, String> body, HttpServletRequest req) {
         Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
         String title = body.getOrDefault("title", "直播间");
         String coverUrl = body.getOrDefault("coverUrl", "");
         LiveRoom room = liveService.createRoom(userId, title, coverUrl);
@@ -52,6 +60,7 @@ public class LiveController {
     @PostMapping("/{id}/start")
     public Result<LiveRoom> start(@PathVariable Long id, HttpServletRequest req) {
         Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
         LiveRoom room = liveService.startLive(id, userId);
         if (room == null) return Result.fail("直播间不存在或无权限");
         return Result.ok(room);
@@ -61,6 +70,7 @@ public class LiveController {
     @PostMapping("/{id}/end")
     public Result<LiveRoom> end(@PathVariable Long id, HttpServletRequest req) {
         Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
         LiveRoom room = liveService.endLive(id, userId);
         if (room == null) return Result.fail("直播间不存在或无权限");
         return Result.ok(room);

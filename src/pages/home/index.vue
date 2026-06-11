@@ -4,9 +4,9 @@
       <SlideItem class="sidebar">
         <div class="header">
           <div class="left">下午好</div>
-          <div class="right" @click="nav('/home/live')">
+          <div class="right" @click="nav('/live/list')">
             <Icon icon="iconamoon:scanner" />
-            <span>扫一扫</span>
+            <span>直播</span>
           </div>
         </div>
         <div class="card">
@@ -46,11 +46,20 @@
             </div>
           </div>
           <div class="content">
-            <div class="item avatar" @click="goUserHome(a.uid)" :key="a.uid" v-for="a in state.recentAuthors">
+            <div
+              class="item avatar"
+              @click="goUserHome(a.uid)"
+              :key="a.uid"
+              v-for="a in state.recentAuthors"
+            >
               <img :src="_checkImgUrl(a.avatar_168x168?.url_list?.[0])" />
               <span>{{ a.nickname }}</span>
             </div>
-            <div class="no-data" v-if="!state.recentAuthors.length" style="grid-column:1/-1;text-align:center;color:gray;font-size:12rem">
+            <div
+              class="no-data"
+              v-if="!state.recentAuthors.length"
+              style="grid-column: 1/-1; text-align: center; color: gray; font-size: 12rem"
+            >
               暂无常看作者
             </div>
           </div>
@@ -116,12 +125,12 @@
           <SlideItem>
             <LongVideo :active="state.navIndex === 1 && state.baseIndex === 1" />
           </SlideItem>
-          <!--          <SlideItem></SlideItem>-->
-          <Slide2 :active="state.navIndex === 2 && state.baseIndex === 1" />
+          <SlideLive :active="state.navIndex === 2 && state.baseIndex === 1" />
+          <Slide2 :active="state.navIndex === 3 && state.baseIndex === 1" />
           <SlideItem>
-            <Community :active="state.navIndex === 3 && state.baseIndex === 1" />
+            <Community :active="state.navIndex === 4 && state.baseIndex === 1" />
           </SlideItem>
-          <Slide4 :active="state.navIndex === 4 && state.baseIndex === 1" />
+          <Slide4 :active="state.navIndex === 5 && state.baseIndex === 1" />
         </SlideHorizontal>
 
         <BaseFooter v-bind:init-tab="1" />
@@ -235,6 +244,7 @@ import ShareToFriend from '@/pages/home/components/ShareToFriend.vue'
 import UserPanel from '@/components/UserPanel.vue'
 import Community from '@/pages/home/slide/Community.vue'
 import Slide0 from '@/pages/home/slide/Slide0.vue'
+import SlideLive from '@/pages/home/slide/SlideLive.vue'
 import Slide2 from '@/pages/home/slide/Slide2.vue'
 import Slide4 from '@/pages/home/slide/Slide4.vue'
 import { DefaultUser } from '@/utils/const_var'
@@ -252,7 +262,7 @@ const isMobile = ref(/Mobi|Android|iPhone/i.test(navigator.userAgent))
 const state = reactive({
   active: true,
   baseIndex: 1,
-  navIndex: 4,
+  navIndex: 5,
   itemIndex: 0,
   test: '',
   recommendList: [],
@@ -323,7 +333,11 @@ function handleNotificationNav() {
 // 初始加载时检查
 handleNotificationNav()
 // 后续路由变化时检查
-watch(() => route.query, () => handleNotificationNav(), { deep: true })
+watch(
+  () => route.query,
+  () => handleNotificationNav(),
+  { deep: true }
+)
 
 onMounted(() => {
   loadRecentAuthors()
@@ -386,7 +400,9 @@ async function loadRecentAuthors() {
     if (res.success && res.data) {
       state.recentAuthors = res.data
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 function goUserHome(uid: any) {

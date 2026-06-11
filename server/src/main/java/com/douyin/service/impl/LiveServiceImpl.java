@@ -5,7 +5,9 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.douyin.entity.LiveRoom;
 import com.douyin.mapper.LiveRoomMapper;
 import com.douyin.service.LiveService;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +17,35 @@ import java.util.List;
 @Slf4j
 @Service
 public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> implements LiveService {
+
+    /** 清理启动前遗留的 LIVE 状态房间（服务器重启导致 WebSocket 全部断开） */
+    @PostConstruct
+    public void cleanupOnStartup() {
+        List<LiveRoom> stale = list(new LambdaQueryWrapper<LiveRoom>()
+                .eq(LiveRoom::getStatus, "LIVE"));
+        for (LiveRoom r : stale) {
+            r.setStatus("ENDED");
+            updateById(r);
+            log.info("Startup cleanup: ended stale room id={}, host={}", r.getId(), r.getHostUserId());
+        }
+        if (!stale.isEmpty()) {
+            log.info("Startup cleanup: ended {} stale LIVE rooms", stale.size());
+        }
+    }
+
+    /** 定时清理异常未关播的房间（2 分钟未更新视为已断线，兜底机制） */
+    @Scheduled(fixedRate = 60000)
+    public void cleanupStaleRooms() {
+        LocalDateTime threshold = LocalDateTime.now().minusMinutes(2);
+        List<LiveRoom> stale = list(new LambdaQueryWrapper<LiveRoom>()
+                .eq(LiveRoom::getStatus, "LIVE")
+                .lt(LiveRoom::getUpdateTime, threshold));
+        for (LiveRoom r : stale) {
+            r.setStatus("ENDED");
+            updateById(r);
+            log.info("Scheduled cleanup: ended stale room id={}, host={}", r.getId(), r.getHostUserId());
+        }
+    }
 
     @Override
     @Transactional

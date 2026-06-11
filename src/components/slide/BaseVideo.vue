@@ -447,8 +447,7 @@ function click({ uniqueId, index, type }) {
       if (props.isLive) {
         pause()
         bus.emit(EVENT_KEY.NAV, {
-          path: '/home/live',
-          query: { id: props.item.aweme_id }
+          path: '/live/list'
         })
       } else {
         if (state.status === SlideItemPlayStatus.Play) {

@@ -179,8 +179,12 @@ export default defineConfig((): Promise<UserConfig> => {
               target: 'http://localhost:9191',
               changeOrigin: true
             },
+            '/images': {
+              target: 'http://localhost:9191',
+              changeOrigin: true
+            },
             '/ws': {
-              target: 'ws://localhost:9191',
+              target: 'http://localhost:9191',
               changeOrigin: true,
               ws: true
             }

@@ -4,9 +4,9 @@
       <SlideItem class="sidebar">
         <div class="sidebar-header">
           <div class="left">下午好</div>
-          <div class="right" @click="nav('/home/live')">
+          <div class="right" @click="nav('/live/list')">
             <Icon icon="iconamoon:scanner" />
-            <span>扫一扫</span>
+            <span>直播</span>
           </div>
         </div>
         <div class="card">

@@ -17,13 +17,15 @@
             <span>长视频</span>
           </div>
           <div class="tab" :class="{ active: index === 2 }" @click.stop="change(2)">
-            <span>关注</span>
-            <img src="../../../assets/img/icon/live.webp" class="tab2-img" />
+            <span>直播</span>
           </div>
           <div class="tab" :class="{ active: index === 3 }" @click.stop="change(3)">
-            <span>经验</span>
+            <span>关注</span>
           </div>
           <div class="tab" :class="{ active: index === 4 }" @click.stop="change(4)">
+            <span>经验</span>
+          </div>
+          <div class="tab" :class="{ active: index === 5 }" @click.stop="change(5)">
             <span>推荐</span>
           </div>
         </div>
@@ -250,23 +252,6 @@ export default {
           position: relative;
           font-size: 17rem;
           cursor: pointer;
-
-          .tab1-img {
-            position: absolute;
-            @width: 12rem;
-            width: @width;
-            height: @width;
-            margin-left: 4rem;
-            transition: all 0.3s;
-            // margin-top: 7rem;
-          }
-
-          .tab2-img {
-            position: absolute;
-            height: 15rem;
-            left: 24rem;
-            top: -5rem;
-          }
 
           &.active {
             color: white;

@@ -1,5 +1,6 @@
 package com.douyin.websocket;
 
+import com.douyin.service.LiveService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
@@ -7,7 +8,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 
 /**
  * 直播推流/拉流 WebSocket
@@ -24,12 +25,26 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class LiveStreamHandler extends TextWebSocketHandler {
 
+    private final LiveService liveService;
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+
     /** roomId → Set<WebSocketSession> */
     private static final ConcurrentHashMap<Long, Set<WebSocketSession>> rooms = new ConcurrentHashMap<>();
     /** sessionId → roomId */
     private static final ConcurrentHashMap<String, Long> sessionRoom = new ConcurrentHashMap<>();
     /** sessionId → role (host/viewer) */
     private static final ConcurrentHashMap<String, String> sessionRole = new ConcurrentHashMap<>();
+    /** sessionId → userId (for host disconnect cleanup) */
+    private static final ConcurrentHashMap<String, Long> sessionUserId = new ConcurrentHashMap<>();
+    /** roomId → 延迟关播任务（主播断线 30s 后才真正关播，给重连留机会） */
+    private final ConcurrentHashMap<Long, ScheduledFuture<?>> pendingEnds = new ConcurrentHashMap<>();
+
+    /** 主播断线后延迟关播的秒数 */
+    private static final int END_DELAY_SECONDS = 30;
+
+    public LiveStreamHandler(LiveService liveService) {
+        this.liveService = liveService;
+    }
 
     public static int getViewerCount(Long roomId) {
         Set<WebSocketSession> set = rooms.get(roomId);
@@ -47,8 +62,24 @@ public class LiveStreamHandler extends TextWebSocketHandler {
         }
         sessionRoom.put(session.getId(), roomId);
         sessionRole.put(session.getId(), role != null ? role : "viewer");
+
+        // 记录 host 的 userId，用于断线时自动关播
+        Object uid = session.getAttributes().get("userId");
+        if (uid != null) {
+            sessionUserId.put(session.getId(), (Long) uid);
+        }
+
         rooms.computeIfAbsent(roomId, k -> ConcurrentHashMap.newKeySet()).add(session);
         log.info("Live WS connected: roomId={}, role={}, viewers={}", roomId, role, getViewerCount(roomId));
+
+        // 主播重连 → 取消延迟关播任务
+        if ("host".equals(role)) {
+            ScheduledFuture<?> pending = pendingEnds.remove(roomId);
+            if (pending != null) {
+                pending.cancel(false);
+                log.info("Host reconnected, cancelled auto-end for room {}", roomId);
+            }
+        }
 
         // 通知所有观众人数变化
         broadcastRoomStatus(roomId);
@@ -97,7 +128,34 @@ public class LiveStreamHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         Long roomId = sessionRoom.remove(session.getId());
-        sessionRole.remove(session.getId());
+        String role = sessionRole.remove(session.getId());
+        Long userId = sessionUserId.remove(session.getId());
+
+        // 主播断线 → 延迟 30s 关播，给重连留机会
+        if ("host".equals(role) && roomId != null && userId != null) {
+            ScheduledFuture<?> existing = pendingEnds.get(roomId);
+            if (existing != null) {
+                existing.cancel(false);
+            }
+            ScheduledFuture<?> future = scheduler.schedule(() -> {
+                pendingEnds.remove(roomId);
+                try {
+                    // 再次确认该房间没有活跃的 host 连接
+                    Set<WebSocketSession> sessions = rooms.get(roomId);
+                    boolean hostOnline = sessions != null && sessions.stream()
+                            .anyMatch(s -> s.isOpen() && "host".equals(sessionRole.get(s.getId())));
+                    if (!hostOnline) {
+                        liveService.endLive(roomId, userId);
+                        log.info("Auto-ended live room {} after {}s delay, userId={}", roomId, END_DELAY_SECONDS, userId);
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to auto-end room {}: {}", roomId, e.getMessage());
+                }
+            }, END_DELAY_SECONDS, TimeUnit.SECONDS);
+            pendingEnds.put(roomId, future);
+            log.info("Host disconnected, scheduling auto-end for room {} in {}s", roomId, END_DELAY_SECONDS);
+        }
+
         if (roomId != null) {
             Set<WebSocketSession> set = rooms.get(roomId);
             if (set != null) {

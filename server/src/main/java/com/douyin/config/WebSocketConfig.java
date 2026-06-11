@@ -30,6 +30,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
                 .addInterceptors(handshakeInterceptor)
                 .setAllowedOriginPatterns("*");
         registry.addHandler(liveStreamHandler, "/ws/live/**")
+                .addInterceptors(handshakeInterceptor)
                 .setAllowedOriginPatterns("*");
     }
 }

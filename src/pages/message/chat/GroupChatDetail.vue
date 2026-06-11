@@ -140,7 +140,10 @@ const route = useRoute()
 const router = useRouter()
 const store = useBaseStore()
 
-const groupId = computed(() => Number(route.query.group_id))
+const groupId = computed(() => {
+  const id = Number(route.query.group_id)
+  return isNaN(id) ? -1 : id
+})
 
 const data = reactive({
   groupName: (route.query.name as string) || '群聊',
@@ -160,7 +163,7 @@ const isOwner = computed(() => {
 })
 
 onMounted(() => {
-  if (!groupId.value) {
+  if (groupId.value < 0) {
     router.back()
     return
   }

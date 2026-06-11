@@ -201,7 +201,10 @@ const msgWrapper = ref(null)
 const inputRef = ref(null)
 const imageInput = ref(null)
 
-const groupId = computed(() => Number(route.query.group_id))
+const groupId = computed(() => {
+  const id = Number(route.query.group_id)
+  return isNaN(id) ? -1 : id
+})
 
 const data = reactive({
   groupName: (route.query.name as string) || '群聊',
@@ -301,7 +304,7 @@ function insertEmoji(emoji: string) {
 }
 
 onMounted(() => {
-  if (!groupId.value) {
+  if (groupId.value < 0) {
     router.back()
     return
   }
@@ -319,7 +322,8 @@ onUnmounted(() => {
   }
   if (data.messages.length) {
     const lastReal = [...data.messages].reverse().find((m: any) => m.type !== MESSAGE_TYPE.TIME)
-    if (lastReal) markGroupRead(groupId.value, lastReal.backendId || 0).catch(() => {})
+    if (lastReal && groupId.value > 0)
+      markGroupRead(groupId.value, lastReal.backendId || 0).catch(() => {})
   }
   historyFirstLoad = true
 })
@@ -438,7 +442,8 @@ async function loadHistory(beforeId?: number) {
         scrollToBottom()
         if (msgs.length) {
           const lastReal = [...msgs].reverse().find((m: any) => m.type !== MESSAGE_TYPE.TIME)
-          if (lastReal) markGroupRead(groupId.value, lastReal.backendId).catch(() => {})
+          if (lastReal && groupId.value > 0)
+            markGroupRead(groupId.value, lastReal.backendId).catch(() => {})
         }
       } else {
         if (msgs.length < 30) data.hasMore = false
@@ -508,7 +513,7 @@ function handleGroupSocketMsg(msg: any) {
     return
   }
   addLocalMessage(msg)
-  markGroupRead(groupId.value, msg.id).catch(() => {})
+  if (groupId.value > 0) markGroupRead(groupId.value, msg.id).catch(() => {})
 }
 
 function goGroupDetail() {
