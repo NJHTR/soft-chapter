@@ -117,16 +117,9 @@ public class LoginDeviceService {
             return;
         }
 
-        // 局域网私有地址 — 用服务器公网 IP 查询，并将结果标记为"局域网"
+        // 局域网私有地址 — 用服务器公网 IP 查询真实归属地
         if (isLanIp(ip)) {
-            try {
-                queryIpApi(null, h);  // 不传 IP，ip-api 返回服务器自身公网归属
-                String origCountry = h.getCountry();
-                h.setCountry("局域网" + (origCountry != null ? " (" + origCountry + ")" : ""));
-            } catch (Exception e) {
-                h.setCountry("局域网");
-            }
-            h.setCity(ip);
+            queryIpApi(null, h);  // 不传 IP，ip-api 返回服务器自身公网归属
             return;
         }
 
