@@ -136,6 +136,7 @@ export function slideTouchMove(
     if (!canNextCb) canNextCb = canNext
     if (canNextCb(state, isNext)) {
       window.isMoved = true
+      ;(window as any).isMovedEl = el
       //能滑动，那就把事件捕获，不能给父组件处理
       _stopPropagation(e)
       if (state.type === SlideType.HORIZONTAL) {
@@ -239,7 +240,8 @@ export function slideReset(e, el, state, emit = null) {
   // e.target.style.pointerEvents = null
   setTimeout(() => {
     window.isMoved = false
-  }, 200)
+    ;(window as any).isMovedEl = null
+  }, 100)
   emit?.('update:index', state.localIndex)
 }
 

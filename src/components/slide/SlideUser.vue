@@ -7,7 +7,7 @@
         src="../../assets/img/icon/components/gray-close-full.png"
         alt=""
       />
-      <img class="avatar" :src="modelValue.avatar" />
+      <img class="avatar" :src="_checkImgUrl(modelValue.avatar)" />
       <div class="name">{{ modelValue.name }}</div>
       <div class="desc">
         <div class="tag">{{ modelValue.age }}岁</div>

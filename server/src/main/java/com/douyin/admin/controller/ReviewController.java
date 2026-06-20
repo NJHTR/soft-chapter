@@ -1,4 +1,4 @@
-package com.douyin.controller;
+package com.douyin.admin.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -27,7 +27,7 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/api/admin")
-public class AdminController {
+public class ReviewController {
 
     private final VideoService videoService;
     private final JwtUtil jwtUtil;
@@ -36,8 +36,8 @@ public class AdminController {
     private final MusicMapper musicMapper;
     private final SystemNoticeService systemNoticeService;
 
-    public AdminController(VideoService videoService, MusicService musicService, MusicMapper musicMapper, JwtUtil jwtUtil,
-                           UserMapper userMapper, SystemNoticeService systemNoticeService) {
+    public ReviewController(VideoService videoService, MusicService musicService, MusicMapper musicMapper, JwtUtil jwtUtil,
+                            UserMapper userMapper, SystemNoticeService systemNoticeService) {
         this.videoService = videoService;
         this.musicService = musicService;
         this.musicMapper = musicMapper;
@@ -68,13 +68,21 @@ public class AdminController {
     public Result<PageDTO<VideoVO>> pendingVideos(
             @RequestParam(defaultValue = "1") int pageNo,
             @RequestParam(defaultValue = "10") int pageSize,
+            @RequestParam(required = false) String type,
             HttpServletRequest req) {
         User admin = checkAdmin(req);
         if (admin == null) return Result.fail("No admin permission");
 
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
-                .eq(Video::getStatus, "PENDING")
-                .orderByDesc(Video::getCreateTime);
+                .eq(Video::getStatus, "PENDING");
+        if (type != null && !type.isEmpty()) {
+            if ("video".equals(type)) {
+                wrapper.in(Video::getType, "video", "recommend-video", "long-video");
+            } else if ("post".equals(type)) {
+                wrapper.in(Video::getType, "image", "text");
+            }
+        }
+        wrapper.orderByDesc(Video::getCreateTime);
         IPage<Video> page = videoService.page(new Page<>(pageNo, pageSize), wrapper);
 
         List<VideoVO> voList = new ArrayList<>();
@@ -264,8 +272,13 @@ public class AdminController {
         User admin = checkAdmin(req);
         if (admin == null) return Result.fail("No admin permission");
 
-        long pendingCount = videoService.count(new LambdaQueryWrapper<Video>()
-                .eq(Video::getStatus, "PENDING"));
+        long videoPending = videoService.count(new LambdaQueryWrapper<Video>()
+                .eq(Video::getStatus, "PENDING")
+                .in(Video::getType, "video", "recommend-video", "long-video"));
+        long postPending = videoService.count(new LambdaQueryWrapper<Video>()
+                .eq(Video::getStatus, "PENDING")
+                .in(Video::getType, "image", "text"));
+        long pendingCount = videoPending + postPending;
         long approvedCount = videoService.count(new LambdaQueryWrapper<Video>()
                 .eq(Video::getStatus, "APPROVED"));
         long rejectedCount = videoService.count(new LambdaQueryWrapper<Video>()
@@ -280,6 +293,8 @@ public class AdminController {
 
         return Result.ok(Map.of(
                 "pendingCount", pendingCount,
+                "videoPending", videoPending,
+                "postPending", postPending,
                 "approvedCount", approvedCount,
                 "rejectedCount", rejectedCount,
                 "musicPendingCount", musicPendingCount,

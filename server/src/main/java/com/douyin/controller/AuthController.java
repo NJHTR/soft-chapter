@@ -40,7 +40,7 @@ public class AuthController {
 
             // 记录登录设备 + 发送系统通知
             loginDeviceService.recordAndNotify(user.getUid(), user.getUniqueId(),
-                    dto.getEmail(), "password", req);
+                    dto.getEmail(), "password", token, req);
 
             return Result.ok(result);
         } catch (RuntimeException e) {

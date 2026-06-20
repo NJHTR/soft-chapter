@@ -19,7 +19,7 @@
       <source
         v-for="(urlItem, index) in item.video.play_addr.url_list"
         :key="index"
-        :src="urlItem"
+        :src="_checkImgUrl(urlItem)"
         :type="(urlItem || '').split('?')[0].endsWith('.webm') ? 'video/webm' : 'video/mp4'"
       />
       <p>您的浏览器不支持 video 标签。</p>
@@ -34,12 +34,12 @@
         <div :style="{ opacity: state.isMove ? 0 : 1 }" class="normal">
           <template v-if="!state.commentVisible">
             <ItemToolbar v-model:item="state.localItem" :is-my="isMy" />
-            <ItemDesc v-model:item="state.localItem" />
+            <ItemDesc v-model:item="state.localItem" :video-id="item.aweme_id" :show-hints="isPlaying" @searchHint="onSearchHint" />
           </template>
           <transition-group name="comment-status" tag="div" class="loveds">
             <div class="type-loved" :key="i" v-for="i in state.test">
               <img
-                :src="store.userinfo?.avatar_168x168?.url_list?.[0] || ''"
+                :src="_checkImgUrl(store.userinfo?.avatar_168x168?.url_list?.[0] || '')"
                 alt=""
                 class="avatar"
               />
@@ -89,6 +89,11 @@ defineOptions({
 })
 
 const store = useBaseStore()
+
+function onSearchHint(keyword: string) {
+  console.log('[BaseVideo] searchHint:', keyword)
+  ;(window as any)?.$router?.push(`/home/search?q=${encodeURIComponent(keyword)}`)
+}
 
 const props = defineProps({
   item: {

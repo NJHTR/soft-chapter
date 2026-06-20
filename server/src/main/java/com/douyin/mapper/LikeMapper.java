@@ -25,4 +25,16 @@ public interface LikeMapper extends BaseMapper<Like> {
     /** 获取用户最近点赞的视频ID列表 */
     @Select("SELECT video_id FROM t_like WHERE user_id = #{userId} ORDER BY create_time DESC LIMIT #{limit}")
     List<Long> findRecentLikedVideoIds(@Param("userId") Long userId, @Param("limit") int limit);
+
+    /** 批量统计候选视频的近期点赞数 */
+    @Select("<script>SELECT video_id, COUNT(*) as cnt FROM t_like " +
+            "WHERE create_time >= #{since} " +
+            "AND video_id IN <foreach collection='videoIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> " +
+            "GROUP BY video_id</script>")
+    List<java.util.Map<String, Object>> countRecentLikes(@Param("videoIds") List<Long> videoIds,
+                                                         @Param("since") java.time.LocalDateTime since);
+
+    /** 取消点赞 */
+    @org.apache.ibatis.annotations.Delete("DELETE FROM t_like WHERE user_id = #{userId} AND video_id = #{videoId}")
+    int deleteByUserAndVideo(@Param("userId") Long userId, @Param("videoId") Long videoId);
 }

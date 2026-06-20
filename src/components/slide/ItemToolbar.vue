@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BaseMusic from '../BaseMusic.vue'
-import { _formatNumber, cloneDeep, _notice } from '@/utils'
+import { _formatNumber, cloneDeep, _notice, _checkImgUrl } from '@/utils'
 import bus, { EVENT_KEY } from '@/utils/bus'
 import { Icon } from '@iconify/vue'
 import { useClick } from '@/utils/hooks/useClick'
@@ -138,7 +138,7 @@ onUnmounted(() => {
     <div class="avatar-ctn mb2r">
       <img
         class="avatar"
-        :src="item.author?.avatar_168x168?.url_list?.[0]"
+        :src="_checkImgUrl(item.author?.avatar_168x168?.url_list?.[0])"
         alt=""
         v-click="() => bus.emit(EVENT_KEY.GO_USERINFO)"
       />

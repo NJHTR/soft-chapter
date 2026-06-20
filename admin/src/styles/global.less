@@ -1,0 +1,173 @@
+:root {
+  --sidebar-width: 220px;
+  --header-height: 56px;
+  --primary: #fe2c55;
+  --bg: #f0f2f5;
+  --card-bg: #fff;
+  --text: #333;
+  --text-secondary: #666;
+  --text-muted: #999;
+  --border: #e8e8e8;
+  --sidebar-bg: #001529;
+  --sidebar-text: #ffffffa6;
+  --sidebar-active: #fe2c55;
+}
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+a { text-decoration: none; color: inherit; }
+
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+// Common components
+.page-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 24px;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  &:hover { opacity: 0.85; }
+}
+
+.btn-sm {
+  border: none;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-right: 6px;
+}
+
+.search-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  input, select {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+    background: #fff;
+    &:focus { border-color: var(--primary); }
+  }
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: var(--card-bg);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+
+  th { background: #fafafa; padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text-secondary); border-bottom: 1px solid #eee; white-space: nowrap; }
+  td { padding: 10px 16px; border-bottom: 1px solid #f5f5f5; }
+  .empty-row { text-align: center; color: var(--text-muted); padding: 40px 0; }
+}
+
+.card {
+  background: var(--card-bg);
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.stat-card {
+  background: var(--card-bg);
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  .stat-value { font-size: 32px; font-weight: 700; }
+  .stat-label { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+}
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  width: 420px;
+  max-width: 90vw;
+  .modal-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+  .modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+}
+
+.form-group {
+  margin-bottom: 14px;
+  label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+  input, textarea, select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+    &:focus { border-color: var(--primary); }
+  }
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  &.active { background: #d1fae5; color: #059669; }
+  &.banned { background: #fee2e2; color: #dc2626; }
+  &.role-admin { background: #fce7f3; color: #db2777; }
+  &.role-user { background: #e8f4ff; color: #3b82f6; }
+  &.role-merchant { background: #fef3c7; color: #d97706; }
+}
+
+.btn-edit { background: #e8f4ff; color: #3b82f6; }
+.btn-del { background: #fee2e2; color: #dc2626; }
+.btn-approve { background: #d1fae5; color: #059669; }
+.btn-cancel { background: #f5f5f5; color: #666; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; border: none; }
+
+.empty-state {
+  text-align: center;
+  padding: 60px 24px;
+  .empty-icon { font-size: 48px; margin-bottom: 16px; }
+  p { font-size: 15px; color: var(--text-secondary); }
+  .sub { font-size: 13px; color: var(--text-muted); margin-top: 8px; }
+}

@@ -9,6 +9,7 @@ import { useClick } from '@/utils/hooks/useClick'
 import bus, { EVENT_KEY } from '@/utils/bus'
 
 window.isMoved = false
+;(window as any).isMovedEl = null
 window.isMuted = true
 window.showMutedNotice = true
 HTMLElement.prototype.addEventListener = new Proxy(HTMLElement.prototype.addEventListener, {
@@ -18,9 +19,12 @@ HTMLElement.prototype.addEventListener = new Proxy(HTMLElement.prototype.addEven
     if (listener instanceof Function && eventName === 'click') {
       args[1] = new Proxy(listener, {
         apply(target1, ctx1, args1) {
-          // console.log('e', args1)
-          // console.log('click点击', window.isMoved)
-          if (window.isMoved) return
+          if (window.isMoved) {
+            // 仅当点击发生在触发滑动的元素内部时才抑制，避免误伤其他页面
+            const movedEl = (window as any).isMovedEl
+            if (movedEl && movedEl.contains && movedEl.contains(args1[0]?.target)) return
+            if (!movedEl) return // 没有记录元素则全局抑制（保持兼容）
+          }
           try {
             return target1.apply(ctx1, args1)
           } catch (e) {
@@ -36,6 +40,9 @@ HTMLElement.prototype.addEventListener = new Proxy(HTMLElement.prototype.addEven
 const vClick = useClick()
 const pinia = createPinia()
 const app = createApp(App)
+app.config.errorHandler = (err: any, instance: any, info: string) => {
+  console.error('[Vue Error]', err, '\n  component:', instance?.$?.type?.name || instance?.type?.name || 'unknown', '\n  info:', info)
+}
 app.mixin(mixin)
 const loadImage = new URL('./assets/img/icon/img-loading.png', import.meta.url).href
 app.use(VueLazyload, {

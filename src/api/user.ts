@@ -152,6 +152,10 @@ export function rejectFriendRequest(fromId: number) {
   return request({ url: '/user/friend/reject', method: 'post', data: { from_id: fromId } })
 }
 
+export function unfriend(targetId: number) {
+  return request({ url: '/user/friend/unfriend', method: 'post', data: { target_id: targetId } })
+}
+
 export function getFriendList(params?: any, data?: any) {
   return request({ url: '/user/friend/list', method: 'get', params, data })
 }
@@ -283,4 +287,57 @@ export function markShopMessageRead(id: number) {
 
 export function markAllShopMessagesRead() {
   return request({ url: '/shop-message/read-all', method: 'put' })
+}
+
+// 订单
+export function placeOrder(data: {
+  goods_id: number
+  quantity?: number
+  receiver_name?: string
+  receiver_phone?: string
+  receiver_address?: string
+  remark?: string
+}) {
+  return request({ url: '/shop/order', method: 'post', data })
+}
+
+export function placeOrderFromCart(data: {
+  cart_ids: number[]
+  receiver_name?: string
+  receiver_phone?: string
+  receiver_address?: string
+  remark?: string
+}) {
+  return request({ url: '/shop/order/from-cart', method: 'post', data })
+}
+
+export function getOrders(params?: { status?: string; pageNo?: number; pageSize?: number }) {
+  return request({ url: '/shop/orders', method: 'get', params })
+}
+
+export function cancelOrder(id: number) {
+  return request({ url: `/shop/order/${id}/cancel`, method: 'post' })
+}
+
+export function shipOrder(id: number) {
+  return request({ url: `/shop/order/${id}/ship`, method: 'post' })
+}
+
+export function receiveOrder(id: number) {
+  return request({ url: `/shop/order/${id}/receive`, method: 'post' })
+}
+
+export function payOrder(id: number, paymentMethod?: string, idempotencyKey?: string) {
+  return request({
+    url: `/shop/order/${id}/pay`,
+    method: 'post',
+    data: {
+      payment_method: paymentMethod || 'wallet',
+      idempotency_key: idempotencyKey
+    }
+  })
+}
+
+export function getSellerOrders(params?: { status?: string; pageNo?: number; pageSize?: number }) {
+  return request({ url: '/shop/seller/orders', method: 'get', params })
 }

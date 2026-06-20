@@ -89,3 +89,28 @@ export function searchVideos(keyword: string) {
 export function recordWatch(videoId: string, data: { watch_duration: number; video_duration: number; finished: boolean }) {
   return request({ url: `/video/watch/${videoId}`, method: 'post', data })
 }
+
+/** 搜索输入联想 */
+export function searchSuggestions(params: { q: string; video_id?: number; userId?: number }) {
+  return request({ url: '/search/suggestions', method: 'get', params })
+}
+
+/** 搜索页"猜你想搜" */
+export function getGuessYouWant() {
+  return request({ url: '/search/guess', method: 'get' })
+}
+
+/** 搜索热榜 */
+export function getHotRank(params?: { limit?: number }) {
+  return request({ url: '/search/hot-rank', method: 'get', params })
+}
+
+/** 视频页"猜你想搜" */
+export function videoSearchHints(videoId: number, params?: any) {
+  return request({ url: `/video/${videoId}/search-hints`, method: 'get', params })
+}
+
+/** AI 智能搜索总结 */
+export function searchSummary(keyword: string) {
+  return request({ url: '/search/summary', method: 'get', params: { keyword } })
+}

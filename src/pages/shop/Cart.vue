@@ -103,7 +103,8 @@ async function handleRemove(item: any) {
 }
 
 function doCheckout() {
-  payDialog.value?.show(totalPrice.value)
+  const ids = list.value.map((item: any) => item.cart_id)
+  payDialog.value?.show(totalPrice.value, { cart_ids: ids })
 }
 </script>
 

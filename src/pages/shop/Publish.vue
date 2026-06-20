@@ -11,7 +11,7 @@
       <div class="section">
         <div class="label">封面图</div>
         <div class="cover-upload" @click="triggerCoverInput">
-          <img v-if="form.cover" :src="form.cover" class="cover-preview" />
+          <img v-if="form.cover" :src="_checkImgUrl(form.cover)" class="cover-preview" />
           <div v-else class="cover-placeholder">
             <Icon icon="ic:baseline-plus" />
             <span>上传封面</span>
@@ -25,7 +25,7 @@
         <div class="label">商品图片</div>
         <div class="img-list">
           <div v-for="(url, i) in form.imgList" :key="i" class="img-item" @click="removeImg(i)">
-            <img :src="url" />
+            <img :src="_checkImgUrl(url)" />
             <div class="remove-badge">×</div>
           </div>
           <div class="img-add" @click="triggerImgInput">

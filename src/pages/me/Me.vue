@@ -267,11 +267,11 @@
       <SlideItem style="width: 70vw; overflow: auto">
         <transition name="fade1">
           <div class="ul" v-if="!isMoreFunction">
-            <div class="li" @click="_no">
+            <div class="li" @click="$nav('/shop/orders')">
               <img src="../../assets/img/icon/newicon/left_menu/shopping.png" alt="" />
               <span>我的订单</span>
             </div>
-            <div class="li" @click="_no">
+            <div class="li" @click="$nav('/me/wallet')">
               <img src="../../assets/img/icon/newicon/left_menu/wallet.png" alt="" />
               <span>钱包</span>
             </div>

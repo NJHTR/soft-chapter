@@ -229,6 +229,12 @@ public class User {
     /** 邮箱 */
     private String email;
 
+    /** 账户余额 */
+    private java.math.BigDecimal balance;
+
+    @JsonIgnore
+    private String paySalt;
+
     /** 角色: user=普通用户, merchant=SeekFlow商家 */
     private String role;
 

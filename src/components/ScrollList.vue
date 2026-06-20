@@ -12,7 +12,6 @@
 
 <script setup>
 import { onMounted, reactive } from 'vue'
-import { _notice } from '@/utils'
 import Scroll from '@/components/Scroll.vue'
 import NoMore from '@/components/NoMore.vue'
 import { useScroll } from '@/utils/hooks/useScroll.ts'
@@ -61,8 +60,6 @@ async function getData(refresh = false) {
       state.list = state.list.concat(res.data.list)
     }
     state.total = res.data.total
-  } else {
-    _notice('查询失败')
   }
 }
 

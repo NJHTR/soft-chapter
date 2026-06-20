@@ -2,7 +2,7 @@
   <div class="ai-chat-page">
     <header class="top-bar">
       <Icon icon="material-symbols-light:arrow-back-ios-new" @click="router.back()" />
-      <img v-if="productCover" :src="productCover" class="product-thumb" />
+      <img v-if="productCover" :src="_checkImgUrl(productCover)" class="product-thumb" />
       <div class="title">
         <div class="main">智能客服</div>
         <div class="sub" v-if="productName">{{ productName }}</div>
@@ -37,6 +37,7 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { _checkImgUrl } from '@/utils'
 import { request } from '@/utils/request'
 import { Icon } from '@iconify/vue'
 

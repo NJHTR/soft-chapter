@@ -342,7 +342,7 @@
 
         <div class="preview-bottom-row">
           <div class="daily-btn">
-            <img v-if="userAvatar" :src="userAvatar" class="daily-avatar" />
+            <img v-if="userAvatar" :src="_checkImgUrl(userAvatar)" class="daily-avatar" />
             <span>限时日常</span>
           </div>
           <div class="play-pause-btn glass-btn" @click.stop="togglePreviewPlay">
@@ -375,7 +375,7 @@
                 :class="{ selected: selectedMusic?.id === m.id }"
                 @click="selectMusicItem(m)"
               >
-                <img v-if="m.cover_url" :src="m.cover_url" class="item-cover" />
+                <img v-if="m.cover_url" :src="_checkImgUrl(m.cover_url)" class="item-cover" />
                 <div v-else class="item-icon">
                   <Icon icon="vaadin:music" />
                 </div>
@@ -453,11 +453,11 @@
           <span>分享</span>
         </div>
         <div class="daily-post-btn" @click="setDaily">
-          <img v-if="userAvatar" :src="userAvatar" class="daily-avatar-sm" />
+          <img v-if="userAvatar" :src="_checkImgUrl(userAvatar)" class="daily-avatar-sm" />
           <span>限时日常</span>
         </div>
         <div class="publish-btn" @click="doUpload" :class="{ loading: uploading }">
-          {{ uploading ? '上传中...' : '发作品' }}
+          {{ uploading ? (uploadProgress > 0 ? `上传中 ${uploadProgress}%` : '上传中...') : '发作品' }}
         </div>
       </div>
 
@@ -477,10 +477,11 @@
 <script setup lang="ts">
 import { onMounted, onActivated, onBeforeUnmount, ref, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { uploadVideo, uploadImage } from '@/api/user'
+import { uploadImage } from '@/api/user'
 import { publishVideo } from '@/api/videos'
 import { getHotMusic } from '@/api/music'
-import { _notice } from '@/utils'
+import { _notice, _checkImgUrl } from '@/utils'
+import { createChunkUploader } from '@/utils/chunkUpload'
 import bus, { EVENT_KEY } from '@/utils/bus'
 import { useBaseStore } from '@/store/pinia'
 
@@ -499,6 +500,7 @@ const coverCanvas = ref<HTMLCanvasElement | null>(null)
 const textInputEl = ref<HTMLTextAreaElement | null>(null)
 const isRecording = ref(false)
 const uploading = ref(false)
+const uploadProgress = ref(0)
 const recordedBlob = ref<Blob | null>(null)
 const recordSeconds = ref(0)
 const modeIndex = ref(2)
@@ -1396,9 +1398,26 @@ async function doUpload() {
       const file = new File([videoBlob], `video_${Date.now()}.${ext}`, {
         type: videoBlob.type || 'video/mp4'
       })
-      const uploadRes = await uploadVideo(file)
-      if (!uploadRes.success) {
-        _notice('上传视频失败，请重试')
+
+      // 分片上传 (大文件自动分片, 显示真实进度)
+      uploadProgress.value = 0
+      const uploader = createChunkUploader(file, {
+        chunkSize: 5 * 1024 * 1024, // 5MB/片
+        concurrency: 2,              // 2片并发
+        maxRetries: 3               // 每片最多重试3次
+      })
+
+      uploader.on('progress', (pct: number) => {
+        uploadProgress.value = pct
+      })
+
+      let videoUrl = ''
+      try {
+        const result = await uploader.start()
+        videoUrl = result.url
+      } catch (e: any) {
+        uploadProgress.value = 0
+        _notice(e.message === 'Upload aborted' ? '上传已取消' : '上传视频失败，请重试')
         return
       }
 
@@ -1406,7 +1425,7 @@ async function doUpload() {
         [postTitle.value, postDesc.value].filter(Boolean).join('\n') ||
         '拍摄于 ' + new Date().toLocaleString()
       const pubRes = await publishVideo({
-        video_url: uploadRes.data.url,
+        video_url: videoUrl,
         desc,
         duration: Math.max(actualDuration, 1),
         music_title: selectedMusic.value
@@ -1433,6 +1452,7 @@ async function doUpload() {
     }
   } finally {
     uploading.value = false
+    uploadProgress.value = 0
   }
 }
 

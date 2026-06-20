@@ -152,8 +152,11 @@ public class UserController {
 
     /** 好友列表 */
     @GetMapping("/friends")
-    public Result<Object> friends() {
-        return Result.ok(userService.getFriends());
+    public Result<Object> friends(HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.ok(List.of());
+        List<UserVO> friends = userService.getFriends(userId);
+        return Result.ok(Map.of("all", friends, "recent", List.of(), "eachOther", List.of()));
     }
 
     /** 朋友列表 (互相关注) */
@@ -482,6 +485,23 @@ public class UserController {
 
         friend.setStatus(2);
         friendMapper.updateById(friend);
+        return Result.ok();
+    }
+
+    /** 删除好友关系 */
+    @PostMapping("/friend/unfriend")
+    public Result<?> unfriend(@RequestBody Map<String, Object> body, HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        Long targetId = Long.valueOf(body.get("target_id").toString());
+
+        Friend friend = friendMapper.selectOne(new LambdaQueryWrapper<Friend>()
+                .and(w -> w.and(a -> a.eq(Friend::getUserId, userId).eq(Friend::getFriendId, targetId))
+                        .or(a -> a.eq(Friend::getUserId, targetId).eq(Friend::getFriendId, userId)))
+                .eq(Friend::getStatus, 1));
+        if (friend == null) return Result.fail("不是好友关系");
+
+        friendMapper.deleteById(friend);
         return Result.ok();
     }
 

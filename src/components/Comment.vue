@@ -47,7 +47,7 @@
                     <img
                       v-for="(m, mi) in (item.mediaList || []).filter((x: any) => x.type === 'image')"
                       :key="'img'+mi"
-                      :src="m.url"
+                      :src="_checkImgUrl(m.url)"
                       class="comment-image-item"
                       @click.stop="previewImage(m.url)"
                     />
@@ -114,7 +114,7 @@
                         <img
                           v-for="(m, mi) in (child.mediaList || []).filter((x: any) => x.type === 'image')"
                           :key="'cimg'+mi"
-                          :src="m.url"
+                          :src="_checkImgUrl(m.url)"
                           class="comment-image-item"
                           @click.stop="previewImage(m.url)"
                         />
@@ -196,7 +196,7 @@
           <!-- 媒体预览 -->
           <div class="media-preview" v-if="mediaList.length">
             <div class="preview-item" v-for="(m, i) in mediaList" :key="i">
-              <img v-if="m.type === 'image'" :src="m.url" class="preview-img" />
+              <img v-if="m.type === 'image'" :src="_checkImgUrl(m.url)" class="preview-img" />
               <div v-else-if="m.type === 'voice'" class="preview-voice">
                 <Icon icon="mdi:microphone" /> {{ m.duration }}″
               </div>
@@ -247,7 +247,7 @@
       <!-- 图片全屏预览 -->
       <transition name="fade">
         <div class="image-preview-mask" v-if="previewUrl" @click="previewUrl = ''">
-          <img :src="previewUrl" alt="" />
+          <img :src="_checkImgUrl(previewUrl)" alt="" />
         </div>
       </transition>
     </div>

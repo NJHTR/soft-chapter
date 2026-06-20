@@ -10,7 +10,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RuntimeException.class)
     public Result<?> handleRuntime(RuntimeException e) {
-        log.error("RuntimeException: {}", e.getMessage());
+        log.error("RuntimeException: {}", e.getMessage(), e);
         return Result.fail(e.getMessage());
     }
 

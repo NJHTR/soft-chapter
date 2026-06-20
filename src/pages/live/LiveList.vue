@@ -49,7 +49,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getLiveRooms } from '@/api/live'
+import { getLiveRooms, getFollowingLiveRooms } from '@/api/live'
 import { _checkImgUrl } from '@/utils'
 import BaseHeader from '@/components/BaseHeader.vue'
 import LivePreviewCard from '@/pages/live/LivePreviewCard.vue'
@@ -63,9 +63,15 @@ const loading = ref(false)
 onMounted(async () => {
   loading.value = true
   try {
-    const res: any = await getLiveRooms({ pageNo: 1, pageSize: 20 })
-    if (res.success && res.data?.list) {
-      roomList.value = res.data.list
+    const [roomsRes, followingRes]: any[] = await Promise.all([
+      getLiveRooms({ pageNo: 1, pageSize: 20 }),
+      getFollowingLiveRooms()
+    ])
+    if (roomsRes.success && roomsRes.data?.list) {
+      roomList.value = roomsRes.data.list
+    }
+    if (followingRes.success && followingRes.data) {
+      followingLives.value = followingRes.data
     }
   } catch (e) {
     console.error(e)

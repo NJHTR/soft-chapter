@@ -1,7 +1,7 @@
 package com.douyin.service;
 
 import io.minio.*;
-import io.minio.http.Method;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -11,11 +11,11 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 文件上传服务 - MinIO 预留实现, 配置 minio.enabled=true 后生效
  */
+@Slf4j
 @Service
 @ConditionalOnProperty(name = "minio.enabled", havingValue = "true")
 public class FileService {
@@ -64,15 +64,8 @@ public class FileService {
                         .build()
         );
 
-        // 返回访问 URL (7天有效期)
-        return minioClient.getPresignedObjectUrl(
-                GetPresignedObjectUrlArgs.builder()
-                        .bucket(bucket)
-                        .object(objectName)
-                        .method(Method.GET)
-                        .expiry(7, TimeUnit.DAYS)
-                        .build()
-        );
+        // 返回对象路径 (bucket/objectName)，由 FileController 流式返回文件内容
+        return bucket + "/" + objectName;
     }
 
     private String getExtension(String filename) {
@@ -102,12 +95,15 @@ public class FileService {
             );
         }
 
-        return minioClient.getPresignedObjectUrl(
-                GetPresignedObjectUrlArgs.builder()
+        return bucket + "/" + objectName;
+    }
+
+    /** 从 MinIO 获取文件输入流，调用方负责关闭 */
+    public InputStream getObject(String bucket, String objectName) throws Exception {
+        return minioClient.getObject(
+                GetObjectArgs.builder()
                         .bucket(bucket)
                         .object(objectName)
-                        .method(Method.GET)
-                        .expiry(7, TimeUnit.DAYS)
                         .build()
         );
     }

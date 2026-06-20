@@ -1,3 +1,14 @@
+# ============================================================
+# 所有敏感凭据均从环境变量读取，部署前请设置以下变量：
+#
+#   DB_URL, DB_USERNAME, DB_PASSWORD          — 数据库连接
+#   SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD — 邮件服务
+#   JWT_SECRET                                — JWT 签名密钥 (base64)
+#   DEEPSEEK_API_KEY                          — DeepSeek AI API key
+#   MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY — MinIO 对象存储
+#   KAFKA_BOOTSTRAP_SERVERS                   — Kafka 地址
+# ============================================================
+
 server:
   port: 8080
 
@@ -13,10 +24,10 @@ spring:
   jackson:
     property-naming-strategy: SNAKE_CASE
   mail:
-    host: smtp.qq.com
-    port: 465
-    username: your-email@qq.com
-    password: your-smtp-password
+    host: ${SMTP_HOST:smtp.qq.com}
+    port: ${SMTP_PORT:465}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
     properties:
       mail.smtp.auth: true
       mail.smtp.ssl.enable: true
@@ -36,14 +47,19 @@ mybatis-plus:
 
 # JWT
 jwt:
-  secret: your-base64-encoded-secret-key
+  secret: ${JWT_SECRET:}
   expiration: 604800000  # 7 days
+
+# DeepSeek AI
+deepseek:
+  api-key: ${DEEPSEEK_API_KEY:}
+  base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
 
 # MinIO
 minio:
-  enabled: true
-  endpoint: http://your-minio-host:9000
-  access-key: your-access-key
-  secret-key: your-secret-key
-  bucket-video: douyin-video
-  bucket-image: douyin-image
+  enabled: ${MINIO_ENABLED:true}
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:}
+  secret-key: ${MINIO_SECRET_KEY:}
+  bucket-video: ${MINIO_BUCKET_VIDEO:douyin-video}
+  bucket-image: ${MINIO_BUCKET_IMAGE:douyin-image}

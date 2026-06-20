@@ -135,6 +135,7 @@
 import { ref, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getLiveDetail, joinLive, leaveLive, likeLive } from '@/api/live'
+import { toggleFollowUser } from '@/api/user'
 import { useBaseStore } from '@/store/pinia'
 import { _notice, _checkImgUrl } from '@/utils'
 import defaultAvatarPng from '@/assets/img/icon/people-gray.png'
@@ -343,8 +344,14 @@ function goHostProfile() {
   }
 }
 
-function toggleFollow() {
-  isFollowing.value = !isFollowing.value
+async function toggleFollow() {
+  if (!host.value?.uid) return
+  try {
+    const res = await toggleFollowUser(host.value.uid)
+    if (res.success) {
+      isFollowing.value = res.data?.isAttention ?? !isFollowing.value
+    }
+  } catch { /* ignore */ }
 }
 </script>
 

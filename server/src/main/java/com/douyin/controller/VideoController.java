@@ -6,7 +6,9 @@ import com.douyin.entity.Comment;
 import com.douyin.entity.Notification;
 import com.douyin.entity.User;
 import com.douyin.entity.Video;
+import com.douyin.kafka.KafkaTopicConfig;
 import com.douyin.kafka.MessagePublisher;
+import com.douyin.kafka.dto.CoverExtractEvent;
 import com.douyin.kafka.dto.NotificationEvent;
 import com.douyin.mapper.UserMapper;
 import com.douyin.service.CommentService;
@@ -22,6 +24,7 @@ import com.douyin.vo.NotificationVO;
 import com.douyin.vo.VideoVO;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -44,13 +47,15 @@ public class VideoController {
     private final MusicService musicService;
     private final VideoMergeService videoMergeService;
     private final SystemNoticeService systemNoticeService;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
     public VideoController(VideoService videoService, CommentService commentService,
                            CoverService coverService, JwtUtil jwtUtil,
                            MessagePublisher messagePublisher, MessageService messageService,
                            UserMapper userMapper, ContentFeatureService contentFeatureService,
                            MusicService musicService, VideoMergeService videoMergeService,
-                           SystemNoticeService systemNoticeService) {
+                           SystemNoticeService systemNoticeService,
+                           KafkaTemplate<String, Object> kafkaTemplate) {
         this.videoService = videoService;
         this.commentService = commentService;
         this.coverService = coverService;
@@ -62,6 +67,7 @@ public class VideoController {
         this.musicService = musicService;
         this.videoMergeService = videoMergeService;
         this.systemNoticeService = systemNoticeService;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     /** 从请求头提取当前登录用户ID, 未登录返回 null */
@@ -191,12 +197,14 @@ public class VideoController {
         return Result.ok(videoService.getHistory(viewerUserId, pageNo, pageSize));
     }
 
-    /** 其他浏览历史(图文/商品) */
+    /** 其他浏览历史(影视综等) */
     @GetMapping("/historyOther")
     public Result<PageDTO<VideoVO>> historyOther(
             @RequestParam(defaultValue = "1") int pageNo,
-            @RequestParam(defaultValue = "10") int pageSize) {
-        return Result.ok(videoService.getHistoryOther(pageNo, pageSize));
+            @RequestParam(defaultValue = "10") int pageSize,
+            HttpServletRequest req) {
+        Long viewerUserId = getLoginUserId(req);
+        return Result.ok(videoService.getHistoryOther(viewerUserId, pageNo, pageSize));
     }
 
     /** 发布视频 (支持选配乐合成) */
@@ -302,9 +310,17 @@ public class VideoController {
                 if (coverUrl != null && !coverUrl.isEmpty()) {
                     video.setCoverUrl(coverUrl);
                     videoService.updateById(video);
+                } else {
+                    // 同步提取失败 → 投递 Kafka 异步重试
+                    kafkaTemplate.send(KafkaTopicConfig.TOPIC_COVER_EXTRACT,
+                            CoverExtractEvent.of(video.getId(), video.getVideoUrl()));
                 }
             } catch (Exception e) {
-                log.error("publish: cover extraction failed", e);
+                log.error("publish: cover extraction failed, publishing to Kafka for async retry", e);
+                try {
+                    kafkaTemplate.send(KafkaTopicConfig.TOPIC_COVER_EXTRACT,
+                            CoverExtractEvent.of(video.getId(), video.getVideoUrl()));
+                } catch (Exception ignored) {}
             }
         }
 
@@ -586,5 +602,37 @@ public class VideoController {
     @GetMapping("/search")
     public Result<List<VideoVO>> search(@RequestParam String keyword) {
         return Result.ok(videoService.searchVideos(keyword));
+    }
+
+    /** 批量回填视频封面 (修复 cover_url 为空的历史数据) */
+    @PostMapping("/backfill-covers")
+    public Result<Map<String, Object>> backfillCovers(HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+
+        int total = 0;
+        int success = 0;
+        java.util.List<Video> videos = videoService.list(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Video>()
+                        .isNull(Video::getCoverUrl)
+                        .or().eq(Video::getCoverUrl, "")
+                        .last("LIMIT 100"));
+        total = videos.size();
+        for (Video v : videos) {
+            try {
+                String cover = coverService.extractAndUpload(v.getVideoUrl());
+                if (cover != null && !cover.isEmpty()) {
+                    v.setCoverUrl(cover);
+                    videoService.updateById(v);
+                    success++;
+                }
+            } catch (Exception e) {
+                log.warn("backfill cover failed: videoId={}", v.getId(), e);
+            }
+        }
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("total", total);
+        result.put("success", success);
+        return Result.ok(result);
     }
 }

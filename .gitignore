@@ -41,3 +41,20 @@ server/target/
 # Sensitive config files (use .example templates)
 server/src/main/resources/application-dev.yml
 server/src/main/resources/application.yml
+
+# Python fine-tuning artifacts (large files)
+server/python/summary_lora_adapter/
+server/python/training_data.jsonl
+server/python/__pycache__/
+server/python/**/__pycache__/
+*.pyc
+
+# Python distill model outputs (large tokenizer/model files)
+server/python/distill_lora_adapter/
+server/python/distill_output/
+
+# Python training datasets
+server/python/training_data_cleaned_*.jsonl
+
+# VSCode counter artifacts
+.VSCodeCounter/

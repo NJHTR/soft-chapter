@@ -3,6 +3,7 @@ package com.douyin.kafka;
 import com.douyin.kafka.dto.ChatMessageEvent;
 import com.douyin.kafka.dto.GroupMessageEvent;
 import com.douyin.kafka.dto.NotificationEvent;
+import com.douyin.kafka.dto.VideoEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -70,6 +71,19 @@ public class KafkaMessagePublisher implements MessagePublisher {
                         log.info("[KAFKA-PUB] notify send OK: toUser={} type={} offset={}",
                                 event.getUserId(), event.getType(),
                                 result != null ? result.getRecordMetadata().offset() : -1);
+                    }
+                });
+    }
+
+    @Override
+    public void publishVideoEvent(VideoEvent event) {
+        log.debug("[KAFKA-PUB] video event: action={} userId={} videoId={}", event.getAction(), event.getUserId(), event.getVideoId());
+        kafkaTemplate.send(KafkaTopicConfig.TOPIC_VIDEO_EVENTS,
+                String.valueOf(event.getUserId()), event)
+                .whenComplete((result, ex) -> {
+                    if (ex != null) {
+                        log.error("[KAFKA-PUB] video event FAILED: action={} userId={} videoId={} error={}",
+                                event.getAction(), event.getUserId(), event.getVideoId(), ex.getMessage(), ex);
                     }
                 });
     }

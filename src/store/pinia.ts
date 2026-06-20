@@ -2,7 +2,6 @@ import { defineStore } from 'pinia'
 import { friends, panel } from '@/api/user'
 import { login as loginApi, register as registerApi } from '@/api/auth'
 import enums from '@/utils/enums'
-import resource from '@/assets/data/resource'
 import { _notice } from '@/utils'
 import { connectSocket, disconnectSocket } from '@/utils/socket'
 
@@ -70,7 +69,7 @@ export const useBaseStore = defineStore('base', {
         has_password: false,
         role: 'user'
       },
-      friends: resource.users,
+      friends: { all: [], recent: [], eachOther: [] },
       message: ''
     }
   },

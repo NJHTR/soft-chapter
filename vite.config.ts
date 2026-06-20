@@ -118,6 +118,7 @@ export default defineConfig((): Promise<UserConfig> => {
                 }
                 if (id.includes('node_modules')) return 'vendor'
 
+                // 用户端 chunk 分组
                 if (id.includes('/src/pages/home/Publish.vue')) return 'other'
                 if (id.includes('/src/pages/home/VideoEditor.vue')) return 'other'
 
@@ -151,9 +152,9 @@ export default defineConfig((): Promise<UserConfig> => {
                 if (id.includes('/src/pages/people/FindAcquaintance.vue')) return 'other'
                 if (id.includes('/src/pages/people/FollowAndFans.vue')) return 'other'
               },
-              chunkFileNames: 'js/[name]-[hash].js', // 引入文件名的名称
-              entryFileNames: 'js/[name]-[hash].js', // 包的入口文件名称
-              assetFileNames: 'assets/[name]-[hash].[ext]' // 资源文件像 字体，图片等
+              chunkFileNames: 'js/[name]-[hash].js',
+              entryFileNames: 'js/[name]-[hash].js',
+              assetFileNames: 'assets/[name]-[hash].[ext]'
             }
           },
           assetsInlineLimit: 2048
@@ -176,10 +177,6 @@ export default defineConfig((): Promise<UserConfig> => {
               changeOrigin: true
             },
             '/music': {
-              target: 'http://localhost:9191',
-              changeOrigin: true
-            },
-            '/images': {
               target: 'http://localhost:9191',
               changeOrigin: true
             },

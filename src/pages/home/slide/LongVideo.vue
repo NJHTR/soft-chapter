@@ -81,7 +81,11 @@ const nav = useNav()
   <div class="long-video" @dragstart="(e) => _stopPropagation(e)">
     <ScrollList class="Scroll" v-if="state.show" :api="recommendedLongVideo">
       <template v-slot="{ list }">
-        <div class="list">
+        <div class="empty" v-if="list.length === 0">
+          <img src="@/assets/img/icon/none-bg1.webp" alt="" />
+          <p>暂无更多内容</p>
+        </div>
+        <div class="list" v-else>
           <div
             class="item"
             @click="nav('/video-detail', {}, { list, index: i })"
@@ -106,7 +110,7 @@ const nav = useNav()
                 :fullscreen="false"
                 v-is-can-play
                 :poster="_checkImgUrl(item.video.cover.url_list[0])"
-                :src="item.video.play_addr.url_list[0]"
+                :src="_checkImgUrl(item.video.play_addr.url_list[0])"
               ></video>
               <div class="options">
                 <div class="left"></div>
@@ -154,6 +158,25 @@ const nav = useNav()
 </template>
 
 <style scoped lang="less">
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 180rem;
+
+  img {
+    width: 120rem;
+    height: 120rem;
+  }
+
+  p {
+    font-size: 14rem;
+    color: var(--second-text-color);
+    margin-top: 16rem;
+  }
+}
+
 .long-video {
   font-size: 14rem;
   color: white;

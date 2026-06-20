@@ -13,6 +13,8 @@ public class KafkaTopicConfig {
     public static final String TOPIC_CHAT_MESSAGE = "chat-messages";
     public static final String TOPIC_NOTIFICATION = "notification-events";
     public static final String TOPIC_GROUP_MESSAGE = "group-messages";
+    public static final String TOPIC_VIDEO_EVENTS = "video-events";
+    public static final String TOPIC_COVER_EXTRACT = "cover-extract";
 
     /** 聊天消息 Topic — 3 分区，消费端并行处理 */
     @Bean
@@ -37,6 +39,24 @@ public class KafkaTopicConfig {
     public NewTopic groupMessageTopic() {
         return TopicBuilder.name(TOPIC_GROUP_MESSAGE)
                 .partitions(3)
+                .replicas(1)
+                .build();
+    }
+
+    /** 视频互动事件 Topic — 6 分区（高吞吐，播放/点赞/收藏） */
+    @Bean
+    public NewTopic videoEventsTopic() {
+        return TopicBuilder.name(TOPIC_VIDEO_EVENTS)
+                .partitions(6)
+                .replicas(1)
+                .build();
+    }
+
+    /** 封面提取任务 Topic — 1 分区（单线程有序处理，避免并发写同一个视频封面） */
+    @Bean
+    public NewTopic coverExtractTopic() {
+        return TopicBuilder.name(TOPIC_COVER_EXTRACT)
+                .partitions(1)
                 .replicas(1)
                 .build();
     }

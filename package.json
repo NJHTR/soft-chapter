@@ -25,10 +25,8 @@
   "dependencies": {
     "@jambonn/vue-lazyload": "1.0.9",
     "axios": "^1.15.0",
-    "axios-mock-adapter": "^1.22.0",
     "core-js": "3.21.1",
     "libarchive-wasm": "^1.1.0",
-    "mockjs": "^1.1.0",
     "pinia": "^2.1.7",
     "vue": "^3.5.13",
     "vue-router": "4.3.0"
@@ -47,6 +45,7 @@
     "@vue/tsconfig": "^0.5.1",
     "commitizen": "^4.3.0",
     "cz-conventional-changelog": "^3.3.0",
+    "docx": "^9.7.1",
     "eslint": "^8.57.0",
     "eslint-plugin-vue": "^9.17.0",
     "git-last-commit": "^1.0.1",

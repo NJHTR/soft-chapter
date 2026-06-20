@@ -1,7 +1,6 @@
 package com.douyin.service;
 
 import io.minio.*;
-import io.minio.http.Method;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,7 +69,15 @@ public class CoverService {
         Path tempCover = null;
         try {
             // 1. 下载视频到临时文件
-            String fullUrl = videoUrl.startsWith("/") ? "http://localhost:" + serverPort + videoUrl : videoUrl;
+            String fullUrl;
+            if (videoUrl.startsWith("http://") || videoUrl.startsWith("https://")) {
+                fullUrl = videoUrl;
+            } else if (videoUrl.startsWith("/")) {
+                fullUrl = "http://localhost:" + serverPort + videoUrl;
+            } else {
+                // MinIO 对象路径 (douyin-video/uuid.mp4) → 通过 FileController 代理下载
+                fullUrl = "http://localhost:" + serverPort + "/api/file/url?path=" + java.net.URLEncoder.encode(videoUrl, "UTF-8");
+            }
             tempVideo = Files.createTempFile("douyin-video-", ".mp4");
             try (InputStream in = new URL(fullUrl).openStream();
                  FileOutputStream out = new FileOutputStream(tempVideo.toFile())) {
@@ -126,14 +133,7 @@ public class CoverService {
                             .build()
             );
 
-            return minioClient.getPresignedObjectUrl(
-                    GetPresignedObjectUrlArgs.builder()
-                            .bucket(minioConfig.getBucketImage())
-                            .object(objectName)
-                            .method(Method.GET)
-                            .expiry(7, TimeUnit.DAYS)
-                            .build()
-            );
+            return minioConfig.getBucketImage() + "/" + objectName;
 
         } catch (Exception e) {
             log.warn("封面提取失败: {}", e.getMessage());

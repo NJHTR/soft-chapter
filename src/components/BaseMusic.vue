@@ -29,6 +29,7 @@
 import { computed, inject, onMounted } from 'vue'
 import bus, { EVENT_KEY } from '@/utils/bus'
 import { Icon } from '@iconify/vue'
+import { _checkImgUrl } from '@/utils'
 import { useClick } from '@/utils/hooks/useClick'
 import defaultMusicCover from '@/assets/img/icon/music.svg'
 
@@ -39,8 +40,8 @@ const vClick = useClick()
 let showMutedNotice = $ref(window.showMutedNotice)
 
 const musicCover = computed(() => {
-  return item?.music?.cover_thumb?.url_list?.[0]
-    || item?.music?.cover?.url_list?.[0]
+  return _checkImgUrl(item?.music?.cover_thumb?.url_list?.[0])
+    || _checkImgUrl(item?.music?.cover?.url_list?.[0])
     || defaultMusicCover
 })
 

@@ -41,11 +41,19 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/shop/Cart.vue')
   },
   {
+    path: '/shop/orders',
+    component: () => import('@/pages/shop/Orders.vue')
+  },
+  {
     path: '/shop/ai-chat',
     component: () => import('@/pages/shop/AIChat.vue')
   },
 
   { path: '/me', component: () => import('@/pages/me/Me.vue') },
+  {
+    path: '/me/wallet',
+    component: () => import('@/pages/me/Wallet.vue')
+  },
   {
     path: '/me/edit-userinfo',
     component: () => import('@/pages/me/userinfo/EditUserInfo.vue')
@@ -282,7 +290,8 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/home/search',
     component: () => import('@/pages/home/SearchPage.vue')
-  }, // Admin review page
+  },
+  // Admin review page
   { path: '/admin/review', component: () => import('@/pages/admin/Review.vue') }
 ]
 

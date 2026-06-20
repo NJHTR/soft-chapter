@@ -1,6 +1,7 @@
+# 复制此文件为 application-dev.yml 并设置环境变量或直接填写值
 spring:
   datasource:
-    url: jdbc:mysql://your-host:3306/douyin?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
-    username: your-db-user
-    password: your-db-password
+    url: ${DB_URL:jdbc:mysql://localhost:3306/douyin?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:}
+    password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver

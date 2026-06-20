@@ -82,7 +82,7 @@
                   <Icon icon="iconoir:shop-window" />
                   <div>我的商品</div>
                 </div>
-                <div class="option" @click="nav('/shop/cart')">
+                <div class="option" @click="nav('/shop/orders')">
                   <Icon icon="lets-icons:order-light" />
                   <div>我的订单</div>
                 </div>

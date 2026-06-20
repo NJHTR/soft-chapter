@@ -105,15 +105,15 @@
         </div>
 
         <div class="image" v-if="message.type === MESSAGE_TYPE.IMAGE" @click="previewImage">
-          <img :src="message.data" alt="" />
+          <img :src="_checkImgUrl(message.data)" alt="" />
         </div>
         <!-- 图片全屏预览 -->
         <div class="image-preview" v-if="showPreview" @click="showPreview = false">
-          <img :src="message.data" alt="" />
+          <img :src="_checkImgUrl(message.data)" alt="" />
         </div>
 
         <div class="meme" v-if="message.type === MESSAGE_TYPE.MEME">
-          <img :src="message.data" alt="" />
+          <img :src="_checkImgUrl(message.data)" alt="" />
         </div>
 
         <div

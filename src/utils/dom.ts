@@ -80,7 +80,9 @@ export default class Dom {
     if (args.length === 1) {
       //情况一：获取样式
       if (typeof args[0] === 'string') {
-        return window.getComputedStyle(this.els[this.els.length - 1], null)[args[0]]
+        const el = this.els[this.els.length - 1]
+        if (!el) return ''
+        return window.getComputedStyle(el, null)[args[0]]
       } else {
         //情况三：设置多个样式
         Object.keys(args[0]).map((key) => {

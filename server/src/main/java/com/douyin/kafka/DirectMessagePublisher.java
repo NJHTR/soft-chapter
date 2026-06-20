@@ -6,6 +6,7 @@ import com.douyin.entity.User;
 import com.douyin.kafka.dto.ChatMessageEvent;
 import com.douyin.kafka.dto.GroupMessageEvent;
 import com.douyin.kafka.dto.NotificationEvent;
+import com.douyin.kafka.dto.VideoEvent;
 import com.douyin.service.GroupChatService;
 import com.douyin.service.MessageService;
 import com.douyin.service.UserService;
@@ -122,5 +123,10 @@ public class DirectMessagePublisher implements MessagePublisher {
                 log.error("Direct notify push failed", e);
             }
         }
+    }
+
+    @Override
+    public void publishVideoEvent(VideoEvent event) {
+        log.debug("Direct video event: action={} userId={} videoId={}", event.getAction(), event.getUserId(), event.getVideoId());
     }
 }

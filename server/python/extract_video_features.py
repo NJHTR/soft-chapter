@@ -86,8 +86,11 @@ def ensure_ffmpeg():
         sys.exit(1)
 
 
-def download_url(url: str, dest: str):
-    print(f"  [下载] {url[:80]}...")
+def download_url(url: str, dest: str, api_base: str = None):
+    # MinIO 相对路径 (如 douyin-video/xxx.mp4) → 全 URL
+    if "://" not in url and api_base:
+        url = f"{api_base}/api/file/url?path={url}"
+    print(f"  [下载] {url[:100]}...")
     import urllib.request
     urllib.request.urlretrieve(url, dest)
     size_mb = os.path.getsize(dest) / 1024 / 1024
@@ -144,7 +147,7 @@ def extract_audio(video_path: str, output_path: str, max_duration: int = AUDIO_D
     return output_path
 
 
-def download_images(image_urls: list[str], dest_dir: str) -> list[str]:
+def download_images(image_urls: list[str], dest_dir: str, api_base: str = None) -> list[str]:
     """下载多张图片, 返回本地路径列表"""
     paths = []
     for i, url in enumerate(image_urls):
@@ -154,7 +157,7 @@ def download_images(image_urls: list[str], dest_dir: str) -> list[str]:
         elif url.lower().endswith(".webp"):
             ext = ".webp"
         dest = os.path.join(dest_dir, f"image_{i:02d}{ext}")
-        download_url(url, dest)
+        download_url(url, dest, api_base)
         paths.append(dest)
     return paths
 
@@ -553,7 +556,7 @@ def process_video(video_url: str, video_id: int, desc: str = "", music_title: st
         os.makedirs(frames_dir, exist_ok=True)
 
         try:
-            download_url(video_url, video_path)
+            download_url(video_url, video_path, api_base)
             frame_paths = extract_frames(video_path, frames_dir)
             visual = analyze_images_clip(frame_paths)
             features.update({k: v for k, v in visual.items() if not k.startswith("_")})
@@ -615,7 +618,7 @@ def process_image(image_urls: list[str], video_id: int, desc: str = "",
 
     with tempfile.TemporaryDirectory() as tmpdir:
         try:
-            image_paths = download_images(image_urls, tmpdir)
+            image_paths = download_images(image_urls, tmpdir, api_base)
             visual = analyze_images_clip(image_paths)
             features.update({k: v for k, v in visual.items() if not k.startswith("_")})
 

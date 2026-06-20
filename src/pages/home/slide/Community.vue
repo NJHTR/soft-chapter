@@ -55,7 +55,6 @@ import WaterfallList from '@/components/WaterfallList.vue'
 import ScrollList from '@/components/ScrollList.vue'
 import { useBaseStore } from '@/store/pinia'
 import AlbumDetail from '@/pages/other/AlbumDetail.vue'
-import Mock from 'mockjs'
 import { _css } from '@/utils/dom'
 
 const nav = useNav()
@@ -136,18 +135,13 @@ function showVideoDetail(e, item) {
 }
 
 function showDetail(e, item) {
-  let data = Mock.mock({
-    'comment_list|3-50': [
-      {
-        name: '@cname',
-        text: '@cparagraph(3)'
-      }
-    ]
-  })
-  item.note_card.comment_list = data.comment_list
-  item.note_card.createTime = Mock.Random.date('MM-dd')
-  item.note_card.interact_info.collect_count = Mock.Random.integer(60, 3000)
-  item.note_card.interact_info.share_count = Mock.Random.integer(60, 3000)
+  // 使用 API 返回的真实数据，缺失字段给默认值
+  const nc = item.note_card || {}
+  if (!nc.comment_list) nc.comment_list = []
+  if (!nc.createTime) nc.createTime = ''
+  if (!nc.interact_info) nc.interact_info = {}
+  if (!nc.interact_info.collect_count) nc.interact_info.collect_count = 0
+  if (!nc.interact_info.share_count) nc.interact_info.share_count = 0
   state.current = cloneDeep(item)
   // console.log(state.current)
 

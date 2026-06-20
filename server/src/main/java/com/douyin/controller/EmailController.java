@@ -69,7 +69,7 @@ public class EmailController {
 
         // 记录登录设备 + 发送系统通知
         loginDeviceService.recordAndNotify(user.getUid(), user.getUniqueId(),
-                email, "code", req);
+                email, "code", token, req);
 
         return Result.ok(result);
     }

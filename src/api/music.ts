@@ -15,3 +15,7 @@ export function getMusicList(params?: { pageNo?: number; pageSize?: number }) {
 export function getHotMusic(params?: { limit?: number }) {
   return request({ url: '/music/hot', method: 'get', params })
 }
+
+export function uploadMusic(formData: FormData) {
+  return request({ url: '/music/upload', method: 'post', data: formData, headers: { 'Content-Type': 'multipart/form-data' } })
+}

@@ -16,6 +16,8 @@ const router = createRouter({
   }
 })
 router.beforeEach((to, from) => {
+  // 清除滑动标记，防止全局点击代理吞掉所有 click 事件导致页面卡死
+  ;(window as any).isMoved = false
   // Admin route guard
   if (to.path.startsWith('/admin')) {
     const baseStore = useBaseStore()
@@ -64,4 +66,5 @@ router.beforeEach((to, from) => {
   return true
 })
 
+;(window as any).$router = router
 export default router

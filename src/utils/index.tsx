@@ -127,10 +127,19 @@ export function _checkImgUrl(url) {
     url.startsWith('/') ||
     url.includes('assets/img') ||
     url.includes('file://') ||
-    url.includes('data:image') ||
-    url.includes('http') ||
-    url.includes('https')
+    url.includes('data:image')
   ) {
+    return url
+  }
+  // MinIO 对象路径 (新格式: bucket/objectName) → 通过后端动态生成预签名 URL
+  if (url.startsWith('douyin-video/') || url.startsWith('douyin-image/')) {
+    return '/api/file/url?path=' + encodeURIComponent(url)
+  }
+  // 旧 MinIO 预签名 URL (向后兼容) → 后端自动提取路径重新签名
+  if (url.includes('X-Amz-Signature') || url.includes('.170:9000')) {
+    return '/api/file/url?path=' + encodeURIComponent(url)
+  }
+  if (url.includes('http')) {
     return url
   }
   return IMG_URL + url

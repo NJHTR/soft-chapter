@@ -27,25 +27,33 @@ public class LoginDeviceService {
 
     private final LoginHistoryMapper loginHistoryMapper;
     private final SystemNoticeService systemNoticeService;
+    private final SessionService sessionService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public LoginDeviceService(LoginHistoryMapper loginHistoryMapper,
-                              SystemNoticeService systemNoticeService) {
+                              SystemNoticeService systemNoticeService,
+                              SessionService sessionService) {
         this.loginHistoryMapper = loginHistoryMapper;
         this.systemNoticeService = systemNoticeService;
+        this.sessionService = sessionService;
     }
 
     // ==================== 对外入口 ====================
 
-    /** 完整流程：收集设备信息 → 保存记录 → 发系统通知 */
+    /** 完整流程：收集设备信息 → 保存记录 → 创建活跃会话 → 发系统通知 */
     public void recordAndNotify(Long userId, String uniqueId, String email,
-                                String loginMethod, HttpServletRequest req) {
+                                String loginMethod, String token, HttpServletRequest req) {
         LoginHistory history = collect(userId, email, loginMethod, req);
         try {
             loginHistoryMapper.insert(history);
         } catch (Exception e) {
             log.warn("保存登录记录失败: {}", e.getMessage());
-            // 不影响登录流程
+        }
+        // 创建活跃会话 (用于设备管理和强制下线)
+        try {
+            sessionService.createSession(userId, token, history);
+        } catch (Exception e) {
+            log.warn("创建活跃会话失败: {}", e.getMessage());
         }
         sendLoginNotice(userId, uniqueId, email, loginMethod, history, req);
     }

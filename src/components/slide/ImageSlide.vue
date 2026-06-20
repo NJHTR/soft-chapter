@@ -30,7 +30,7 @@
       </div>
       <transition-group name="comment-status" tag="div" class="loveds">
         <div class="type-loved" :key="i" v-for="i in loveAnimations">
-          <img :src="store.userinfo?.avatar_168x168?.url_list?.[0] || ''" class="avatar" alt="" />
+          <img :src="_checkImgUrl(store.userinfo?.avatar_168x168?.url_list?.[0] || '')" class="avatar" alt="" />
           <img src="../../assets/img/icon/love.svg" class="loved" alt="" />
         </div>
       </transition-group>

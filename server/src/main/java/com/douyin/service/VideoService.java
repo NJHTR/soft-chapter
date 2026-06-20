@@ -22,8 +22,8 @@ public interface VideoService extends IService<Video> {
 
     PageDTO<VideoVO> getHistory(Long viewerUserId, int pageNo, int pageSize);
 
-    /** 其他浏览历史(图文/商品等) — 暂返回空 */
-    PageDTO<VideoVO> getHistoryOther(int pageNo, int pageSize);
+    /** 其他浏览历史(影视综等) */
+    PageDTO<VideoVO> getHistoryOther(Long viewerUserId, int pageNo, int pageSize);
 
     /** 获取图文推荐 */
     PageDTO<VideoVO> getRecommendedPosts(Long viewerUserId, int pageNo, int pageSize);

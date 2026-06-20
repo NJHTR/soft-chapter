@@ -10,15 +10,18 @@ import com.douyin.entity.Like;
 import com.douyin.entity.User;
 import com.douyin.entity.Video;
 import com.douyin.entity.VideoCollect;
+import com.douyin.entity.VideoContent;
 import com.douyin.entity.WatchHistory;
 import com.douyin.mapper.FollowMapper;
 import com.douyin.mapper.LikeMapper;
 import com.douyin.mapper.UserMapper;
 import com.douyin.mapper.VideoCollectMapper;
+import com.douyin.mapper.VideoContentMapper;
 import com.douyin.mapper.VideoMapper;
 import com.douyin.mapper.WatchHistoryMapper;
 import com.douyin.service.ContentFeatureService;
 import com.douyin.service.RecommendationEngine;
+import com.douyin.service.SearchService;
 import com.douyin.service.VideoService;
 import com.douyin.vo.UserVO;
 import com.douyin.vo.VideoVO;
@@ -40,11 +43,18 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     private final WatchHistoryMapper watchHistoryMapper;
     private final RecommendationEngine recommendationEngine;
     private final ContentFeatureService contentFeatureService;
+    private final VideoContentMapper videoContentMapper;
+    private final SearchService searchService;
+
+    private static final Set<String> FILM_TV_CATEGORIES = Set.of(
+            "影视", "综艺", "电影", "电视剧", "纪录片", "动漫", "娱乐");
 
     public VideoServiceImpl(UserMapper userMapper, LikeMapper likeMapper, FollowMapper followMapper,
                             VideoCollectMapper collectMapper, WatchHistoryMapper watchHistoryMapper,
                             RecommendationEngine recommendationEngine,
-                            ContentFeatureService contentFeatureService) {
+                            ContentFeatureService contentFeatureService,
+                            VideoContentMapper videoContentMapper,
+                            SearchService searchService) {
         this.userMapper = userMapper;
         this.likeMapper = likeMapper;
         this.followMapper = followMapper;
@@ -52,6 +62,8 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
         this.watchHistoryMapper = watchHistoryMapper;
         this.recommendationEngine = recommendationEngine;
         this.contentFeatureService = contentFeatureService;
+        this.videoContentMapper = videoContentMapper;
+        this.searchService = searchService;
     }
 
     @Override
@@ -64,7 +76,11 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
                     pageSize * 2, minDuration);
             if (!rankedIds.isEmpty()) {
                 List<Video> videos = listByIds(rankedIds.subList(0, Math.min(pageSize, rankedIds.size())));
-                videos = videos.stream().filter(v -> "APPROVED".equals(v.getStatus())).toList();
+                videos = videos.stream()
+                        .filter(v -> "APPROVED".equals(v.getStatus()))
+                        .filter(v -> List.of("recommend-video", "image", "text").contains(v.getType()))
+                        .filter(v -> v.getDuration() != null)
+                        .toList();
                 // 恢复排序
                 Map<Long, Video> videoMap = videos.stream()
                         .collect(Collectors.toMap(Video::getId, v -> v));
@@ -96,26 +112,85 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
                 .stream().map(Follow::getFollowId).toList();
         if (followedIds.isEmpty()) return new PageDTO<>(0, pageNo, pageSize, List.of());
 
+        // 首页: 从关注作者中取候选，按质量+热度综合排序
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .in(Video::getAuthorUserId, followedIds)
                 .in(Video::getType, List.of("recommend-video", "image", "text"))
                 .eq(Video::getStatus, "APPROVED")
-                .orderByDesc(Video::getCreateTime);
-        IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
-        List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
-        return new PageDTO<>(page.getTotal(), pageNo, pageSize, voList);
+                .orderByDesc(Video::getCreateTime)
+                .last("LIMIT 200");
+        List<Video> candidates = list(wrapper);
+        // 综合分 = 时间衰减 + 互动量加成
+        long now = System.currentTimeMillis();
+        candidates.sort((a, b) -> Double.compare(
+                followingScore(b, now), followingScore(a, now)));
+        int start = (pageNo - 1) * pageSize;
+        int end = Math.min(start + pageSize, candidates.size());
+        List<VideoVO> voList = toVideoVOList(
+                start < candidates.size() ? candidates.subList(start, end) : List.of(), viewerUserId);
+        return new PageDTO<>((long) candidates.size(), pageNo, pageSize, voList);
+    }
+
+    /** 关注页综合分: 时间衰减 (72h 半衰期) × (1 + log互动量) */
+    private double followingScore(Video v, long nowMs) {
+        double likes = (v.getLikeCount() != null ? v.getLikeCount() : 0)
+                + (v.getShareCount() != null ? v.getShareCount() : 0)
+                + (v.getCollectCount() != null ? v.getCollectCount() : 0);
+        double hoursAge = (nowMs - v.getCreateTime().atZone(java.time.ZoneId.systemDefault())
+                .toInstant().toEpochMilli()) / 3600_000.0;
+        double recency = 1.0 / (1.0 + hoursAge / 72.0);
+        double engagement = 1.0 + Math.log10(1.0 + likes);
+        return recency * engagement;
     }
 
     @Override
     public PageDTO<VideoVO> getTrendingVideos(Long viewerUserId, int pageNo, int pageSize) {
+        // 登录用户首页：走推荐引擎，偏重热度信号
+        if (viewerUserId != null && pageNo == 1) {
+            List<Long> rankedIds = recommendationEngine.recommend(viewerUserId,
+                    pageSize * 2, null);
+            if (!rankedIds.isEmpty()) {
+                List<Video> videos = listByIds(rankedIds.subList(0, Math.min(pageSize, rankedIds.size())));
+                videos = videos.stream()
+                        .filter(v -> "APPROVED".equals(v.getStatus()))
+                        .filter(v -> List.of("recommend-video", "image", "text").contains(v.getType()))
+                        .filter(v -> v.getDuration() != null)
+                        .toList();
+                Map<Long, Video> videoMap = videos.stream()
+                        .collect(Collectors.toMap(Video::getId, v -> v));
+                List<Video> ordered = rankedIds.stream()
+                        .map(videoMap::get).filter(Objects::nonNull).limit(pageSize).toList();
+                List<VideoVO> voList = toVideoVOList(ordered, viewerUserId);
+                return new PageDTO<>((long) rankedIds.size(), 1, pageSize, voList);
+            }
+        }
+
+        // 兜底: 热度分排序 (like_count + recency 衰减)
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .in(Video::getType, List.of("recommend-video", "image", "text"))
                 .eq(Video::getStatus, "APPROVED")
+                .ge(Video::getCreateTime, java.time.LocalDateTime.now().minusDays(7))
                 .orderByDesc(Video::getLikeCount)
-                .orderByDesc(Video::getCreateTime);
-        IPage<Video> page = page(new Page<>(pageNo, pageSize), wrapper);
-        List<VideoVO> voList = toVideoVOList(page.getRecords(), viewerUserId);
-        return new PageDTO<>(page.getTotal(), pageNo, pageSize, voList);
+                .orderByDesc(Video::getCreateTime)
+                .last("LIMIT 200");
+        List<Video> candidates = list(wrapper);
+        // 热度分 = like_count × 时间衰减 (48h 半衰期)
+        long now = System.currentTimeMillis();
+        candidates.sort((a, b) -> Double.compare(hotScore(b, now), hotScore(a, now)));
+        int start = (pageNo - 1) * pageSize;
+        int end = Math.min(start + pageSize, candidates.size());
+        List<VideoVO> voList = toVideoVOList(
+                start < candidates.size() ? candidates.subList(start, end) : List.of(), viewerUserId);
+        return new PageDTO<>((long) candidates.size(), pageNo, pageSize, voList);
+    }
+
+    /** 热度分: like_count × 时间衰减因子 (半衰期 48h) */
+    private double hotScore(Video v, long nowMs) {
+        double likes = v.getLikeCount() != null ? v.getLikeCount() : 0;
+        double hoursAge = (nowMs - v.getCreateTime().atZone(java.time.ZoneId.systemDefault())
+                .toInstant().toEpochMilli()) / 3600_000.0;
+        double decay = 1.0 / (1.0 + hoursAge / 48.0);
+        return likes * decay;
     }
 
     @Override
@@ -193,8 +268,40 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     }
 
     @Override
-    public PageDTO<VideoVO> getHistoryOther(int pageNo, int pageSize) {
-        return new PageDTO<>(0, pageNo, pageSize, List.of());
+    public PageDTO<VideoVO> getHistoryOther(Long viewerUserId, int pageNo, int pageSize) {
+        if (viewerUserId == null) return new PageDTO<>(0, pageNo, pageSize, List.of());
+
+        // 获取用户所有观看历史 (取较多数量用于筛选)
+        int offset = (pageNo - 1) * pageSize;
+        List<Long> allVideoIds = watchHistoryMapper.findHistoryVideoIds(
+                viewerUserId, 0, (pageNo + 2) * pageSize);
+
+        if (allVideoIds.isEmpty()) return new PageDTO<>(0, pageNo, pageSize, List.of());
+
+        // 筛选出 "影视综" 分类的视频
+        List<VideoContent> contents = videoContentMapper.selectList(
+                new LambdaQueryWrapper<VideoContent>()
+                        .in(VideoContent::getVideoId, allVideoIds)
+                        .in(VideoContent::getTextCategory, FILM_TV_CATEGORIES));
+        Set<Long> filmTvVideoIds = contents.stream()
+                .map(VideoContent::getVideoId).collect(Collectors.toSet());
+
+        // 保持观看顺序，仅保留影视综
+        List<Long> filteredIds = allVideoIds.stream()
+                .filter(filmTvVideoIds::contains).toList();
+        long total = filteredIds.size();
+
+        List<Long> pageIds = filteredIds.stream()
+                .skip(offset).limit(pageSize).toList();
+
+        if (pageIds.isEmpty()) return new PageDTO<>(total, pageNo, pageSize, List.of());
+
+        Map<Long, Video> videoMap = listByIds(pageIds).stream()
+                .collect(Collectors.toMap(Video::getId, v -> v));
+        List<Video> ordered = pageIds.stream()
+                .map(videoMap::get).filter(Objects::nonNull).toList();
+
+        return new PageDTO<>(total, pageNo, pageSize, toVideoVOList(ordered, viewerUserId));
     }
 
     @Override
@@ -205,7 +312,10 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
                     pageSize * 4, null);
             if (!rankedIds.isEmpty()) {
                 List<Video> videos = listByIds(rankedIds);
-                videos = videos.stream().filter(v -> "APPROVED".equals(v.getStatus())).toList();
+                videos = videos.stream()
+                        .filter(v -> "APPROVED".equals(v.getStatus()))
+                        .filter(v -> v.getDuration() != null)
+                        .toList();
                 Map<Long, Video> videoMap = videos.stream()
                         .collect(Collectors.toMap(Video::getId, v -> v));
                 List<Video> ordered = rankedIds.stream()
@@ -232,7 +342,13 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
 
     @Override
     public PageDTO<VideoVO> getRecommendedGoods(int pageNo, int pageSize) {
-        return new PageDTO<>(0, pageNo, pageSize, List.of());
+        // 暂无独立商品系统，返回热门视频作为推荐内容
+        Page<Video> page = page(new Page<>(pageNo, pageSize),
+                new LambdaQueryWrapper<Video>()
+                        .eq(Video::getStatus, "APPROVED")
+                        .orderByDesc(Video::getLikeCount));
+        return new PageDTO<>(page.getTotal(), pageNo, pageSize,
+                toVideoVOList(page.getRecords(), null));
     }
 
     /** 将 Video 列表转换为 VideoVO 列表, 嵌入 author 信息, 批量查询当前用户的点赞状态 */
@@ -400,8 +516,14 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     @Override
     public List<VideoVO> searchVideos(String keyword) {
         if (keyword == null || keyword.trim().isEmpty()) return List.of();
-        List<Video> videos = baseMapper.searchByKeyword(keyword.trim());
-        return toVideoVOList(videos, null);
+        try {
+            List<Video> videos = searchService.search(keyword.trim(), 30);
+            return toVideoVOList(videos, null);
+        } catch (Exception e) {
+            log.warn("多字段搜索失败, 回退简单搜索: {}", e.getMessage());
+            List<Video> videos = baseMapper.searchByKeyword(keyword.trim());
+            return toVideoVOList(videos, null);
+        }
     }
 
     @Override

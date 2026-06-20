@@ -6,7 +6,7 @@
         <span>{{ incoming.isGroup ? '群通话' : incoming.isVideo ? '视频通话' : '语音通话' }}</span>
       </div>
       <div class="incoming-body">
-        <img class="incoming-avatar" :src="incoming.avatar || defaultAvatar" alt="" />
+        <img class="incoming-avatar" :src="_checkImgUrl(incoming.avatar) || defaultAvatar" alt="" />
         <span class="incoming-name">{{ incoming.name }}</span>
         <span class="incoming-hint" v-if="incoming.isGroup">
           与 {{ incoming.groupMembers?.join('、') || '' }} 等人
@@ -52,7 +52,7 @@
               muted
             />
             <div v-else class="cell-off">
-              <img :src="myAvatar" alt="" />
+              <img :src="_checkImgUrl(myAvatar)" alt="" />
             </div>
             <div class="cell-label"><span>我</span></div>
             <div class="cell-mute-badge" v-if="state.isMuted">
@@ -112,7 +112,7 @@
                 playsinline
                 muted
               />
-              <img v-else :src="myAvatar" class="list-avatar" />
+              <img v-else :src="_checkImgUrl(myAvatar)" class="list-avatar" />
               <span class="list-name">我</span>
               <span class="list-status connected">通话中</span>
             </div>
@@ -203,7 +203,7 @@
               :class="{ speaking: speakingMap['self'] }"
               :style="getAudioCellStyle(0)"
             >
-              <img class="a-avatar" :src="myAvatar" alt="" />
+              <img class="a-avatar" :src="_checkImgUrl(myAvatar)" alt="" />
               <span class="a-name">我</span>
               <span class="a-status connected">通话中</span>
             </div>
@@ -224,7 +224,7 @@
           <!-- 列表 (>10人) -->
           <div class="participants-list" v-else>
             <div class="p-row">
-              <img class="p-avatar" :src="myAvatar" alt="" />
+              <img class="p-avatar" :src="_checkImgUrl(myAvatar)" alt="" />
               <span class="p-name">我</span>
               <span class="p-status connected">通话中</span>
             </div>

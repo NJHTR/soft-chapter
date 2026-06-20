@@ -28,6 +28,14 @@ export function leaveLive(id: number) {
   return request({ url: '/live/' + id + '/leave', method: 'post' })
 }
 
+export function getFeaturedLive() {
+  return request({ url: '/live/featured', method: 'get' })
+}
+
+export function getFollowingLiveRooms() {
+  return request({ url: '/live/rooms/following', method: 'get' })
+}
+
 export function likeLive(id: number) {
   return request({ url: '/live/' + id + '/like', method: 'post' })
 }

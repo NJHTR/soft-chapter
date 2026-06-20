@@ -127,6 +127,14 @@ public class VideoVO {
         isCollect = collect;
     }
 
+    public String getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(String createTime) {
+        this.createTime = createTime;
+    }
+
     public String getStatus() {
         return status;
     }
@@ -170,6 +178,9 @@ public class VideoVO {
 
     @JsonProperty("is_collect")
     private Boolean isCollect;
+
+    @JsonProperty("create_time")
+    private String createTime;
 
     @Data
     public static class VideoInfo {
@@ -313,7 +324,7 @@ public class VideoVO {
         vo.awemeId = v.getId();
         vo.desc = v.getDesc();
         vo.type = v.getType();
-        vo.duration = (long) (v.getDuration() * 1000); // 秒 → 毫秒
+        vo.duration = v.getDuration() != null ? (long) (v.getDuration() * 1000) : 0L;
 
         VideoInfo info = new VideoInfo();
         info.playAddr = UrlList.of(v.getVideoUrl());
@@ -353,6 +364,7 @@ public class VideoVO {
         vo.city = "";
         vo.address = "";
         vo.status = v.getStatus();
+        vo.createTime = v.getCreateTime() != null ? v.getCreateTime().toString() : "";
         vo.isLoved = isLoved;
         vo.isAttention = isAttention;
         vo.isCollect = isCollect;

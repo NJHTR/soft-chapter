@@ -480,7 +480,7 @@ function doBuy(e?: MouseEvent) {
     return
   }
   const price = state.detail.real_price || state.detail.price
-  payDialog.value?.show(String(price))
+  payDialog.value?.show(String(price), { goods_id: state.detail.id })
 }
 
 function spawnBall(startX: number, startY: number) {

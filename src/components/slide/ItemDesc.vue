@@ -1,20 +1,27 @@
 <script setup lang="ts">
 import { inject, reactive } from 'vue'
+import SearchHints from './SearchHints.vue'
 
 const props = defineProps({
   isMy: {
     type: Boolean,
-    default: () => {
-      return false
-    }
+    default: () => false
   },
   isLive: {
     type: Boolean,
-    default: () => {
-      return false
-    }
+    default: () => false
+  },
+  videoId: {
+    type: [Number, String],
+    default: undefined
+  },
+  showHints: {
+    type: Boolean,
+    default: () => false
   }
 })
+
+const emit = defineEmits(['searchHint'])
 
 const item = inject<any>('item', {})
 
@@ -43,6 +50,13 @@ const state = reactive({
       <div class="description">
         {{ item.desc }}
       </div>
+      <SearchHints
+        v-if="props.videoId && props.showHints"
+        :video-id="props.videoId"
+        :visible="props.showHints"
+        :inline="true"
+        :on-search="(kw: string) => emit('searchHint', kw)"
+      />
       <!--      <div class="music" @click.stop="bus.emit('nav','/home/music')">-->
       <!--        <img src="../../assets/img/icon/music.svg" alt="" class="music-image">-->
       <!--        <span>{{ item.music.title }}</span>-->

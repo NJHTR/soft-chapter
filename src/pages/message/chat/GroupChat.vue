@@ -624,7 +624,7 @@ function voiceStart() {
         const formData = new FormData()
         formData.append('file', blob, 'voice.webm')
         try {
-          const resp = await fetch('/api/upload/image', {
+          const resp = await fetch('/api/upload/voice', {
             method: 'POST',
             body: formData,
             headers: { Authorization: 'Bearer ' + store.token }
