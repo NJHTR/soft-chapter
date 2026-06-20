@@ -109,15 +109,39 @@ public class LoginDeviceService {
 
     private void parseLocation(String ip, LoginHistory h) {
         if (ip == null || ip.isEmpty()) return;
-        if (ip.startsWith("127.") || ip.startsWith("192.168.") || ip.startsWith("10.")
-                || ip.startsWith("172.16.") || ip.startsWith("0:")) {
-            h.setCountry("本地开发环境");
+
+        // 本机回环
+        if (isLoopback(ip)) {
+            h.setCountry("本地开发");
+            h.setCity(ip);
             return;
         }
+
+        // 局域网私有地址 — 用服务器公网 IP 查询，并将结果标记为"局域网"
+        if (isLanIp(ip)) {
+            try {
+                queryIpApi(null, h);  // 不传 IP，ip-api 返回服务器自身公网归属
+                String origCountry = h.getCountry();
+                h.setCountry("局域网" + (origCountry != null ? " (" + origCountry + ")" : ""));
+            } catch (Exception e) {
+                h.setCountry("局域网");
+            }
+            h.setCity(ip);
+            return;
+        }
+
+        // 公网 IP → 查询 ip-api.com
+        queryIpApi(ip, h);
+    }
+
+    private void queryIpApi(String ip, LoginHistory h) {
         try {
+            String url = ip != null && !ip.isEmpty()
+                    ? "http://ip-api.com/json/" + ip + "?lang=zh-CN&fields=country,regionName,city,isp"
+                    : "http://ip-api.com/json/?lang=zh-CN&fields=country,regionName,city,isp";
             HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("http://ip-api.com/json/" + ip + "?lang=zh-CN&fields=country,regionName,city,isp"))
+                    .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(3)).GET().build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
@@ -130,6 +154,28 @@ public class LoginDeviceService {
         } catch (Exception e) {
             log.debug("IP归属地查询失败: {}", e.getMessage());
         }
+    }
+
+    private boolean isLoopback(String ip) {
+        if (ip.startsWith("127.")) return true;
+        // IPv6 loopback: ::1 or 0:0:0:0:0:0:0:1
+        if (ip.equals("0:0:0:0:0:0:0:1") || ip.equals("::1")) return true;
+        return false;
+    }
+
+    private boolean isLanIp(String ip) {
+        // 10.0.0.0/8
+        if (ip.startsWith("10.")) return true;
+        // 192.168.0.0/16
+        if (ip.startsWith("192.168.")) return true;
+        // 172.16.0.0/12 (172.16.0.0 ~ 172.31.255.255)
+        if (ip.startsWith("172.")) {
+            try {
+                int second = Integer.parseInt(ip.substring(4, ip.indexOf('.', 4)));
+                return second >= 16 && second <= 31;
+            } catch (Exception e) { return false; }
+        }
+        return false;
     }
 
     // ==================== UA 解析 ====================
