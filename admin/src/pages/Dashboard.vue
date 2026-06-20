@@ -313,13 +313,33 @@ onUnmounted(() => charts.forEach(c => c.dispose()))
 }
 
 .bento-card {
+  position: relative;
   background: #fff;
   border-radius: 16px;
   padding: 18px 20px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  transition: box-shadow 0.3s;
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.03),
+    0 2px 4px rgba(0,0,0,0.04),
+    0 8px 24px rgba(0,0,0,0.06);
+  border-top: 1px solid rgba(255,255,255,0.8);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
   overflow: hidden;
-  &:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+  &:hover {
+    box-shadow:
+      0 0 0 1px rgba(0,0,0,0.04),
+      0 4px 8px rgba(0,0,0,0.06),
+      0 12px 32px rgba(0,0,0,0.1);
+    transform: translateY(-1px);
+  }
+}
+.bento-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  filter: url(#noise-filter-subtle);
 }
 
 .card-wide { grid-column: span 2; }

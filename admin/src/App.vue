@@ -10,7 +10,13 @@
     <header v-if="!bigScreenFs" class="top-nav">
       <div class="top-nav-left">
         <router-link to="/big-screen" class="top-logo">
-          <span class="logo-mark">SF</span>
+          <span class="logo-mark">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18V5l12-2v13"/>
+              <circle cx="6" cy="18" r="3"/>
+              <circle cx="18" cy="16" r="3"/>
+            </svg>
+          </span>
           <span class="logo-text">SeekFlow</span>
           <small>运营管理</small>
         </router-link>
