@@ -14,9 +14,14 @@
 RTX 4060 8GB + i9-14900, 首次需下载模型(~3GB), 后续单条 ~2-5 秒
 """
 
+import os
+
+# bitsandbytes CUDA DLL 与 torch 2.6 在 Windows 上冲突导致 segfault, 必须在 torch 导入前禁用
+if not os.environ.get("BITSANDBYTES_NOWELCOME"):
+    os.environ["BITSANDBYTES_NOWELCOME"] = "1"
+
 import argparse
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -24,13 +29,12 @@ import time
 import traceback
 from pathlib import Path
 
-import httpx
+# torch 必须在 librosa 之前导入, 否则 llvmlite/numba 的 CUDA DLL 会与 torch CUDA 冲突导致 segfault
+import torch
+import numpy as np
 import jieba
 import librosa
-import numpy as np
-from sentence_transformers import SentenceTransformer
 from PIL import Image
-import torch
 
 # ===================== 配置 =====================
 CLIP_MODEL = "OFA-Sys/chinese-clip-vit-large-patch14-336px"  # 中文 CLIP, 1024-dim
@@ -86,15 +90,27 @@ def ensure_ffmpeg():
         sys.exit(1)
 
 
-def download_url(url: str, dest: str, api_base: str = None):
+def download_url(url: str, dest: str, api_base: str = None, retries: int = 5):
     # MinIO 相对路径 (如 douyin-video/xxx.mp4) → 全 URL
     if "://" not in url and api_base:
         url = f"{api_base}/api/file/url?path={url}"
     print(f"  [下载] {url[:100]}...")
     import urllib.request
-    urllib.request.urlretrieve(url, dest)
-    size_mb = os.path.getsize(dest) / 1024 / 1024
-    print(f"  [下载] 完成, {size_mb:.2f} MB")
+    import time as _time
+    last_err = None
+    for attempt in range(retries):
+        try:
+            urllib.request.urlretrieve(url, dest)
+            size_mb = os.path.getsize(dest) / 1024 / 1024
+            print(f"  [下载] 完成, {size_mb:.2f} MB")
+            return
+        except Exception as e:
+            last_err = e
+            if attempt < retries - 1:
+                delay = 2 ** attempt
+                print(f"  [下载] 重试 {attempt + 1}/{retries}, {delay}s 后重试: {e}")
+                _time.sleep(delay)
+    raise RuntimeError(f"下载失败 (已重试{retries}次): {last_err}")
 
 
 def _get_video_duration(video_path: str) -> float:
@@ -407,6 +423,8 @@ def _classify_text(text: str, keywords: list[str]) -> str:
 
 def _get_text_embedder():
     if not hasattr(_get_text_embedder, "_model"):
+        from sentence_transformers import SentenceTransformer
+        # bitsandbytes 已在文件头禁用, CUDA 安全可用
         _get_text_embedder._model = SentenceTransformer(TEXT_EMBED_MODEL, device=DEVICE)
     return _get_text_embedder._model
 
@@ -606,7 +624,6 @@ def process_video(video_url: str, video_id: int, desc: str = "", music_title: st
     print(f"\n[完成] 视频 {video_id} 特征提取完成, 耗时 {elapsed_ms}ms")
 
     _cleanup_internal(features)
-    save_to_backend(features, api_base)
     return features
 
 
@@ -663,7 +680,6 @@ def process_image(image_urls: list[str], video_id: int, desc: str = "",
     print(f"\n[完成] 图文 {video_id} 特征提取完成, 耗时 {elapsed_ms}ms")
 
     _cleanup_internal(features)
-    save_to_backend(features, api_base)
     return features
 
 
@@ -734,7 +750,6 @@ def process_text_only(video_id: int, desc: str, api_base: str = "http://localhos
     print(f"\n[完成] 纯文字 {video_id} 特征提取完成, 耗时 {elapsed_ms}ms")
 
     _cleanup_internal(features)
-    save_to_backend(features, api_base)
     return features
 
 
@@ -748,24 +763,10 @@ def _cleanup_internal(features: dict):
     features.pop("clip_text_embedding", None)
 
 
-# ===================== 后端保存 =====================
-
-def save_to_backend(features: dict, api_base: str):
-    try:
-        url = f"{api_base}/api/video/content-features"
-        resp = httpx.post(url, json=features, timeout=60)
-        if resp.status_code == 200:
-            print(f"  [保存] 特征已写回后端")
-        else:
-            print(f"  [保存] 失败: HTTP {resp.status_code} {resp.text[:200]}", file=sys.stderr)
-    except Exception as e:
-        print(f"  [保存] 请求失败: {e}", file=sys.stderr)
-
-
 # ===================== 入口 =====================
 
 def main():
-    parser = argparse.ArgumentParser(description="内容特征提取流水线 v2.1")
+    parser = argparse.ArgumentParser(description="内容特征提取流水线 v2.2")
     parser.add_argument("--mode", default="video", choices=["video", "image", "text"],
                         help="内容类型: video(视频) / image(图文) / text(纯文字)")
     parser.add_argument("--video-url", default="", help="视频文件 URL (mode=video)")
@@ -773,7 +774,7 @@ def main():
     parser.add_argument("--video-id", required=True, type=int, help="内容 ID")
     parser.add_argument("--desc", default="", help="描述/正文文本")
     parser.add_argument("--music-title", default="", help="音乐标题 (mode=video)")
-    parser.add_argument("--api-base", default="http://localhost:9191", help="Java 后端地址")
+    parser.add_argument("--api-base", default="http://localhost:9191", help="Java 后端地址 (用于下载文件)")
     args = parser.parse_args()
 
     # Hugging Face 国内镜像
@@ -817,13 +818,18 @@ def main():
             api_base=args.api_base,
         )
 
-    json_output = {k: v for k, v in result.items()
-                   if k not in ("text_embedding", "content_vector", "visual_embedding",
-                                "visual_desc", "music_mfcc")}
-    json_output["text_embedding_size"] = len(result.get("text_embedding", []))
-    json_output["content_vector_size"] = len(result.get("content_vector", []))
-    json_output["visual_embedding_size"] = len(result.get("visual_embedding", []))
-    print(f"\n[结果] {json.dumps(json_output, ensure_ascii=False, indent=2)}")
+    # 机器可读的完整结果 (单行 JSON, 供 Java 解析)
+    full_json = json.dumps(result, ensure_ascii=False)
+    print(f"__RESULT__{full_json}")
+
+    # 人类可读的摘要
+    summary = {k: v for k, v in result.items()
+               if k not in ("text_embedding", "content_vector", "visual_embedding",
+                            "visual_desc", "music_mfcc")}
+    summary["text_embedding_size"] = len(result.get("text_embedding", []))
+    summary["content_vector_size"] = len(result.get("content_vector", []))
+    summary["visual_embedding_size"] = len(result.get("visual_embedding", []))
+    print(f"\n[结果] {json.dumps(summary, ensure_ascii=False, indent=2)}")
 
 
 if __name__ == "__main__":
