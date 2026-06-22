@@ -596,7 +596,7 @@ public class SearchSuggestionService {
                 Video v = videos.get(i);
                 Map<String, Object> vi = new LinkedHashMap<>();
                 vi.put("title", v.getDesc() != null ? v.getDesc() : "");
-                vi.put("type", v.getType() != null ? v.getType() : "video");
+                vi.put("type", typeLabel(v.getType()));
                 vi.put("likes", v.getLikeCount() != null ? v.getLikeCount() : 0);
                 vi.put("plays", v.getPlayCount() != null ? v.getPlayCount() : 0);
                 vi.put("comments", v.getCommentCount() != null ? v.getCommentCount() : 0);
@@ -860,28 +860,32 @@ public class SearchSuggestionService {
         return "python";
     }
 
+    private String typeLabel(String raw) {
+        if (raw == null || raw.isEmpty()) return "视频";
+        return switch (raw) {
+            case "recommend-video" -> "视频";
+            case "long-video" -> "长视频";
+            case "image" -> "图文";
+            case "text" -> "文字";
+            default -> raw;
+        };
+    }
+
     private String fallbackSummary(String kw) {
         StringBuilder sb = new StringBuilder();
-        sb.append("## 搜索概况\n\n");
-        sb.append("关于「").append(kw).append("」，系统从SeekFlow平台中匹配了相关内容。");
-        sb.append("以下是为你整理的多维度信息摘要：\n\n");
+        sb.append("## 智能解读\n\n");
+        sb.append("「").append(kw).append("」是一个值得关注的话题。");
+        sb.append("它在不同领域有着丰富的内涵和意义，");
+        sb.append("平台上也有许多创作者围绕这一主题发布了优质内容。");
+        sb.append("你可以通过浏览搜索结果，获取多元化的信息和灵感。");
+        sb.append("建议尝试更具体的搜索词来缩小范围，找到最符合你需求的内容。\n\n");
 
-        sb.append("## 数据洞察\n\n");
+        sb.append("## 平台发现\n\n");
         sb.append("- 关键词「").append(kw).append("」在全站内容中有较高的相关度\n");
         sb.append("- 已匹配到视频、图文、用户等多个维度的结果\n");
-        sb.append("- 根据综合热度与相关度排序，为你呈现最优质的内容\n\n");
-
-        sb.append("## 智能解答\n\n");
-        sb.append("「").append(kw).append("」是一个值得关注的话题。");
-        sb.append("平台上有许多创作者围绕这一主题发布了高质量的内容，");
-        sb.append("涵盖了不同的视角和风格。");
-        sb.append("你可以通过浏览搜索结果，获取多元化的信息和灵感。\n\n");
-
-        sb.append("## 浏览建议\n\n");
-        sb.append("- 使用顶部分类标签（综合/视频/图文/用户）快速筛选内容类型\n");
-        sb.append("- 关注高互动量的视频，通常代表内容质量较高\n");
-        sb.append("- 通过关注创作者，持续获取「").append(kw).append("」相关的新内容\n");
-        sb.append("- 搜索词越具体，结果越精准");
+        sb.append("- 使用顶部分类标签快速筛选内容类型\n");
+        sb.append("- 关注高互动量的内容，通常代表质量较高\n");
+        sb.append("- 通过关注创作者，持续获取相关新内容");
 
         return sb.toString();
     }

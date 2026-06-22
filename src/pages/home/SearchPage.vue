@@ -51,30 +51,64 @@
 
         <!-- AI 智能总结 (仅综合 Tab) -->
         <template v-if="data.searchTab === '综合'">
-          <div class="ai-summary" v-if="data.aiSummary && !data.aiExpanded">
-            <div class="ai-text" v-if="!typingFinished">
-              {{ displayedSummary }}<span class="ai-cursor">|</span>
-            </div>
-            <div class="ai-text ai-md" v-else v-html="summaryHtml"></div>
-            <div class="ai-fade" v-if="displayedSummary.length > 150 && typingFinished"></div>
-            <div
-              class="ai-expand-btn"
-              v-if="displayedSummary.length > 150 && typingFinished"
-              @click="expandSummary()"
-            >
-              <span>展开更多</span>
-              <Icon icon="icon-park-outline:down" class="expand-arrow" />
-            </div>
-          </div>
-          <div class="ai-summary expanded" v-else-if="data.aiSummary && data.aiExpanded">
-            <div class="ai-text full ai-md" v-html="summaryHtml"></div>
-          </div>
-          <div class="ai-summary ai-loading" v-else-if="data.aiLoading">
+          <!-- 加载中 -->
+          <div class="ai-summary ai-loading" v-if="data.aiLoading">
             <span class="ai-loading-dot"></span>
             <span class="ai-loading-dot"></span>
             <span class="ai-loading-dot"></span>
             <span class="ai-loading-text">{{ loadingMsg }}</span>
           </div>
+
+          <!-- 打字机阶段: 单卡片 -->
+          <div class="ai-summary" v-else-if="data.aiSummary && !typingFinished">
+            <div class="ai-text">{{ displayedSummary }}<span class="ai-cursor">|</span></div>
+          </div>
+
+          <!-- 打字完成: 双模块卡片 -->
+          <template v-else-if="data.aiSummary && typingFinished">
+            <!-- 智能解读模块 -->
+            <div
+              class="ai-module ai-knowledge"
+              v-if="knowledgeText"
+              :class="{ expanded: knowledgeExpanded }"
+            >
+              <div class="ai-module-header">
+                <Icon icon="icon-park-outline:book-open" class="module-icon" />
+                <span>智能解读</span>
+              </div>
+              <div class="ai-module-body ai-md" v-html="knowledgeHtml"></div>
+              <div class="ai-fade" v-if="!knowledgeExpanded && knowledgeText.length > 200"></div>
+              <div
+                class="ai-expand-btn"
+                v-if="!knowledgeExpanded && knowledgeText.length > 200"
+                @click="knowledgeExpanded = true"
+              >
+                <span>展开更多</span>
+                <Icon icon="icon-park-outline:down" class="expand-arrow" />
+              </div>
+            </div>
+            <!-- 平台发现模块 -->
+            <div
+              class="ai-module ai-discovery"
+              v-if="discoveryText"
+              :class="{ expanded: discoveryExpanded }"
+            >
+              <div class="ai-module-header">
+                <Icon icon="icon-park-outline:analysis" class="module-icon" />
+                <span>平台发现</span>
+              </div>
+              <div class="ai-module-body ai-md" v-html="discoveryHtml"></div>
+              <div class="ai-fade" v-if="!discoveryExpanded && discoveryText.length > 200"></div>
+              <div
+                class="ai-expand-btn"
+                v-if="!discoveryExpanded && discoveryText.length > 200"
+                @click="discoveryExpanded = true"
+              >
+                <span>展开更多</span>
+                <Icon icon="icon-park-outline:down" class="expand-arrow" />
+              </div>
+            </div>
+          </template>
         </template>
 
         <!-- 综合 Tab --->
@@ -972,11 +1006,16 @@ function startTypewriter(text: string) {
   }, 25)
 }
 
+const knowledgeExpanded = ref(false)
+const discoveryExpanded = ref(false)
+
 function expandSummary() {
+  // 兼容旧调用: 双模块各自由独立按钮展开, 此函数不再使用
   stopTypewriter()
   displayedSummary.value = data.aiSummary
   typingFinished.value = true
-  data.aiExpanded = true
+  knowledgeExpanded.value = true
+  discoveryExpanded.value = true
 }
 
 /** 轻量 Markdown 转 HTML, 处理 AI 摘要中的 ### / ## / ** / - 列表 */
@@ -1017,6 +1056,28 @@ const summaryHtml = computed(() => {
   return renderMarkdown(text)
 })
 
+/** 按 ## 标题拆分为两个模块 */
+function splitModules(fullText: string): { knowledge: string; discovery: string } {
+  if (!fullText) return { knowledge: '', discovery: '' }
+  const discoveryIdx = fullText.indexOf('\n## 平台发现')
+  if (discoveryIdx === -1) {
+    // 没有平台发现标题, 尝试找 ## 智能解读
+    const knowledgeIdx = fullText.indexOf('## 智能解读')
+    if (knowledgeIdx === -1) return { knowledge: '', discovery: fullText }
+    return { knowledge: fullText.substring(knowledgeIdx), discovery: '' }
+  }
+  let knowledgeStart = fullText.indexOf('## 智能解读')
+  if (knowledgeStart === -1) knowledgeStart = 0
+  const knowledge = fullText.substring(knowledgeStart, discoveryIdx).trim()
+  const discovery = fullText.substring(discoveryIdx).trim()
+  return { knowledge, discovery }
+}
+
+const knowledgeText = computed(() => splitModules(data.aiSummary).knowledge)
+const discoveryText = computed(() => splitModules(data.aiSummary).discovery)
+const knowledgeHtml = computed(() => renderMarkdown(knowledgeText.value))
+const discoveryHtml = computed(() => renderMarkdown(discoveryText.value))
+
 const lHistory = computed(() => {
   if (data.isExpand) {
     if (data.history.length > 10) return data.history.slice(0, 10)
@@ -1044,9 +1105,11 @@ const slideListHeight = computed(() => {
 // 综合结果 = 所有视频+图文
 const allResults = computed(() => data.videoResults)
 
-// 仅视频
+// 仅视频 (recommend-video + long-video)
 const videoOnlyResults = computed(() =>
-  data.videoResults.filter((v: any) => !v.type || v.type === 'recommend-video')
+  data.videoResults.filter(
+    (v: any) => !v.type || v.type === 'recommend-video' || v.type === 'long-video'
+  )
 )
 
 // 仅图文
@@ -1078,6 +1141,8 @@ watch(
       data.userResults = []
       data.aiSummary = ''
       data.aiExpanded = false
+      knowledgeExpanded.value = false
+      discoveryExpanded.value = false
       stopTypewriter()
       displayedSummary.value = ''
     }
@@ -1134,6 +1199,8 @@ async function doSearch() {
   data.isSearched = true
   data.suggestions = []
   data.aiExpanded = false
+  knowledgeExpanded.value = false
+  discoveryExpanded.value = false
   data.aiSummary = ''
   stopTypewriter()
   displayedSummary.value = ''
@@ -1203,6 +1270,8 @@ function clearSearch() {
   data.isSearched = false
   data.suggestions = []
   data.aiSummary = ''
+  knowledgeExpanded.value = false
+  discoveryExpanded.value = false
   stopTypewriter()
   stopLoadingMessages()
   displayedSummary.value = ''
@@ -1497,7 +1566,7 @@ function toggle() {
       }
     }
 
-    // ==================== AI 总结 ====================
+    // ==================== AI 总结 / 双模块卡片 ====================
     .ai-summary {
       position: relative;
       margin: 10rem var(--page-padding);
@@ -1513,42 +1582,6 @@ function toggle() {
         white-space: pre-line;
         max-height: 220rem;
         overflow: hidden;
-
-        &.full {
-          max-height: none;
-        }
-      }
-
-      // Markdown 渲染样式 (覆盖 pre-line)
-      .ai-md {
-        white-space: normal;
-
-        :deep(.md-h3) {
-          font-size: 15rem;
-          font-weight: 600;
-          color: var(--primary-text-color);
-          margin: 12rem 0 6rem;
-          line-height: 1.4;
-        }
-        :deep(.md-h4) {
-          font-size: 14rem;
-          font-weight: 600;
-          color: var(--primary-text-color);
-          margin: 8rem 0 4rem;
-          line-height: 1.4;
-        }
-        :deep(strong) {
-          color: var(--primary-text-color);
-          font-weight: 600;
-        }
-        :deep(ul) {
-          padding-left: 16rem;
-          margin: 4rem 0;
-        }
-        :deep(li) {
-          margin: 2rem 0;
-          list-style: disc;
-        }
       }
 
       .ai-cursor {
@@ -1609,55 +1642,142 @@ function toggle() {
           color: var(--second-text-color);
         }
       }
+    }
+
+    // 双模块卡片
+    .ai-module {
+      position: relative;
+      margin: 10rem var(--page-padding);
+      background: var(--active-main-bg);
+      border-radius: 8rem;
+      overflow: hidden;
+
+      .ai-module-header {
+        display: flex;
+        align-items: center;
+        gap: 6rem;
+        padding: 10rem 12rem 0;
+        font-size: 12rem;
+        color: var(--second-text-color);
+        letter-spacing: 0.5rem;
+        text-transform: uppercase;
+
+        .module-icon {
+          width: 16rem;
+          height: 16rem;
+        }
+      }
+
+      .ai-module-body {
+        padding: 8rem 12rem 12rem;
+        font-size: 13rem;
+        line-height: 1.7;
+        color: var(--second-text-color);
+        max-height: 180rem;
+        overflow: hidden;
+      }
+
+      &.expanded .ai-module-body {
+        max-height: none;
+      }
 
       .ai-fade {
         position: absolute;
         bottom: 36rem;
         left: 0;
         right: 0;
-        height: 100rem;
+        height: 60rem;
         background: linear-gradient(
           to bottom,
           transparent 0%,
-          rgba(31, 37, 52, 0.05) 15%,
-          rgba(31, 37, 52, 0.2) 35%,
-          rgba(31, 37, 52, 0.5) 55%,
-          rgba(31, 37, 52, 0.8) 75%,
+          rgba(31, 37, 52, 0.15) 20%,
+          rgba(31, 37, 52, 0.5) 50%,
+          rgba(31, 37, 52, 0.85) 80%,
           rgb(31, 37, 52) 100%
         );
         pointer-events: none;
       }
 
-      .ai-expand-btn {
-        position: absolute;
-        bottom: 6rem;
-        left: 50%;
-        transform: translateX(-50%);
-        background: var(--second-btn-color);
-        color: white;
-        font-size: 12rem;
-        padding: 6rem 16rem;
-        border-radius: 20rem;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 4rem;
-        z-index: 2;
-
-        &:active {
-          opacity: 0.8;
-        }
-
-        .expand-arrow {
-          width: 14rem;
-          height: 14rem;
-        }
+      &.expanded .ai-fade {
+        display: none;
       }
 
-      &.expanded {
-        .ai-text {
-          max-height: none;
-        }
+      // 左侧色条区分两个模块
+      &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 12rem;
+        bottom: 12rem;
+        width: 3rem;
+        border-radius: 0 2rem 2rem 0;
+      }
+
+      &.ai-knowledge::before {
+        background: linear-gradient(to bottom, var(--second-btn-color), rgba(120, 130, 180, 0.3));
+      }
+
+      &.ai-discovery::before {
+        background: linear-gradient(to bottom, var(--primary-btn-color), rgba(254, 44, 85, 0.3));
+      }
+    }
+
+    // Markdown 渲染 (打字机卡片 + 双模块共用)
+    .ai-md {
+      white-space: normal;
+
+      :deep(.md-h3) {
+        font-size: 15rem;
+        font-weight: 600;
+        color: white;
+        margin: 12rem 0 6rem;
+        line-height: 1.4;
+      }
+      :deep(.md-h4) {
+        font-size: 14rem;
+        font-weight: 600;
+        color: white;
+        margin: 8rem 0 4rem;
+        line-height: 1.4;
+      }
+      :deep(strong) {
+        color: white;
+        font-weight: 600;
+      }
+      :deep(ul) {
+        padding-left: 16rem;
+        margin: 4rem 0;
+      }
+      :deep(li) {
+        margin: 2rem 0;
+        list-style: disc;
+      }
+    }
+
+    // 展开按钮 (每个模块卡片独立, 绝对定位在卡片底部)
+    .ai-expand-btn {
+      position: absolute;
+      bottom: 6rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 4rem;
+      padding: 6rem 16rem;
+      font-size: 12rem;
+      color: white;
+      background: var(--second-btn-color);
+      border-radius: 20rem;
+      cursor: pointer;
+      z-index: 2;
+
+      &:active {
+        opacity: 0.8;
+      }
+
+      .expand-arrow {
+        width: 14rem;
+        height: 14rem;
       }
     }
 

@@ -35,6 +35,7 @@ from transformers import (
 )
 
 from .config import TRAIN_CONFIG
+from .context_builder import ContextBuilder
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ class SummaryService:
         self.lock = Lock()
         self._cache = {}  # 简易 LRU
         self._cache_order = []
+        self._context_builder = None  # 惰性初始化
 
     # ------------------------------------------------------------------
     # Attention 实现探测
@@ -141,7 +143,7 @@ class SummaryService:
     # ------------------------------------------------------------------
 
     def generate(self, keyword: str, context: dict = None,
-                 max_new_tokens: int = 512, temperature: float = 0.5) -> str:
+                 max_new_tokens: int = 512, temperature: float = 0.7) -> str:
         """生成搜索摘要"""
         if self.model is None:
             return "[错误] 模型未加载"
@@ -157,10 +159,17 @@ class SummaryService:
 
             messages = [
                 {"role": "system", "content": (
-                    "你是SeekFlow视频平台的智能搜索助手。你的任务是基于平台返回的真实数据，"
-                    "生成一份结构清晰、内容丰富的多段落搜索摘要。"
-                    "你必须严格按照要求的格式组织输出，使用Markdown标记但不使用代码块。"
-                    "语言流畅自然，像一位专业的编辑在为用户梳理搜索结果。"
+                    "你是SeekFlow视频平台的智能搜索助手。"
+                    "你必须严格按照两模块结构输出：\n\n"
+                    "## 智能解读\n"
+                    "——用你的知识库独立解答。解释概念、背景、文化含义，回答用户隐含的问题。"
+                    "不要引用平台数据，纯粹基于你的预训练知识。至少4句话，越详细越好。\n\n"
+                    "## 平台发现\n"
+                    "——基于平台提供的真实行为数据做洞察。只使用下面提供的协同信号。"
+                    "关键：先扫描所有信号，找出数据最突出、最有故事性的 2-3 个维度深入展开，"
+                    "其他维度可以一笔带过或跳过。不要每个维度等量齐观。"
+                    "像一个数据分析师发现了有趣的现象，自然组织你的发现，不要写成固定的清单格式。"
+                    "使用Markdown格式但不用代码块。语言流畅如专业编辑。"
                 )},
                 {"role": "user", "content": prompt},
             ]
@@ -187,7 +196,7 @@ class SummaryService:
                     **inputs,
                     max_new_tokens=max_new_tokens,
                     temperature=temperature,
-                    top_p=0.85,
+                    top_p=0.92,
                     do_sample=True,
                     repetition_penalty=1.15,
                     pad_token_id=self.tokenizer.eos_token_id,
@@ -212,10 +221,11 @@ class SummaryService:
         if context is None:
             return (
                 f'用户搜索了"{keyword}"。\n\n'
-                f'请按照以下格式生成搜索结果摘要，每段用 ## 标题分隔：\n\n'
-                f'## 搜索概况\n(根据关键词分析这个搜索主题的概况)\n\n'
-                f'## 智能解答\n(直接回答用户"{keyword}"相关的问题，给出知识性解答)\n\n'
-                f'## 浏览建议\n(给用户提供浏览和筛选建议)\n'
+                f'请按以下两模块结构输出，每段用 ## 标题：\n\n'
+                f'## 智能解读\n'
+                f'(纯知识解答：解释"{keyword}"的概念、背景、文化含义。不引用任何平台数据。至少4句话。)\n\n'
+                f'## 平台发现\n'
+                f'(基于你收到的平台数据做洞察。没有数据就诚实说当前平台暂无相关数据。)\n'
             )
 
         kw = context.get("keyword", keyword)
@@ -271,27 +281,96 @@ class SummaryService:
                     level = f"{fc}粉丝"
                 parts.append(f"- {u['name']} ({level})")
 
-        # 指令部分 — 要求多段落输出
+        # --- 协同行为信号 ---
+        collab = context.get("collaborative")
+        if collab:
+            # 共搜链路
+            co_search = collab.get("coSearch", [])
+            if co_search:
+                items = [f'"{c["keyword"]}"(共搜强度{c["strength"]})' for c in co_search[:5]]
+                parts.append(f"\n【协同搜索】搜过「{kw}」的用户还搜了：{'、'.join(items)}")
+
+            # 共看链路
+            co_watch = collab.get("coWatch", [])
+            if co_watch:
+                items = [f'《{c["title"]}》({c["likes"]}赞, 共看强度{c["strength"]})' for c in co_watch[:5]]
+                parts.append(f"\n【协同观看】看过上述视频的用户还看了：{'、'.join(items)}")
+
+            # 评论智慧
+            wisdom = collab.get("commentWisdom", [])
+            if wisdom:
+                items = [f'「{c["content"][:80]}」— {c["author"]}({c["likes"]}赞)' for c in wisdom[:3]]
+                parts.append(f"\n【精选评论】{'；'.join(items)}")
+
+            # 内容缺口
+            gaps = collab.get("contentGaps", {})
+            gap_cats = gaps.get("categories", [])
+            if gap_cats:
+                sparse_cats = [g for g in gap_cats if g["count"] < 5]
+                if sparse_cats:
+                    sparse_names = [g["category"] for g in sparse_cats[:3]]
+                    parts.append(f"\n【内容缺口】平台在「{'」「'.join(sparse_names)}」方向内容稀缺（各不足5条），属于蓝海品类")
+                else:
+                    cat_summary = '、'.join(f'{g["category"]}({g["count"]}条)' for g in gap_cats[:5])
+                    parts.append(f"\n【品类分布】{cat_summary}")
+            if gaps.get("isSparse"):
+                parts.append("  注意：该搜索方向整体内容稀疏，平台仅有少量相关内容")
+
+            # 时序趋势
+            trend = collab.get("temporalTrend", {})
+            if trend.get("recentVolume", 0) > 0:
+                trend_cn = {"rising": "上升", "declining": "下降", "stable": "平稳"}.get(trend.get("trend"), "未知")
+                parts.append(
+                    f"\n【搜索趋势】近30天热度{trend_cn}"
+                    f"(变化率{trend.get('changeRatio', 0):.0%}，近7天{trend['recentVolume']}次搜索)"
+                )
+
+            # 热点上下文
+            hot = collab.get("hotContext", {})
+            if hot:
+                top_cats = hot.get("topCategories", [])
+                if top_cats:
+                    cat_strs = [f'{c["name"]}({c["count"]})' for c in top_cats[:5]]
+                    parts.append(f"【内容品类分布】{' / '.join(cat_strs)}")
+                type_dist = hot.get("typeDistribution", {})
+                if type_dist:
+                    type_str = '/'.join(f'{k}:{v}' for k, v in type_dist.items())
+                    parts.append(f"【类型分布】{type_str}")
+                if hot.get("avgCompletionRate", 0) > 0:
+                    parts.append(f"【平均完播率】{hot['avgCompletionRate']:.0%}")
+
+        # 指令部分 — 两模块输出
         parts.append(f"""
 
-请基于以上真实数据，用专业编辑的口吻生成一份多段落搜索摘要。严格按以下结构输出，每段用 ## 标题：
+以上数据分为两类用途：
+- 「协同搜索/协同观看/内容缺口/搜索趋势/品类分布/完播率」→ 仅用于下面的「平台发现」段落
+- 视频列表和创作者列表 → 仅用于「平台发现」段落的数据支撑
 
-## 数据洞察
-基于上面的数据进行分析：搜索结果的整体质量和热度如何？
-哪些品类的内容最丰富？内容类型分布有什么特点？
-（不要简单罗列数据，要给出有见地的分析。至少 3 句话。）
+严格按以下两模块结构输出，每段用 ## 标题：
 
-## 智能解答
-用户搜索"{kw}"，很可能想了解什么？请结合你的知识，给出关于"{kw}"的知识性解答。
-如果搜索词是一个问题，请直接回答；如果是名词，请介绍其背景、要点和有趣的信息。
-（至少 4 句话，越详细越好。）
+## 智能解读
+用户搜索"{kw}"，很可能想了解什么？请结合你的知识库，给出关于"{kw}"的深度知识性解答。
+如果搜索词是一个问题请直接回答；如果是名词请介绍其背景、要点、文化含义和有趣信息。
+**禁止在此段落引用任何平台数据**（如视频数量、点赞数、共搜词等都不许出现）。
+至少 4 句话，越详细越好。像百科全书一样专业又生动。
 
-## 浏览建议
-根据搜索结果的数据特征，给用户具体的浏览建议：
-- 可以从哪些角度筛选内容？
-- 有哪些优质创作者值得关注？
-- 如何找到最适合自己的内容？
-（至少 3 条建议。）
+## 平台发现
+基于上面提供的平台行为数据，给出数据驱动的洞察发现。
+**禁止在此段落注入你自有的知识**，只能基于提供的协同信号做分析。
+
+重要——不要按固定模板逐条罗列。按以下方式组织：
+
+1. 先快速扫描所有信号，找出 2-3 个数据最突出的维度（比如共搜强度特别高的、内容缺口明显的、趋势剧烈变化的）。这些就是你本次要深入展开的焦点。
+
+2. 围绕焦点展开分析时，从下面选一个最合适的叙事角度切入（不要每个都用一遍）：
+   - 如果共搜信号强 → 写成"用户需求地图"：搜这个词的人在同时寻找什么？揭示了什么潜在需求链？
+   - 如果内容缺口明显 → 写成"蓝海发现"：平台在这个方向的哪块细分是空白的？意味着什么机会？
+   - 如果趋势剧烈变化 → 写成"风向洞察"：热度在涨还是跌？可能的原因是什么？
+   - 如果评论/社区信号突出 → 写成"用户心声"：用户在讨论什么？有什么共识或分歧？
+
+3. 不突出的维度可以一笔带过甚至不写。宁可 2 个点说透，不要 5 个点蜻蜓点水。
+
+叙事要有层次感——先抛出发现，再引用数据佐证，最后点出意味。至少 3 条发现。
 """)
         return "\n".join(parts)
 
@@ -364,6 +443,12 @@ class SummaryService:
                 continue
 
             try:
+                # 补充协同行为信号 (若 Java 端未传入)
+                if context and "collaborative" not in context:
+                    if self._context_builder is None:
+                        self._context_builder = ContextBuilder()
+                    context = self._context_builder.enrich(context)
+
                 result = self.generate(keyword, context)
                 if not result or not result.strip():
                     print("ERROR:模型返回空结果", flush=True)

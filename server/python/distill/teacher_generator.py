@@ -49,17 +49,32 @@ PROMPT_AUGMENT_VIDEOS = """你是一个短视频平台的内容运营专家。�
 输出格式示例:
 [{{"title": "...", "description": "...", "type": "video", "duration": 30, "tags": ["标签1","标签2"], "likes": 234, "comments": 15, "plays": 1200, "shares": 8, "author": {{"name": "作者名", "followerCount": 500, "verified": false}}, "publishTime": "2025-08-15"}}]"""
 
-PROMPT_GENERATE_SUMMARY = """你是 SeekFlow 短视频平台的搜索助手。请根据以下真实的平台搜索数据，生成一段详细的搜索结果摘要。
+PROMPT_GENERATE_SUMMARY = """你是 SeekFlow 短视频平台的搜索助手。请根据以下平台数据，生成一份搜索结果页面的 AI 摘要。
 
 {context_text}
 
 要求：
-1. 摘要 8-18 行（中文，每行 20-40 字），总字数控制在 300-800 字
-2. 结构应包含：搜索概览（匹配数量/类型分布）、内容亮点（具体视频例子和互动数据）、创作者介绍、观看建议
-3. 如果视频数量为 0，请自然地告知用户未找到相关内容，并给出搜索建议
-4. 语言风格：{style}（{style_desc}）
-5. 不要使用 Markdown 标记，不要输出 JSON，直接输出摘要正文
-6. 不要加"搜索结果摘要"之类的标题前缀"""
+1. 摘要 10-20 行（中文），总字数 400-900 字
+2. 严格按以下两模块结构输出，每段用 ## 标题：
+
+## 智能解读
+用你的知识库独立解答。解释「{keyword}」的概念、背景、文化含义，回答用户隐含的问题。
+**禁止引用任何平台数据**（不出现视频数、点赞数、共搜词等）。至少 4 句话，越详细越好。像百科全书。
+
+## 平台发现
+基于上面提供的平台行为数据做洞察。**禁止注入自有知识**，只分析数据本身。
+
+关键——不要按固定模板逐条罗列。先扫描所有信号，找出 2-3 个数据最突出的维度深入展开：
+- 共搜信号强 → 写成"用户需求地图"：搜这个词的人还在同时找什么？
+- 内容缺口明显 → 写成"蓝海发现"：哪个细分方向是空白？
+- 趋势剧烈 → 写成"风向洞察"：热度在涨还是跌？意味着什么？
+- 评论信号突出 → 写成"用户心声"：社区在讨论什么？
+
+不突出的维度可一笔带过。宁可 2 点说透，不 5 点蜻蜓点水。叙事要有层次：抛出发现 → 引用数据佐证 → 点出意味。至少 3 条发现。
+
+3. 语言风格：{style}（{style_desc}）
+4. 不要输出 JSON，不要加"搜索结果摘要"之类的外部标题前缀
+5. 如果视频数=0，智能解读正常写，平台发现诚实说暂无数据并给出搜索建议"""
 
 SUMMARY_STYLES = {
     "warm": "亲切温暖", "warm_desc": "像朋友聊天一样自然亲切，多用'你'、'哦'、'呢'等语气词",
@@ -302,6 +317,7 @@ class TeacherGenerator:
         context_text = self._format_context_for_prompt(ctx)
         prompt = PROMPT_GENERATE_SUMMARY.format(
             context_text=context_text,
+            keyword=ctx.get("keyword", ""),
             style=style,
             style_desc=desc,
         )
@@ -359,6 +375,64 @@ class TeacherGenerator:
             f"{stats.get('totalGoods',0)}件商品, "
             f"{stats.get('activeLives',0)}个直播中"
         )
+
+        # --- 协同行为信号 ---
+        collab = ctx.get("collaborative")
+        if collab:
+            # 共搜链路
+            co_search = collab.get("coSearch", [])
+            if co_search:
+                items = [f'"{c["keyword"]}"(共搜强度{c["strength"]})' for c in co_search[:5]]
+                parts.append(f"\n协同搜索: 搜过「{kw}」的用户还搜了: {'、'.join(items)}")
+
+            # 共看链路
+            co_watch = collab.get("coWatch", [])
+            if co_watch:
+                items = [f'《{c["title"]}》({c["likes"]}赞, 共看强度{c["strength"]})' for c in co_watch[:5]]
+                parts.append(f"协同观看: 看过上述视频的用户还看了: {'、'.join(items)}")
+
+            # 评论智慧
+            wisdom = collab.get("commentWisdom", [])
+            if wisdom:
+                items = [f'「{c["content"][:80]}」— {c["author"]}({c["likes"]}赞)' for c in wisdom[:3]]
+                parts.append(f"精选评论: {'；'.join(items)}")
+
+            # 内容缺口
+            gaps = collab.get("contentGaps", {})
+            gap_cats = gaps.get("categories", [])
+            if gap_cats:
+                sparse_cats = [g for g in gap_cats if g["count"] < 5]
+                if sparse_cats:
+                    sparse_names = [g["category"] for g in sparse_cats[:3]]
+                    parts.append(f"内容缺口: 平台在「{'」「'.join(sparse_names)}」方向内容稀缺（各不足5条），属于蓝海品类")
+                else:
+                    cat_summary = '、'.join(f'{g["category"]}({g["count"]}条)' for g in gap_cats[:5])
+                    parts.append(f"品类分布: {cat_summary}")
+            if gaps.get("isSparse"):
+                parts.append("  该搜索方向整体内容稀疏，平台仅有少量相关内容")
+
+            # 时序趋势
+            trend = collab.get("temporalTrend", {})
+            if trend.get("recentVolume", 0) > 0:
+                trend_cn = {"rising": "上升", "declining": "下降", "stable": "平稳"}.get(trend.get("trend"), "未知")
+                parts.append(
+                    f"搜索趋势: 近30天热度{trend_cn}"
+                    f"(变化率{trend.get('changeRatio', 0):.0%}，近7天{trend['recentVolume']}次搜索)"
+                )
+
+            # 热点上下文
+            hot = collab.get("hotContext", {})
+            if hot:
+                top_cats = hot.get("topCategories", [])
+                if top_cats:
+                    cat_strs = [f'{c["name"]}({c["count"]})' for c in top_cats[:5]]
+                    parts.append(f"内容品类分布: {' / '.join(cat_strs)}")
+                type_dist = hot.get("typeDistribution", {})
+                if type_dist:
+                    type_str = '/'.join(f'{k}:{v}' for k, v in type_dist.items())
+                    parts.append(f"类型分布: {type_str}")
+                if hot.get("avgCompletionRate", 0) > 0:
+                    parts.append(f"平均完播率: {hot['avgCompletionRate']:.0%}")
 
         return "\n".join(parts)
 

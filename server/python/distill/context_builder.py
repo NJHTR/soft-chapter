@@ -35,8 +35,11 @@ class ContextBuilder:
     # 公开方法
     # ------------------------------------------------------------------
 
-    def build(self, keyword: str) -> dict:
-        """主入口: 输入关键词, 输出完整上下文 JSON"""
+    def build(self, keyword: str, with_collaborative: bool = True) -> dict:
+        """主入口: 输入关键词, 输出完整上下文 JSON
+
+        with_collaborative=False 时跳过行为信号查询（兼容旧流程）
+        """
         keyword = keyword.strip()
         if not keyword:
             return self._empty_context(keyword)
@@ -50,7 +53,7 @@ class ContextBuilder:
             platform_stats = self._platform_stats(conn)
             need_augment = len(videos) < 5
 
-            return {
+            result = {
                 "keyword": keyword,
                 "totalVideos": len(videos),
                 "videos": videos,
@@ -59,37 +62,46 @@ class ContextBuilder:
                 "platformStats": platform_stats,
                 "need_augment": need_augment,
             }
+
+            # 协同行为信号 (系统层护城河)
+            if with_collaborative:
+                try:
+                    result["collaborative"] = self._build_collaborative(conn, keyword, videos)
+                except Exception as e:
+                    log.warning("协同信号查询失败, 降级基础上下文: %s", e)
+                    result["collaborative"] = self._empty_collaborative()
+
+            return result
         finally:
             conn.close()
 
-    def build_batch(self, keywords: list[str]) -> list[dict]:
-        """批量构建上下文 (复用连接)"""
+    def build_batch(self, keywords: list[str], with_collaborative: bool = True) -> list[dict]:
+        """批量构建上下文 (复用连接, 复用单个 build 保证协同信号一致)"""
+        results = []
+        for kw in keywords:
+            try:
+                kw = kw.strip()
+                if not kw:
+                    continue
+                results.append(self.build(kw, with_collaborative=with_collaborative))
+            except Exception as e:
+                log.warning("批量构建失败 keyword=%s: %s", kw, e)
+        return results
+
+    def enrich(self, context: dict) -> dict:
+        """给已有上下文补充协同行为信号 (供推理时 Java 传入的基础上下文使用)"""
+        keyword = context.get("keyword", "")
+        if not keyword:
+            return context
         conn = self._connect()
         try:
-            results = []
-            for kw in keywords:
-                try:
-                    kw = kw.strip()
-                    if not kw:
-                        continue
-                    videos = self._search_videos(conn, kw)
-                    users = self._search_users(conn, kw)
-                    agg = self._compute_aggregations(conn, videos)
-                    stats = self._platform_stats(conn)
-                    results.append({
-                        "keyword": kw,
-                        "totalVideos": len(videos),
-                        "videos": videos,
-                        "users": users,
-                        "aggregations": agg,
-                        "platformStats": stats,
-                        "need_augment": len(videos) < 5,
-                    })
-                except Exception as e:
-                    log.warning("批量构建失败 keyword=%s: %s", kw, e)
-            return results
+            context["collaborative"] = self._build_collaborative(conn, keyword, context.get("videos", []))
+        except Exception as e:
+            log.warning("协同信号补充失败, 降级: %s", e)
+            context["collaborative"] = self._empty_collaborative()
         finally:
             conn.close()
+        return context
 
     # ------------------------------------------------------------------
     # 数据库连接
@@ -146,7 +158,7 @@ class ContextBuilder:
                 "id": row["id"],
                 "title": self._safe_str(row["desc"], f"视频{row['id']}"),
                 "description": self._safe_str(row["desc"], ""),
-                "type": self._safe_str(row["type"], "video"),
+                "type": self._type_label(row.get("type")),
                 "duration": self._safe_float(row["duration"], 15.0),
                 "tags": self._parse_tags(row),
                 "likes": self._safe_int(row["like_count"], 0),
@@ -280,6 +292,281 @@ class ContextBuilder:
             return {"totalVideos": 0, "totalUsers": 0, "totalGoods": 0, "activeLives": 0}
 
     # ------------------------------------------------------------------
+    # 协同行为信号 (系统层护城河)
+    # ------------------------------------------------------------------
+
+    def _build_collaborative(self, conn, keyword: str, videos: list[dict]) -> dict:
+        """聚合所有协同行为信号"""
+        return {
+            "coSearch": self._co_search_chains(conn, keyword),
+            "coWatch": self._co_watch_chains(conn, videos),
+            "commentWisdom": self._comment_wisdom(conn, videos),
+            "contentGaps": self._content_gaps(conn, keyword),
+            "temporalTrend": self._temporal_trend(conn, keyword),
+            "hotContext": self._hot_context(conn, keyword, videos),
+        }
+
+    def _co_search_chains(self, conn, keyword: str, topk: int = 8) -> list[dict]:
+        """共搜链路: 搜了此关键词的用户还搜了什么
+
+        逻辑: 找到最近搜过 keyword 的用户, 统计他们同时段内还搜了哪些词
+        """
+        sql = """
+            SELECT s2.keyword, COUNT(DISTINCT s2.user_id) AS co_users
+            FROM t_search_history s1
+            JOIN t_search_history s2
+              ON s1.user_id = s2.user_id
+             AND s2.keyword != %s
+             AND s2.create_time BETWEEN
+                  DATE_SUB(s1.create_time, INTERVAL 30 MINUTE)
+                  AND DATE_ADD(s1.create_time, INTERVAL 30 MINUTE)
+            WHERE s1.keyword = %s
+              AND s1.create_time > DATE_SUB(NOW(), INTERVAL 60 DAY)
+              AND s2.create_time > DATE_SUB(NOW(), INTERVAL 60 DAY)
+            GROUP BY s2.keyword
+            ORDER BY co_users DESC
+            LIMIT %s
+        """
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, (keyword, keyword, topk))
+                rows = cur.fetchall()
+            if rows:
+                total = sum(r["co_users"] for r in rows) or 1
+                return [
+                    {"keyword": r["keyword"], "strength": round(r["co_users"] / total, 3)}
+                    for r in rows
+                ]
+        except Exception as e:
+            log.warning("共搜链路查询失败: %s", e)
+        return []
+
+    def _co_watch_chains(self, conn, videos: list[dict], topk: int = 8) -> list[dict]:
+        """共看链路: 看过这些视频的用户还看了什么
+
+        逻辑: 找到看过匹配视频的用户, 统计他们观看的其他高频视频
+        """
+        matched_ids = [v["id"] for v in videos if v.get("id")]
+        if not matched_ids:
+            return []
+
+        placeholders = ",".join(["%s"] * len(matched_ids))
+        sql = f"""
+            SELECT v.desc AS title, v.like_count AS likes, v.play_count AS plays,
+                   COUNT(DISTINCT wh2.user_id) AS co_watchers
+            FROM t_watch_history wh1
+            JOIN t_watch_history wh2
+              ON wh1.user_id = wh2.user_id
+             AND wh2.video_id NOT IN ({placeholders})
+            JOIN t_video v ON wh2.video_id = v.id AND v.is_delete = 0
+            WHERE wh1.video_id IN ({placeholders})
+              AND wh1.create_time > DATE_SUB(NOW(), INTERVAL 30 DAY)
+            GROUP BY wh2.video_id, v.desc, v.like_count, v.play_count
+            ORDER BY co_watchers DESC
+            LIMIT %s
+        """
+        params = matched_ids + matched_ids + [topk]
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+            if rows:
+                total = sum(r["co_watchers"] for r in rows) or 1
+                return [
+                    {
+                        "title": (r["title"] or "")[:50],
+                        "likes": r["likes"] or 0,
+                        "plays": r["plays"] or 0,
+                        "strength": round(r["co_watchers"] / total, 3),
+                    }
+                    for r in rows
+                ]
+        except Exception as e:
+            log.warning("共看链路查询失败: %s", e)
+        return []
+
+    def _comment_wisdom(self, conn, videos: list[dict], topk: int = 5) -> list[dict]:
+        """评论智慧: 匹配视频下的高质量评论
+
+        逻辑: 取匹配视频下点赞最高的评论, 按点赞降序
+        """
+        matched_ids = [v["id"] for v in videos if v.get("id")]
+        if not matched_ids:
+            return []
+
+        placeholders = ",".join(["%s"] * len(matched_ids))
+        sql = f"""
+            SELECT c.content, c.like_count,
+                   u.nickname AS author_name
+            FROM t_comment c
+            LEFT JOIN t_user u ON c.user_id = u.uid
+            WHERE c.video_id IN ({placeholders})
+              AND c.is_delete = 0
+              AND c.parent_id = 0
+              AND c.content != ''
+              AND LENGTH(c.content) >= 5
+            ORDER BY c.like_count DESC
+            LIMIT %s
+        """
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, matched_ids + [topk])
+                rows = cur.fetchall()
+            return [
+                {
+                    "content": (r["content"] or "")[:200],
+                    "likes": r["like_count"] or 0,
+                    "author": r["author_name"] or "匿名",
+                }
+                for r in rows if r["content"]
+            ]
+        except Exception as e:
+            log.warning("评论查询失败: %s", e)
+        return []
+
+    def _content_gaps(self, conn, keyword: str) -> dict:
+        """内容缺口: 检测平台在某些方向的内容缺失
+
+        逻辑: 用标签体系反查 — 哪些相关标签/品类在平台上内容很少
+        """
+        # 查找包含此关键词的标签/品类, 统计其内容量
+        like_kw = f"%{keyword}%"
+        sql = """
+            SELECT vc.text_category, COUNT(*) AS cnt
+            FROM t_video_content vc
+            JOIN t_video v ON vc.video_id = v.id AND v.is_delete = 0
+            WHERE (vc.keywords LIKE %s OR vc.scene_tags LIKE %s
+                   OR vc.text_category LIKE %s)
+            GROUP BY vc.text_category
+            ORDER BY cnt ASC
+            LIMIT 10
+        """
+        gaps = []
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, (like_kw, like_kw, like_kw))
+                rows = cur.fetchall()
+            if rows:
+                gaps = [
+                    {"category": r["text_category"] or "综合", "count": r["cnt"]}
+                    for r in rows
+                ]
+        except Exception as e:
+            log.warning("内容缺口查询失败: %s", e)
+
+        # 平台总量
+        total_cat = sum(g["count"] for g in gaps) if gaps else 0
+
+        return {
+            "categories": gaps,
+            "totalRelated": total_cat,
+            "isSparse": total_cat < 5,
+        }
+
+    def _temporal_trend(self, conn, keyword: str) -> dict:
+        """时序趋势: 该关键词在过去 30 天的搜索热度变化"""
+        sql = """
+            SELECT
+                DATE(create_time) AS day,
+                COUNT(*) AS volume
+            FROM t_search_history
+            WHERE keyword = %s
+              AND create_time > DATE_SUB(NOW(), INTERVAL 30 DAY)
+            GROUP BY DATE(create_time)
+            ORDER BY day
+        """
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, (keyword,))
+                rows = cur.fetchall()
+
+            if not rows:
+                return {"trend": "flat", "recentVolume": 0, "daily": []}
+
+            volumes = [r["volume"] for r in rows]
+            recent = volumes[-7:] if len(volumes) >= 7 else volumes
+            older = volumes[:-7] if len(volumes) > 7 else []
+
+            avg_recent = sum(recent) / len(recent) if recent else 0
+            avg_older = sum(older) / len(older) if older else avg_recent
+
+            if avg_older > 0:
+                change = (avg_recent - avg_older) / avg_older
+            else:
+                change = 0
+
+            if change > 0.3:
+                trend = "rising"
+            elif change < -0.3:
+                trend = "declining"
+            else:
+                trend = "stable"
+
+            return {
+                "trend": trend,
+                "changeRatio": round(change, 2),
+                "recentVolume": sum(recent),
+                "daily": [{"date": str(r["day"]), "volume": r["volume"]} for r in rows[-14:]],
+            }
+        except Exception as e:
+            log.warning("时序趋势查询失败: %s", e)
+        return {"trend": "unknown", "recentVolume": 0, "daily": []}
+
+    def _hot_context(self, conn, keyword: str, videos: list[dict]) -> dict:
+        """热点上下文: 搜索词相关的平台热点信号
+
+        逻辑:
+          1. 品类分布 — 匹配视频覆盖了哪些品类
+          2. 完播率 — 用户观看这些视频的完成情况
+          3. 内容类型分布 — video/image/text
+        """
+        # 品类分布
+        categories = Counter()
+        type_dist = Counter()
+        for v in videos:
+            for tag in v.get("tags", []):
+                categories[tag] += 1
+            type_dist[v.get("type", "video")] += 1
+
+        # 完播率 (基于 t_watch_history)
+        completion_rate = 0.0
+        matched_ids = [v["id"] for v in videos if v.get("id")]
+        if matched_ids:
+            placeholders = ",".join(["%s"] * len(matched_ids))
+            sql = f"""
+                SELECT
+                    AVG(CASE WHEN video_duration > 0
+                        THEN LEAST(watch_duration / video_duration, 1.0)
+                        ELSE 0 END) AS avg_completion
+                FROM t_watch_history
+                WHERE video_id IN ({placeholders})
+            """
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(sql, matched_ids)
+                    row = cur.fetchone()
+                if row and row["avg_completion"]:
+                    completion_rate = round(float(row["avg_completion"]), 3)
+            except Exception:
+                pass
+
+        return {
+            "topCategories": [{"name": c, "count": n} for c, n in categories.most_common(6)],
+            "typeDistribution": dict(type_dist),
+            "avgCompletionRate": completion_rate,
+        }
+
+    def _empty_collaborative(self) -> dict:
+        return {
+            "coSearch": [],
+            "coWatch": [],
+            "commentWisdom": [],
+            "contentGaps": {"categories": [], "totalRelated": 0, "isSparse": True},
+            "temporalTrend": {"trend": "unknown", "recentVolume": 0, "daily": []},
+            "hotContext": {"topCategories": [], "typeDistribution": {}, "avgCompletionRate": 0},
+        }
+
+    # ------------------------------------------------------------------
     # 工具方法
     # ------------------------------------------------------------------
 
@@ -294,6 +581,18 @@ class ContextBuilder:
             "platformStats": {"totalVideos": 0, "totalUsers": 0, "totalGoods": 0, "activeLives": 0},
             "need_augment": keyword != "",
         }
+
+    @staticmethod
+    def _type_label(raw: str | None) -> str:
+        """DB type → 中文显示名"""
+        if not raw:
+            return "视频"
+        return {
+            "recommend-video": "视频",
+            "long-video": "长视频",
+            "image": "图文",
+            "text": "文字",
+        }.get(raw, raw)
 
     @staticmethod
     def _safe_str(val, default=""):
