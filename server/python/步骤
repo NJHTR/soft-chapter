@@ -1,0 +1,80 @@
+● AutoDL 训练步骤
+
+  ---
+  1. 租用实例
+
+  打开 AutoDL (https://www.autodl.com)，选：
+
+  ┌────────┬───────────────────────────────────────────┐
+  │ 配置项 │                   推荐                    │
+  ├────────┼───────────────────────────────────────────┤
+  │ GPU    │ A100 40G（最低 16G 显存）                 │
+  ├────────┼───────────────────────────────────────────┤
+  │ 镜像   │ PyTorch 2.5+ / CUDA 12.4                  │
+  ├────────┼───────────────────────────────────────────┤
+  │ 硬盘   │ ≥ 50GB（模型 16G + 数据 3G + checkpoint） │
+  ├────────┼───────────────────────────────────────────┤
+  │ 计费   │ 约 8 元/小时                              │
+  └────────┴───────────────────────────────────────────┘
+
+  ---
+  2. 上传压缩包
+
+  AutoDL 控制台 → 我的实例 → 右侧 文件管理 → 上传 autodl_upload.zip 到 /root/autodl-tmp/
+
+  ---
+  3. 打开终端
+
+  实例运行后，点 JupyterLab 或 SSH 终端，依次执行：
+
+  # 解压
+  unzip /root/autodl-tmp/autodl_upload.zip -d /root/autodl-tmp/
+  cd /root/autodl-tmp/autodl_pack
+
+  # 设置 HuggingFace 国内镜像（否则模型下载会失败）
+  export HF_ENDPOINT=https://hf-mirror.com
+
+  ---
+  4. 先做环境检查（dry-run）
+
+  bash distill/autodl_run.sh --dry-run
+
+  这一步会检查 Python 环境、安装依赖、预下载模型 tokenizer、准备公开数据，不训练。确认都通过后看下一步。
+
+  ---
+  5. 正式训练
+
+  完整两阶段（推荐，约 34 小时 / 270 元）：
+  bash distill/autodl_run.sh
+
+  省钱模式（只加载 50 万条公开数据，省约 30%）：
+  bash distill/autodl_run.sh --max-samples 500000
+
+  想先试蒸馏阶段效果（跳过阶段 1，约 4 小时 / 50 元）：
+  bash distill/autodl_run.sh --skip-stage1
+
+  ---
+  6. 下载结果
+
+  训练完成后，最终适配器在 /root/autodl-tmp/autodl_pack/distill_lora_adapter/。
+
+  在 AutoDL 文件管理里把这个整个目录下载到本地，替换 server/python/distill_lora_adapter/。
+
+  如果想测试推理，也可以下载合并后的完整模型：distill_output/merged_model/
+
+  ---
+  7. 训练中断恢复
+
+  训练脚本开启了 checkpoint 自动保存。如果中途被中断（欠费/超时），重跑同一个命令会自动从最新 checkpoint 继续。
+
+  ---
+  本地替换
+
+  拿到适配器后：
+  # 把下载的 distill_lora_adapter 替换旧版
+  cp -r 下载的distill_lora_adapter/* server/python/distill_lora_adapter/
+
+  # 然后让 search_summary_8b.py 替换 search_summary.py
+  cp server/python/search_summary_8b.py server/python/search_summary.py
+
+  别忘了把 autodl_upload.zip 里的数据库密码换掉后再传（config.py 里 DB_CONFIG 有真实密码，虽然训练不连数据库）。
