@@ -187,6 +187,28 @@ public class ContentFeatureService extends ServiceImpl<VideoContentMapper, Video
         return count;
     }
 
+    /** 修正所有可疑时长的视频 (触发特征提取, 过程中自动用 ffprobe 修正) */
+    public int correctDurations() {
+        int count = 0;
+        List<Video> allVideos = videoMapper.selectList(null);
+        for (Video v : allVideos) {
+            Double d = v.getDuration();
+            if (d == null || d <= 0 || d > 86400) {
+                // 时长为空/0/负数/超过24小时 → 可疑, 触发重提取
+                VideoContent reset = new VideoContent();
+                reset.setVideoId(v.getId());
+                reset.setExtractStatus(0);
+                saveOrUpdate(reset);
+                if (!pendingQueue.contains(v)) {
+                    pendingQueue.add(v);
+                    count++;
+                }
+            }
+        }
+        log.info("时长修正: 共{}个可疑视频已加入重提取队列", count);
+        return count;
+    }
+
     /** 查看队列状态 */
     public Map<String, Object> getQueueStatus() {
         Map<String, Object> status = new LinkedHashMap<>();
@@ -414,6 +436,20 @@ public class ContentFeatureService extends ServiceImpl<VideoContentMapper, Video
         // 动态标签: 将 AI 提取的标签写入 t_video_tag
         Video video = videoMapper.selectById(videoId);
         if (video != null) {
+            // 修正视频时长 (使用 ffprobe 真实时长纠正入库时前端传的错误值)
+            Double actualDuration = toDouble(features.get("actual_duration"));
+            if (actualDuration != null && actualDuration > 0) {
+                Double storedDuration = video.getDuration();
+                if (storedDuration == null || storedDuration <= 0
+                        || Math.abs(actualDuration - storedDuration) > 1.0) {
+                    video.setDuration(actualDuration);
+                    videoMapper.updateById(video);
+                    log.info("已修正视频时长: videoId={} {}s → {}s", videoId,
+                            storedDuration != null ? String.format("%.1f", storedDuration) : "null",
+                            String.format("%.1f", actualDuration));
+                }
+            }
+
             try {
                 videoTagService.saveInitialTags(video, features);
             } catch (Exception e) {

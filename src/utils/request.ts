@@ -4,7 +4,7 @@ import { _notice } from './index'
 
 export const axiosInstance = axios.create({
   baseURL: config.baseUrl,
-  timeout: 60000
+  timeout: 120000
 })
 
 // request拦截器

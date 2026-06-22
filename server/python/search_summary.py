@@ -226,7 +226,7 @@ def generate(tokenizer, model, device, keyword_or_context):
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
-            max_new_tokens=768,
+            max_new_tokens=512,
             temperature=0.5,
             top_p=0.85,
             do_sample=True,
@@ -289,6 +289,7 @@ def run_serve(args):
         try:
             result = generate(tokenizer, model, device, context if context else keyword)
             print(f"SUMMARY:{result}", flush=True)
+            print("__END__", flush=True)
             log.info("生成完成: %s → %s", keyword, result[:80])
         except Exception as e:
             log.error("生成失败: %s", e)

@@ -6,6 +6,8 @@
       @touchstart="onTouchStart"
       @touchmove="onTouchMove"
       @touchend="onTouchEnd"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
       @dblclick="doDoubleTapLike"
     >
       <div class="carousel-track" :style="{ transform: `translateX(-${currentIdx * 100}%)` }">
@@ -70,6 +72,7 @@ const props = defineProps({
 const localItem = ref(props.item)
 const currentIdx = ref(0)
 const loveAnimations = ref<number[]>([])
+const wrapperEl = ref<HTMLDivElement | null>(null)
 let loveId = 0
 
 const imageUrls = computed(() => {
@@ -135,21 +138,101 @@ onUnmounted(() => {
 
 // ====== 滑动手势 ======
 let touchStartX = 0
+let touchStartY = 0
 let touchMovedX = 0
+let touchMovedY = 0
+let swipeDir: 'h' | 'v' | null = null
+let touchOnImage = false
+const DIR_LOCK_THRESH = 8
+
+/** 计算当前图片在容器内的实际渲染区域（object-fit: contain 会有黑边） */
+function getImageBounds() {
+  const el = wrapperEl.value
+  if (!el) return null
+  const rect = el.getBoundingClientRect()
+  const cw = rect.width
+  const ch = rect.height
+  const items = el.querySelectorAll('.carousel-item')
+  const item = items[currentIdx.value] as HTMLElement | undefined
+  if (!item) return null
+  const img = item.querySelector('img') as HTMLImageElement | null
+  if (!img || !img.naturalWidth || !img.naturalHeight) return null
+  const imgAspect = img.naturalWidth / img.naturalHeight
+  const containerAspect = cw / ch
+  if (imgAspect > containerAspect) {
+    const rh = cw / imgAspect
+    return { x: rect.left, y: rect.top + (ch - rh) / 2, w: cw, h: rh }
+  } else {
+    const rw = ch * imgAspect
+    return { x: rect.left + (cw - rw) / 2, y: rect.top, w: rw, h: ch }
+  }
+}
+
 function onTouchStart(e: TouchEvent) {
   touchStartX = e.touches[0].clientX
+  touchStartY = e.touches[0].clientY
   touchMovedX = 0
+  touchMovedY = 0
+  swipeDir = null
+
+  if (imageUrls.value.length > 1) {
+    const b = getImageBounds()
+    touchOnImage = b
+      ? e.touches[0].clientX >= b.x &&
+        e.touches[0].clientX <= b.x + b.w &&
+        e.touches[0].clientY >= b.y &&
+        e.touches[0].clientY <= b.y + b.h
+      : false
+  } else {
+    touchOnImage = false
+  }
 }
+
 function onTouchMove(e: TouchEvent) {
   touchMovedX = e.touches[0].clientX - touchStartX
+  touchMovedY = e.touches[0].clientY - touchStartY
+
+  if (swipeDir === null) {
+    const ax = Math.abs(touchMovedX)
+    const ay = Math.abs(touchMovedY)
+    if (ax > DIR_LOCK_THRESH || ay > DIR_LOCK_THRESH) {
+      swipeDir = ax > ay ? 'h' : 'v'
+    }
+  }
+
+  // 图片区域 + 水平滑动 → 阻止 touch 冒泡 & 阻止浏览器生成 pointer 事件
+  if (swipeDir === 'h' && touchOnImage) {
+    e.stopPropagation()
+    e.preventDefault()
+  }
 }
+
+// 拦截 pointer 事件（浏览器可能绕过 touch-action 仍生成 pointer 事件）
+function onPointerDown(e: PointerEvent) {
+  if (touchOnImage && imageUrls.value.length > 1) {
+    // 暂不拦截 pointerdown，等方向判定后由 pointermove 处理
+  }
+}
+
+function onPointerMove(e: PointerEvent) {
+  if (swipeDir === 'h' && touchOnImage) {
+    e.stopPropagation()
+    e.preventDefault()
+  }
+}
+
 function onTouchEnd() {
   const threshold = 50
-  if (touchMovedX > threshold && currentIdx.value > 0) {
-    currentIdx.value--
-  } else if (touchMovedX < -threshold && currentIdx.value < imageUrls.value.length - 1) {
-    currentIdx.value++
+  if (swipeDir === 'h' && touchOnImage) {
+    if (touchMovedX > threshold && currentIdx.value > 0) {
+      currentIdx.value--
+    } else if (touchMovedX < -threshold && currentIdx.value < imageUrls.value.length - 1) {
+      currentIdx.value++
+    }
   }
+
+  swipeDir = null
+  touchOnImage = false
 }
 
 // ====== 双击点赞 ======

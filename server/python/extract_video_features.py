@@ -915,6 +915,8 @@ def process_video(video_url: str, video_id: int, desc: str = "", music_title: st
         try:
             # --- Step 1: 下载 + 抽帧 + 提音频 ---
             download_url(video_url, video_path, api_base)
+            # 用 ffprobe 获取真实时长 (纠正入库时可能的错误时长)
+            features["actual_duration"] = round(_get_video_duration(video_path), 2)
             frame_paths = extract_frames(video_path, frames_dir)
             audio_file = extract_audio(video_path, audio_path)
 

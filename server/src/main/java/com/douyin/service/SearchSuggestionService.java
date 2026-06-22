@@ -553,7 +553,7 @@ public class SearchSuggestionService {
     private volatile BufferedReader daemonStdout;
 
     /** AI 智能总结: 查询真实搜索结果作为上下文, 通过常驻 Python 进程生成, 不可用时回退到模板 */
-    public String generateSummary(String keyword) {
+    public synchronized String generateSummary(String keyword) {
         if (keyword == null || keyword.trim().isEmpty()) return "";
         String kw = keyword.trim();
 
@@ -561,14 +561,16 @@ public class SearchSuggestionService {
             // 1. 查询真实搜索结果作为上下文
             Map<String, Object> context = buildSearchContext(kw);
 
-            // 2. 转 JSON 发送给 Python daemon (失败重试一次)
+            // 2. 转 JSON 发送给 Python daemon (失败重试一次, 不销毁 daemon)
             String contextJson = objectMapper.writeValueAsString(context);
             for (int attempt = 0; attempt < 2; attempt++) {
                 String summary = queryDaemon(contextJson);
                 if (summary != null && !summary.isEmpty()) return summary;
                 log.warn("Python 返回空结果, 尝试 {} / 2", attempt + 1);
-                // 强制重建 daemon
-                destroyDaemon();
+                // daemon 可能因并发请求被打断, 短暂等待后重试
+                if (attempt == 0) {
+                    try { Thread.sleep(500); } catch (InterruptedException ignored) {}
+                }
             }
         } catch (Exception e) {
             log.warn("AI 摘要失败, 回退模板: {}", e.getMessage());
@@ -674,30 +676,39 @@ public class SearchSuggestionService {
         return ctx;
     }
 
-    /** 向 Python 常驻进程发送关键词并读取结果 */
+    /** 向 Python 常驻进程发送关键词并读取结果 (多行协议, 以 __END__ 结束) */
     private synchronized String queryDaemon(String keyword) throws Exception {
         ensureDaemonRunning();
 
         daemonStdin.write(keyword + "\n");
         daemonStdin.flush();
 
-        String line = daemonStdout.readLine();
-        if (line == null) {
+        // 读取直到 __END__ 分隔符 (摘要内容可能含多行 markdown)
+        StringBuilder sb = new StringBuilder();
+        String line;
+        while ((line = daemonStdout.readLine()) != null) {
+            if ("__END__".equals(line)) break;
+            if (sb.length() > 0) sb.append("\n");
+            sb.append(line);
+        }
+
+        if (sb.isEmpty()) {
             log.warn("Python 进程意外退出, 尝试重启");
             destroyDaemon();
             return null;
         }
 
-        if (line.startsWith("SUMMARY:")) {
-            return line.substring(8).trim();
-        } else if (line.startsWith("ERROR:")) {
-            log.warn("Python 返回错误: {}", line);
+        String fullResponse = sb.toString();
+        if (fullResponse.startsWith("SUMMARY:")) {
+            return fullResponse.substring(8).trim();
+        } else if (fullResponse.startsWith("ERROR:")) {
+            log.warn("Python 返回错误: {}", fullResponse);
             return null;
         }
 
-        // 可能是旧版输出 (没有 SUMMARY 前缀), 直接返回
-        log.info("Python 原始输出: {}", line);
-        return line.trim();
+        // 旧版兼容: 没有前缀标记的单行输出
+        log.info("Python 原始输出: {}", fullResponse.substring(0, Math.min(100, fullResponse.length())));
+        return fullResponse.trim();
     }
 
     /**

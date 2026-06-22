@@ -21,10 +21,7 @@
             class="suggest-item"
             v-for="(item, index) in data.suggestions"
             :key="index"
-            @click="
-              data.searchKey = item
-              doSearch()
-            "
+            @click="selectSuggestion(item)"
           >
             <img class="search-icon" src="../../assets/img/icon/search-gray.png" alt="" />
             <span class="text">{{ item }}</span>
@@ -55,11 +52,14 @@
         <!-- AI 智能总结 (仅综合 Tab) -->
         <template v-if="data.searchTab === '综合'">
           <div class="ai-summary" v-if="data.aiSummary && !data.aiExpanded">
-            <div class="ai-text">{{ displayedSummary }}<span class="ai-cursor">|</span></div>
-            <div class="ai-fade" v-if="displayedSummary.length > 150"></div>
+            <div class="ai-text" v-if="!typingFinished">
+              {{ displayedSummary }}<span class="ai-cursor">|</span>
+            </div>
+            <div class="ai-text ai-md" v-else v-html="summaryHtml"></div>
+            <div class="ai-fade" v-if="displayedSummary.length > 150 && typingFinished"></div>
             <div
               class="ai-expand-btn"
-              v-if="displayedSummary.length > 150"
+              v-if="displayedSummary.length > 150 && typingFinished"
               @click="expandSummary()"
             >
               <span>展开更多</span>
@@ -67,13 +67,13 @@
             </div>
           </div>
           <div class="ai-summary expanded" v-else-if="data.aiSummary && data.aiExpanded">
-            <div class="ai-text full">{{ data.aiSummary }}</div>
+            <div class="ai-text full ai-md" v-html="summaryHtml"></div>
           </div>
           <div class="ai-summary ai-loading" v-else-if="data.aiLoading">
             <span class="ai-loading-dot"></span>
             <span class="ai-loading-dot"></span>
             <span class="ai-loading-dot"></span>
-            <span class="ai-loading-text">AI 正在分析搜索结果...</span>
+            <span class="ai-loading-text">{{ loadingMsg }}</span>
           </div>
         </template>
 
@@ -247,10 +247,7 @@
             class="row"
             :key="index"
             v-for="(item, index) in lHistory"
-            @click="
-              data.searchKey = item
-              doSearch()
-            "
+            @click="selectSuggestion(item)"
           >
             <div class="left">
               <img src="../../assets/img/icon/home/time-white.png" alt="" />
@@ -508,7 +505,7 @@
 <script setup lang="ts">
 import Search from '../../components/Search.vue'
 import Dom from '../../utils/dom'
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { _checkImgUrl, _formatNumber, _no, _showSimpleConfirmDialog, sampleSize } from '@/utils'
 import { useRoute, useRouter } from 'vue-router'
 import { useNav } from '@/utils/hooks/useNav'
@@ -910,9 +907,45 @@ const data = reactive({
   ]
 }
 
+// ==================== 加载文案轮换 ====================
+const loadingMsg = ref('正在搜索...')
+let loadingMsgTimer: ReturnType<typeof setInterval> | null = null
+
+const LOADING_MESSAGES = [
+  '正在翻找数据库的每一个角落...',
+  '别急，让 SeekAI 想想...',
+  '查阅历史搜索结果中...',
+  'SeekAI 正在挠头思考...',
+  '正在匹配相似关键词...',
+  '偷懒被发现了，立刻开工！',
+  '翻阅视频描述中，耐心等待...',
+  '数据有点多，正在逐条分析...',
+  'SeekAI：这个问题有意思，让我看看...',
+  '正在召唤 AI 智能助手...',
+  '整理资料中，马上就好...',
+  '快好了，再给 SeekAI 一秒...'
+]
+
+function startLoadingMessages() {
+  loadingMsg.value = '正在搜索...'
+  let idx = 0
+  loadingMsgTimer = setInterval(() => {
+    idx = (idx + 1) % LOADING_MESSAGES.length
+    loadingMsg.value = LOADING_MESSAGES[idx]
+  }, 2000)
+}
+
+function stopLoadingMessages() {
+  if (loadingMsgTimer) {
+    clearInterval(loadingMsgTimer)
+    loadingMsgTimer = null
+  }
+}
+
 // ==================== 打字机效果 ====================
 const typingTimer = ref<ReturnType<typeof setInterval> | null>(null)
 const displayedSummary = ref('')
+const typingFinished = ref(false)
 
 function stopTypewriter() {
   if (typingTimer.value) {
@@ -924,6 +957,7 @@ function stopTypewriter() {
 function startTypewriter(text: string) {
   stopTypewriter()
   displayedSummary.value = ''
+  typingFinished.value = false
   let cursor = 0
   const charsPerTick = 6
   typingTimer.value = setInterval(() => {
@@ -931,6 +965,7 @@ function startTypewriter(text: string) {
     if (cursor >= text.length) {
       displayedSummary.value = text
       stopTypewriter()
+      typingFinished.value = true
     } else {
       displayedSummary.value = text.slice(0, cursor)
     }
@@ -940,8 +975,47 @@ function startTypewriter(text: string) {
 function expandSummary() {
   stopTypewriter()
   displayedSummary.value = data.aiSummary
+  typingFinished.value = true
   data.aiExpanded = true
 }
+
+/** 轻量 Markdown 转 HTML, 处理 AI 摘要中的 ### / ## / ** / - 列表 */
+function renderMarkdown(text: string): string {
+  if (!text) return ''
+  let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+  // 标题 (先处理 ### 再处理 ##，避免冲突)
+  html = html.replace(/^### (.+)$/gm, '<h4 class="md-h4">$1</h4>')
+  html = html.replace(/^## (.+)$/gm, '<h3 class="md-h3">$1</h3>')
+
+  // 加粗
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+
+  // 无序列表项 (连续的行包裹在 <ul> 中)
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>')
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>')
+
+  // 有序列表项
+  html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>')
+  // 避免重复包裹
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, (match) => {
+    if (match.includes('<ul>')) return match
+    return `<ul>${match}</ul>`
+  })
+
+  // 连续换行 → 段落分隔
+  html = html.replace(/\n\n+/g, '<br><br>')
+  // 单个换行 → <br>
+  html = html.replace(/\n/g, '<br>')
+
+  return html
+}
+
+const summaryHtml = computed(() => {
+  const text = data.aiExpanded ? data.aiSummary : displayedSummary.value
+  if (!text || !typingFinished.value) return ''
+  return renderMarkdown(text)
+})
 
 const lHistory = computed(() => {
   if (data.isExpand) {
@@ -1043,6 +1117,11 @@ function switchTab(tab: string) {
   data.searchTab = tab
 }
 
+function selectSuggestion(item: string) {
+  data.searchKey = item
+  doSearch()
+}
+
 async function doSearch() {
   const kw = data.searchKey.trim()
   if (!kw) {
@@ -1061,6 +1140,7 @@ async function doSearch() {
   data.searchTab = '综合'
 
   // 并行请求
+  startLoadingMessages()
   data.videoLoading = true
   data.userLoading = true
 
@@ -1105,10 +1185,11 @@ async function doSearch() {
         data.aiSummary = res.data.summary
         startTypewriter(res.data.summary)
       }
-    } catch {
-      /* 忽略 */
+    } catch (e) {
+      // 摘要请求失败不影响主搜索结果展示
     }
     data.aiLoading = false
+    stopLoadingMessages()
   })()
 
   await Promise.all([videoPromise, userPromise, aiPromise])
@@ -1123,6 +1204,7 @@ function clearSearch() {
   data.suggestions = []
   data.aiSummary = ''
   stopTypewriter()
+  stopLoadingMessages()
   displayedSummary.value = ''
   data.aiExpanded = false
 }
@@ -1219,6 +1301,11 @@ onMounted(() => {
     data.searchKey = q.trim()
     doSearch()
   }
+})
+
+onUnmounted(() => {
+  stopLoadingMessages()
+  stopTypewriter()
 })
 
 async function loadHistory() {
@@ -1429,6 +1516,38 @@ function toggle() {
 
         &.full {
           max-height: none;
+        }
+      }
+
+      // Markdown 渲染样式 (覆盖 pre-line)
+      .ai-md {
+        white-space: normal;
+
+        :deep(.md-h3) {
+          font-size: 15rem;
+          font-weight: 600;
+          color: var(--primary-text-color);
+          margin: 12rem 0 6rem;
+          line-height: 1.4;
+        }
+        :deep(.md-h4) {
+          font-size: 14rem;
+          font-weight: 600;
+          color: var(--primary-text-color);
+          margin: 8rem 0 4rem;
+          line-height: 1.4;
+        }
+        :deep(strong) {
+          color: var(--primary-text-color);
+          font-weight: 600;
+        }
+        :deep(ul) {
+          padding-left: 16rem;
+          margin: 4rem 0;
+        }
+        :deep(li) {
+          margin: 2rem 0;
+          list-style: disc;
         }
       }
 

@@ -746,6 +746,14 @@ public class AnalyticsController {
         return Result.ok(contentFeatureService.getQueueStatus());
     }
 
+    /** 修正所有可疑时长的视频 (触发 ffprobe 真实时长回写) */
+    @PostMapping("/correct-durations")
+    public Result<?> correctDurations(HttpServletRequest req) {
+        if (checkAdmin(req) == null) return Result.fail("No admin permission");
+        int count = contentFeatureService.correctDurations();
+        return Result.ok(Map.of("message", "已加入重提取队列", "count", count));
+    }
+
     // ========== Dashboard Summary (comprehensive overview) ==========
 
     @GetMapping("/dashboard-summary")

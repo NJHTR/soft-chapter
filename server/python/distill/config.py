@@ -26,7 +26,7 @@ DEEPSEEK_CONFIG = {
 
 # ===================== 蒸馏训练 =====================
 TRAIN_CONFIG = {
-    "base_model": "Qwen/Qwen2.5-3B-Instruct",
+    "base_model": "Qwen/Qwen3-8B-Instruct",  # 升级到 8B (RTX 4060 4-bit 可跑)
     "output_dir": os.path.join(os.path.dirname(__file__), "..", "distill_output"),
     "adapter_dir": os.path.join(os.path.dirname(__file__), "..", "distill_lora_adapter"),
 
@@ -52,6 +52,31 @@ TRAIN_CONFIG = {
     "save_strategy": "steps",
     "eval_steps": 100,
     "logging_steps": 10,
+}
+
+# ===================== 两阶段训练 =====================
+TWO_STAGE_CONFIG = {
+    # 阶段1: 公开数据 → 中文摘要语感
+    "stage1": {
+        "num_epochs": 3,
+        "learning_rate": 2e-4,
+        "lora_r": 32,
+        "lora_alpha": 64,
+        "max_input_length": 768,
+        "adapter_subdir": "stage1_public_adapter",
+        "datasets": ["LCSTS", "CSL", "XLSum", "NLPCC"],
+        "target_samples": 1000000,
+    },
+    # 阶段2: DeepSeek蒸馏 → 搜索分析
+    "stage2": {
+        "num_epochs": 5,
+        "learning_rate": 1e-4,
+        "lora_r": 64,
+        "lora_alpha": 128,
+        "max_input_length": 1024,
+        "adapter_subdir": "stage2_search_adapter",
+        "target_samples": 5000,  # 蒸馏数据量, 比原先可少很多
+    },
 }
 
 # ===================== 数据生成 =====================

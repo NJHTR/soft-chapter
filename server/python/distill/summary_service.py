@@ -59,6 +59,24 @@ class SummaryService:
         self._cache_order = []
 
     # ------------------------------------------------------------------
+    # Attention 实现探测
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_attn_implementation() -> str:
+        """探测最优 Attention 实现, 优先级: FA2 > SDPA > 朴素 (sdpa/eager)"""
+        if torch.cuda.is_available() and torch.__version__ >= "2.0":
+            try:
+                from flash_attn import flash_attn_func  # noqa: F401
+                log.info("Attention: flash_attention_2")
+                return "flash_attention_2"
+            except ImportError:
+                log.info("Attention: sdpa (FA2 未安装, 回退)")
+                return "sdpa"
+        log.info("Attention: eager (CPU 或旧版 PyTorch)")
+        return "eager"
+
+    # ------------------------------------------------------------------
     # 模型加载
     # ------------------------------------------------------------------
 
@@ -74,6 +92,9 @@ class SummaryService:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
+        # 选择最优 Attention 实现: FA2 > SDPA > 朴素
+        attn_impl = self._resolve_attn_implementation()
+
         if self.device == "cuda":
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -84,6 +105,7 @@ class SummaryService:
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.base_model,
                 quantization_config=bnb_config,
+                attn_implementation=attn_impl,
                 device_map="auto",
                 trust_remote_code=True,
                 local_files_only=True,
@@ -119,7 +141,7 @@ class SummaryService:
     # ------------------------------------------------------------------
 
     def generate(self, keyword: str, context: dict = None,
-                 max_new_tokens: int = 1024, temperature: float = 0.5) -> str:
+                 max_new_tokens: int = 512, temperature: float = 0.5) -> str:
         """生成搜索摘要"""
         if self.model is None:
             return "[错误] 模型未加载"
@@ -347,6 +369,7 @@ class SummaryService:
                     print("ERROR:模型返回空结果", flush=True)
                     continue
                 print(f"SUMMARY:{result}", flush=True)
+                print("__END__", flush=True)
                 log.info("生成完成: %s → %s", keyword, result[:60])
             except Exception as e:
                 log.error("生成失败: %s", e, exc_info=True)
