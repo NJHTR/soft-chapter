@@ -1026,6 +1026,8 @@ function renderMarkdown(text: string): string {
   // 标题 (先处理 ### 再处理 ##，避免冲突)
   html = html.replace(/^### (.+)$/gm, '<h4 class="md-h4">$1</h4>')
   html = html.replace(/^## (.+)$/gm, '<h3 class="md-h3">$1</h3>')
+  // 去掉标题标签后面的空行，避免与 CSS margin 叠加产生大段空白
+  html = html.replace(/<\/(h3|h4)>\n+/g, '</$1>')
 
   // 加粗
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -1683,16 +1685,17 @@ function toggle() {
 
       .ai-fade {
         position: absolute;
-        bottom: 36rem;
+        bottom: 0;
         left: 0;
         right: 0;
-        height: 60rem;
+        height: 120rem;
         background: linear-gradient(
           to bottom,
           transparent 0%,
-          rgba(31, 37, 52, 0.15) 20%,
-          rgba(31, 37, 52, 0.5) 50%,
-          rgba(31, 37, 52, 0.85) 80%,
+          rgba(31, 37, 52, 0.08) 25%,
+          rgba(31, 37, 52, 0.3) 50%,
+          rgba(31, 37, 52, 0.7) 70%,
+          rgba(31, 37, 52, 0.95) 85%,
           rgb(31, 37, 52) 100%
         );
         pointer-events: none;
@@ -1730,14 +1733,14 @@ function toggle() {
         font-size: 15rem;
         font-weight: 600;
         color: white;
-        margin: 12rem 0 6rem;
+        margin: 12rem 0 2rem;
         line-height: 1.4;
       }
       :deep(.md-h4) {
         font-size: 14rem;
         font-weight: 600;
         color: white;
-        margin: 8rem 0 4rem;
+        margin: 8rem 0 2rem;
         line-height: 1.4;
       }
       :deep(strong) {
