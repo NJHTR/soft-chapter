@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.douyin.common.Result;
 import com.douyin.entity.*;
 import com.douyin.mapper.*;
+import com.douyin.service.ContentFeatureService;
 import com.douyin.utils.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +42,7 @@ public class AnalyticsController {
     private final LiveRoomMapper liveRoomMapper;
     private final FollowMapper followMapper;
     private final JwtUtil jwtUtil;
+    private final ContentFeatureService contentFeatureService;
 
     public AnalyticsController(UserMapper userMapper, VideoMapper videoMapper,
                                SearchHistoryMapper searchHistoryMapper,
@@ -59,7 +61,8 @@ public class AnalyticsController {
                                WalletTransactionMapper walletTransactionMapper,
                                LiveRoomMapper liveRoomMapper,
                                FollowMapper followMapper,
-                               JwtUtil jwtUtil) {
+                               JwtUtil jwtUtil,
+                               ContentFeatureService contentFeatureService) {
         this.userMapper = userMapper;
         this.videoMapper = videoMapper;
         this.searchHistoryMapper = searchHistoryMapper;
@@ -79,6 +82,7 @@ public class AnalyticsController {
         this.liveRoomMapper = liveRoomMapper;
         this.followMapper = followMapper;
         this.jwtUtil = jwtUtil;
+        this.contentFeatureService = contentFeatureService;
     }
 
     private User checkAdmin(HttpServletRequest req) {
@@ -262,7 +266,7 @@ public class AnalyticsController {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", v.getId());
             item.put("desc", v.getDesc());
-            item.put("coverUrl", v.getCoverUrl());
+            item.put("coverUrl", getEffectiveCover(v));
             item.put("playCount", v.getPlayCount());
             item.put("likeCount", v.getLikeCount());
             item.put("shareCount", v.getShareCount());
@@ -518,6 +522,96 @@ public class AnalyticsController {
 
     // ========== Video Tag Management ==========
 
+    /** 分页列举所有视频的标签摘要 */
+    @GetMapping("/video-tags")
+    public Result<Map<String, Object>> listVideoTags(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String extractStatus,
+            HttpServletRequest req) {
+        if (checkAdmin(req) == null) return Result.fail("No admin permission");
+
+        // 查询 video + content (LEFT JOIN style, 分批)
+        LambdaQueryWrapper<Video> videoWrapper = new LambdaQueryWrapper<Video>()
+                .in(Video::getType, List.of("recommend-video", "image", "text", "long-video"))
+                .eq(Video::getStatus, "APPROVED");
+        if (keyword != null && !keyword.isBlank()) {
+            videoWrapper.and(w -> w.like(Video::getDesc, keyword).or().eq(Video::getId,
+                    tryParseLong(keyword)));
+        }
+        videoWrapper.orderByDesc(Video::getCreateTime);
+
+        long total = videoMapper.selectCount(videoWrapper);
+        int offset = (page - 1) * pageSize;
+        List<Video> videos = videoMapper.selectList(videoWrapper.last("LIMIT " + offset + "," + pageSize));
+
+        // 批量加载 content + tags
+        List<Long> videoIds = videos.stream().map(Video::getId).toList();
+        Map<Long, VideoContent> contentMap = Map.of();
+        Map<Long, List<VideoTag>> tagMap = Map.of();
+        if (!videoIds.isEmpty()) {
+            contentMap = videoContentMapper.selectBatchIds(videoIds).stream()
+                    .collect(Collectors.toMap(VideoContent::getVideoId, vc -> vc, (a, b) -> a));
+            tagMap = videoTagMapper.selectList(new LambdaQueryWrapper<VideoTag>()
+                    .in(VideoTag::getVideoId, videoIds)
+                    .gt(VideoTag::getWeight, 0.05))
+                    .stream().collect(Collectors.groupingBy(VideoTag::getVideoId));
+        }
+
+        // 组装
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Video v : videos) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("videoId", v.getId());
+            item.put("desc", v.getDesc());
+            item.put("coverUrl", getEffectiveCover(v));
+            item.put("type", v.getType());
+            item.put("likeCount", v.getLikeCount());
+            item.put("createTime", v.getCreateTime());
+
+            VideoContent vc = contentMap.get(v.getId());
+            item.put("extractStatus", vc != null ? vc.getExtractStatus() : null);
+            item.put("textCategory", vc != null ? vc.getTextCategory() : null);
+            item.put("qualityScore", vc != null ? vc.getQualityScore() : null);
+            item.put("mood", vc != null ? vc.getMood() : null);
+
+            // 标签摘要: 取 top 5 高权重标签
+            List<VideoTag> vtList = tagMap.getOrDefault(v.getId(), List.of());
+            List<Map<String, Object>> topTags = vtList.stream()
+                    .sorted(Comparator.comparingDouble(t -> -(t.getWeight() != null ? t.getWeight() : 0)))
+                    .limit(5)
+                    .map(t -> {
+                        Map<String, Object> tm = new LinkedHashMap<>();
+                        tm.put("tag", t.getTag());
+                        tm.put("source", t.getSource());
+                        tm.put("weight", t.getWeight());
+                        tm.put("confidence", t.getConfidence());
+                        return tm;
+                    }).toList();
+            item.put("tags", topTags);
+            item.put("tagCount", vtList.size());
+
+            // 按 status 过滤
+            if (extractStatus != null && !extractStatus.isBlank()) {
+                String curStatus = vc != null ? String.valueOf(vc.getExtractStatus()) : "null";
+                if (!extractStatus.equals(curStatus)) continue;
+            }
+            items.add(item);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", total);
+        result.put("page", page);
+        result.put("pageSize", pageSize);
+        result.put("items", items);
+        return Result.ok(result);
+    }
+
+    private Long tryParseLong(String s) {
+        try { return Long.parseLong(s); } catch (NumberFormatException e) { return -1L; }
+    }
+
     @GetMapping("/video-tags/{videoId}")
     public Result<Map<String, Object>> getVideoTags(@PathVariable Long videoId, HttpServletRequest req) {
         if (checkAdmin(req) == null) return Result.fail("No admin permission");
@@ -532,11 +626,26 @@ public class AnalyticsController {
         List<String> autoKeywords = new ArrayList<>();
         String textCategory = "";
 
+        Integer extractStatus = null;
+        Integer extractTimeMs = null;
+        Double qualityScore = null;
+        String mood = null;
+        String style = null;
+        String musicGenre = null;
+        Boolean hasSpeech = null;
+
         if (vc != null) {
             textCategory = vc.getTextCategory() != null ? vc.getTextCategory() : "";
             autoSceneTags = parseJsonArray(vc.getSceneTags());
             autoObjectTags = parseJsonArray(vc.getObjectTags());
             autoKeywords = parseJsonArray(vc.getKeywords());
+            extractStatus = vc.getExtractStatus();
+            extractTimeMs = vc.getExtractTimeMs();
+            qualityScore = vc.getQualityScore();
+            mood = vc.getMood();
+            style = vc.getStyle();
+            musicGenre = vc.getMusicGenre();
+            hasSpeech = vc.getHasSpeech();
         }
 
         // Manual tags from video_tag
@@ -550,7 +659,11 @@ public class AnalyticsController {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", t.getId());
             item.put("tag", t.getTag());
+            item.put("source", t.getSource());
             item.put("weight", t.getWeight());
+            item.put("confidence", t.getConfidence());
+            item.put("signalCount", t.getSignalCount());
+            item.put("lastSignal", t.getLastSignal());
             if ("manual".equals(t.getSource())) manualTags.add(item);
             else autoTags.add(item);
         }
@@ -558,7 +671,7 @@ public class AnalyticsController {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("videoId", videoId);
         result.put("desc", video.getDesc());
-        result.put("coverUrl", video.getCoverUrl());
+        result.put("coverUrl", getEffectiveCover(video));
         result.put("videoUrl", video.getVideoUrl());
         result.put("type", video.getType());
         result.put("textCategory", textCategory);
@@ -567,6 +680,14 @@ public class AnalyticsController {
         result.put("autoKeywords", autoKeywords);
         result.put("manualTags", manualTags);
         result.put("autoTags", autoTags);
+        // v3.0 提取状态 & 特征摘要
+        result.put("extractStatus", extractStatus);
+        result.put("extractTimeMs", extractTimeMs);
+        result.put("qualityScore", qualityScore);
+        result.put("mood", mood);
+        result.put("style", style);
+        result.put("musicGenre", musicGenre);
+        result.put("hasSpeech", hasSpeech);
         return Result.ok(result);
     }
 
@@ -597,6 +718,32 @@ public class AnalyticsController {
         }
 
         return Result.ok(Map.of("message", "Tags updated", "count", tags.size()));
+    }
+
+    // ========== Content Feature Re-extraction ==========
+
+    /** 手动重提单个视频的特征提取 */
+    @PostMapping("/re-extract/{videoId}")
+    public Result<?> reExtract(@PathVariable Long videoId, HttpServletRequest req) {
+        if (checkAdmin(req) == null) return Result.fail("No admin permission");
+        boolean ok = contentFeatureService.reExtract(videoId);
+        return ok ? Result.ok(Map.of("message", "已加入队列", "videoId", videoId))
+                : Result.fail("视频不存在");
+    }
+
+    /** 批量重提所有失败/未完成的作品 */
+    @PostMapping("/re-extract-failed")
+    public Result<?> reExtractAllFailed(HttpServletRequest req) {
+        if (checkAdmin(req) == null) return Result.fail("No admin permission");
+        int count = contentFeatureService.reExtractAllFailed();
+        return Result.ok(Map.of("message", "批量重提完成", "count", count));
+    }
+
+    /** 查看特征提取队列状态 */
+    @GetMapping("/extract-queue-status")
+    public Result<?> extractQueueStatus(HttpServletRequest req) {
+        if (checkAdmin(req) == null) return Result.fail("No admin permission");
+        return Result.ok(contentFeatureService.getQueueStatus());
     }
 
     // ========== Dashboard Summary (comprehensive overview) ==========
@@ -1075,6 +1222,17 @@ public class AnalyticsController {
     }
 
     // ========== Helper ==========
+
+    /** coverUrl 为空时回退到 imageUrls 第一张或 videoUrl (图文/文字作品封面即首图) */
+    private String getEffectiveCover(Video v) {
+        if (v.getCoverUrl() != null && !v.getCoverUrl().isEmpty()) return v.getCoverUrl();
+        String imageUrls = v.getImageUrls();
+        if (imageUrls != null && !imageUrls.isEmpty()) {
+            List<String> urls = parseJsonArray(imageUrls);
+            if (!urls.isEmpty()) return urls.get(0);
+        }
+        return v.getVideoUrl();
+    }
 
     private List<String> parseJsonArray(String json) {
         if (json == null || json.trim().isEmpty()) return List.of();

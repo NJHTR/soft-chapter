@@ -15,7 +15,7 @@ public class VideoContent {
     @TableId(type = IdType.INPUT)
     private Long videoId;
 
-    /** Qwen2.5-VL 自然语言描述 */
+    /** VLM 自由画面描述 (Qwen2-VL) */
     private String visualDesc;
 
     /** 场景标签 JSON: ["厨房","室内"] */
@@ -26,6 +26,48 @@ public class VideoContent {
 
     /** 视觉 embedding JSON float array */
     private String visualEmbedding;
+
+    /** 多标签分类 JSON: [{"label":"美食","confidence":0.85}, ...] */
+    private String categories;
+
+    /** 情绪/氛围 */
+    private String mood;
+
+    /** 视频风格 */
+    private String style;
+
+    /** 画质标签 */
+    private String qualityLabel;
+
+    /** 音乐流派 */
+    private String musicGenre;
+
+    /** 内容属性标签 JSON: ["有人脸","有字幕",...] */
+    private String contentAttributes;
+
+    /** ASR 语音转录文本 */
+    private String transcript;
+
+    /** ASR 转录关键词 JSON */
+    private String asrKeywords;
+
+    /** 是否有语音 */
+    private Boolean hasSpeech;
+
+    /** 人脸数量 (平均每帧) */
+    private Double faceCount;
+
+    /** 人脸占比 0-1 */
+    private Double faceRatio;
+
+    /** 是否人脸特写 */
+    private Boolean isCloseup;
+
+    /** 是否单人出镜 */
+    private Boolean isSinglePerson;
+
+    /** 是否多人场景 */
+    private Boolean isMultiPerson;
 
     /** BPM */
     private Double musicBpm;
@@ -42,8 +84,23 @@ public class VideoContent {
     /** 频谱质心 */
     private Double musicSpectral;
 
+    /** 频谱滚降 */
+    private Double musicRolloff;
+
+    /** 频谱带宽 */
+    private Double musicBandwidth;
+
+    /** 过零率 */
+    private Double musicZcr;
+
+    /** 节拍复杂度 */
+    private Double musicOnsetRate;
+
     /** MFCC JSON float array */
     private String musicMfcc;
+
+    /** 是否包含音乐 */
+    private Boolean audioHasMusic;
 
     /** 关键词 JSON */
     private String keywords;

@@ -6,7 +6,7 @@
       :poster="poster"
       ref="videoEl"
       :muted="state.isMuted"
-      preload="true"
+      preload="auto"
       loop
       x5-video-player-type="h5-page"
       :x5-video-player-fullscreen="false"
@@ -34,7 +34,12 @@
         <div :style="{ opacity: state.isMove ? 0 : 1 }" class="normal">
           <template v-if="!state.commentVisible">
             <ItemToolbar v-model:item="state.localItem" :is-my="isMy" />
-            <ItemDesc v-model:item="state.localItem" :video-id="item.aweme_id" :show-hints="isPlaying" @searchHint="onSearchHint" />
+            <ItemDesc
+              v-model:item="state.localItem"
+              :video-id="item.aweme_id"
+              :show-hints="isPlaying"
+              @searchHint="onSearchHint"
+            />
           </template>
           <transition-group name="comment-status" tag="div" class="loveds">
             <div class="type-loved" :key="i" v-for="i in state.test">
@@ -74,6 +79,8 @@
 <script setup lang="ts">
 import { _checkImgUrl, _duration, _stopPropagation } from '@/utils'
 import { recordWatch, toggleVideoLike } from '@/api/videos'
+import { getBrowsingSessionId } from '@/utils/session'
+import { getResumePosition, persistPosition } from '@/utils/watchPosition'
 import Loading from '../Loading.vue'
 import ItemToolbar from './ItemToolbar.vue'
 import ItemDesc from './ItemDesc.vue'
@@ -167,19 +174,30 @@ let state = reactive({
   videoScreenHeight: 0,
   commentVisible: false
 })
+// 断点续播: 会话级位置缓存 (同 session 内秒恢复, 不依赖网络)
+const sessionPositions = new Map<string, number>()
+
 // 观看时长跟踪
 let watchSec = 0
 let watchTimer: any = null
 let watchReported = false
+let positionResumed = false // 本次播放是否已从断点恢复
+let waitingSince = 0 // buffer 卡顿开始时间戳
+let stallRecoveryTimer: any = null
 const videoId = computed(() => (props.item?.aweme_id ? String(props.item.aweme_id) : ''))
 const authorUserId = computed(() => (props.item?.author?.uid ? String(props.item.author.uid) : ''))
 const videoDuration = computed(() => state.duration || 0)
 
 function tickWatch() {
   watchSec++
-  // 每 5 秒上报一次
+  // 每 5 秒: 已登录上报后端, 未登录存 localStorage
   if (watchSec > 0 && watchSec % 5 === 0 && !watchReported) {
-    sendWatchProgress()
+    if (store.userinfo?.uid) {
+      sendWatchProgress()
+    } else if (videoId.value) {
+      const pos = videoEl?.currentTime || 0
+      if (pos > 1) persistPosition(videoId.value, pos, false)
+    }
   }
 }
 
@@ -187,10 +205,20 @@ function sendWatchProgress(finished = false) {
   if (!store.userinfo?.uid || !videoId.value) return
   if (String(store.userinfo.uid) === authorUserId.value) return // 不看自己的
   const dur = watchSec
+  const currentPos = videoEl?.currentTime || 0
+  sessionPositions.set(videoId.value, currentPos)
+  // 双写: localStorage 保底 (已登录时后端也由 recordWatch 写入)
+  if (currentPos > 1) {
+    persistPosition(videoId.value, currentPos, !!store.userinfo?.uid)
+  }
   recordWatch(videoId.value, {
     watch_duration: dur,
     video_duration: videoDuration.value,
-    finished
+    finished,
+    session_id: getBrowsingSessionId(),
+    swipe_seconds: dur,
+    traffic_source: 'HOME_RECOMMEND',
+    last_position: Math.floor(currentPos)
   }).catch(() => {})
   if (finished) watchReported = true
 }
@@ -294,10 +322,21 @@ onMounted(() => {
       e,
       () => {
         // console.log('eventTester', e, state.item.aweme_id)
-        if (e === 'playing') state.loading = false
+        if (e === 'playing') {
+          state.loading = false
+          waitingSince = 0
+          // 恢复后清理定时器
+          if (stallRecoveryTimer) {
+            clearInterval(stallRecoveryTimer)
+            stallRecoveryTimer = null
+          }
+        }
         if (e === 'waiting') {
           if (!state.paused && !state.ignoreWaiting) {
             state.loading = true
+            if (!waitingSince) waitingSince = Date.now()
+            // 启动卡顿恢复定时器
+            if (!stallRecoveryTimer) stallRecoveryTimer = setInterval(tryRecoverFromStall, 2000)
           }
         }
         let s = false
@@ -373,6 +412,10 @@ onUnmounted(() => {
   if (watchTimer) {
     clearInterval(watchTimer)
     watchTimer = null
+  }
+  if (stallRecoveryTimer) {
+    clearInterval(stallRecoveryTimer)
+    stallRecoveryTimer = null
   }
   sendWatchProgress()
   watchSec = 0
@@ -463,14 +506,30 @@ function click({ uniqueId, index, type }) {
       }
     }
     if (type === EVENT_KEY.ITEM_STOP) {
+      // 保存当前播放位置 (会话缓存 + localStorage/后端双持久化)
+      const pos = videoEl.currentTime
+      if (pos > 1 && videoId.value) {
+        sessionPositions.set(videoId.value, pos)
+        const loggedIn = !!store.userinfo?.uid
+        persistPosition(videoId.value, pos, loggedIn)
+      }
       videoEl.currentTime = 0
+      positionResumed = false
       state.ignoreWaiting = true
       pause()
       setTimeout(() => (state.ignoreWaiting = false), 300)
     }
     if (type === EVENT_KEY.ITEM_PLAY) {
-      videoEl.currentTime = 0
       state.ignoreWaiting = true
+      // 断点续播: 1) 会话缓存(瞬时) → 2) localStorage/后端(跨session)
+      const savedPos = videoId.value ? sessionPositions.get(videoId.value) : undefined
+      if (savedPos && savedPos > 1 && savedPos < videoEl.duration - 2) {
+        videoEl.currentTime = savedPos
+        positionResumed = true
+      } else {
+        videoEl.currentTime = 0
+        resumeFromStore()
+      }
       play()
       setTimeout(() => (state.ignoreWaiting = false), 300)
     }
@@ -486,6 +545,32 @@ function play() {
 function pause() {
   state.status = SlideItemPlayStatus.Pause
   videoEl.pause()
+}
+
+/** 跨 session 断点恢复: 已登录→后端, 未登录→localStorage */
+async function resumeFromStore() {
+  if (!videoId.value) return
+  const loggedIn = !!store.userinfo?.uid
+  const pos = await getResumePosition(videoId.value, loggedIn)
+  if (pos > 1 && pos < videoEl.duration - 2) {
+    videoEl.currentTime = pos
+    sessionPositions.set(videoId.value, pos)
+    positionResumed = true
+  }
+}
+
+/** Buffer 卡顿自动恢复 */
+function tryRecoverFromStall() {
+  if (!videoEl || videoEl.paused || videoEl.ended) return
+  const now = Date.now()
+  // 卡顿超过 5 秒触发恢复
+  if (waitingSince > 0 && now - waitingSince > 5000) {
+    waitingSince = 0
+    const cur = videoEl.currentTime
+    // 往后跳 0.1 秒, 触发新的 Range 请求 (有时卡在某字节位置)
+    videoEl.currentTime = Math.min(cur + 0.1, videoEl.duration || Infinity)
+    videoEl.play().catch(() => {})
+  }
 }
 
 function touchstart(e) {

@@ -107,4 +107,26 @@ public class FileService {
                         .build()
         );
     }
+
+    /** 从 MinIO 获取指定字节范围的文件输入流 */
+    public InputStream getObject(String bucket, String objectName, long offset, long length) throws Exception {
+        return minioClient.getObject(
+                GetObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(objectName)
+                        .offset(offset)
+                        .length(length)
+                        .build()
+        );
+    }
+
+    /** 获取 MinIO 对象的元数据 (大小、Content-Type) */
+    public io.minio.StatObjectResponse statObject(String bucket, String objectName) throws Exception {
+        return minioClient.statObject(
+                io.minio.StatObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(objectName)
+                        .build()
+        );
+    }
 }

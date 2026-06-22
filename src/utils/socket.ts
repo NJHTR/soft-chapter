@@ -39,7 +39,7 @@ export function connectSocket(): Promise<void> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error('ws connect timeout'))
-    }, 5000)
+    }, 15000)
 
     ws!.onopen = () => {
       clearTimeout(timeout)

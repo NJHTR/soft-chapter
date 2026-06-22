@@ -33,33 +33,11 @@ import java.util.stream.Collectors;
 @Service
 public class RecommendationEngine {
 
-    private static final int RECALL_PER_CHANNEL = 50;
-    private static final int CANDIDATE_POOL_SIZE = 200;
+    private static final int RECALL_PER_CHANNEL = RecommendationConfig.RECALL_PER_CHANNEL;
+    private static final int CANDIDATE_POOL_SIZE = RecommendationConfig.CANDIDATE_POOL_SIZE;
 
-    // 排序权重 (总和 = 1.0)  — 内容相关是推荐的第一驱动力
-    private static final double CONTENT_WEIGHT = 0.19;
-    private static final double QUALITY_WEIGHT = 0.07;
-    private static final double CREATOR_AFFINITY_WEIGHT = 0.07;
-    private static final double BEHAVIORAL_WEIGHT = 0.06;
-    private static final double SOCIAL_WEIGHT = 0.05;
-    private static final double PERSONAL_HISTORY_WEIGHT = 0.05;
-    private static final double POPULARITY_WEIGHT = 0.04;
-    private static final double FRESHNESS_WEIGHT = 0.12;
-    private static final double USER_TYPE_WEIGHT = 0.04;
-    private static final double EXPLORATION_WEIGHT = 0.03;
-    private static final double WATCH_HISTORY_PENALTY_WEIGHT = 0.10;
-    private static final double SOCIAL_PROOF_WEIGHT = 0.08;
-    private static final double CREATOR_INTERACTION_WEIGHT = 0.10;
-
-    private static final long FRESHNESS_HALF_LIFE_HOURS = 48;
-    private static final long SOCIAL_PROOF_HALF_LIFE_HOURS = 720; // 30天 → 旧视频社交证明逐步衰减
-    private static final double EXPLORE_INJECT_RATE = 0.12;
-    private static final int MAX_PER_AUTHOR = 2;
-    private static final int MAX_PER_CATEGORY = 3;
-    private static final int MAX_PER_TYPE = 3;
     private volatile List<String> cachedTrendingKeywords = List.of();
     private volatile long trendingKeywordsCacheTime = 0;
-    private static final long TRENDING_CACHE_MS = 300_000; // 5分钟缓存
 
     private final VideoMapper videoMapper;
     private final VideoContentMapper contentMapper;
@@ -108,13 +86,13 @@ public class RecommendationEngine {
         Map<Long, LocalDateTime> collectedMap = getCollectedVideoMap(userId);
         collectedCount = collectedMap.size();
 
-        // 硬过滤：24h 内完整观看过的 (保护用户不重复刷到刚看完的)
-        Set<Long> recentWatchedIds = getFullyWatchedVideoIds(userId, 1);
+        // 硬过滤：N 天内完整观看过的
+        Set<Long> recentWatchedIds = getFullyWatchedVideoIds(userId, RecommendationConfig.DAYS_RECENT_WATCHED);
         watchedCount = recentWatchedIds.size();
         excludeIds.addAll(recentWatchedIds);
 
-        // 软惩罚：1~7 天内完整观看过的 (不硬排除，但降权)
-        Set<Long> olderWatchedIds = getFullyWatchedVideoIds(userId, 7);
+        // 软惩罚：N 天内完整观看过的 (不硬排除，但降权)
+        Set<Long> olderWatchedIds = getFullyWatchedVideoIds(userId, RecommendationConfig.DAYS_OLDER_WATCHED);
         olderWatchedIds.removeAll(recentWatchedIds);
 
         // 互动过的作者ID集合 (点赞/收藏过其内容 → 不是自己的内容)
@@ -274,7 +252,7 @@ public class RecommendationEngine {
     /** 批量加载近期互动数据: 每个候选视频近7天的点赞数/观看人次/曝光次数 */
     private Map<Long, RecentEngagement> loadRecentEngagement(List<Long> videoIds) {
         if (videoIds.isEmpty()) return Map.of();
-        LocalDateTime since = LocalDateTime.now().minusDays(7);
+        LocalDateTime since = LocalDateTime.now().minusDays(RecommendationConfig.DAYS_RECENT_ENGAGEMENT);
 
         Map<Long, Integer> recentLikes = new HashMap<>();
         try {
@@ -322,14 +300,14 @@ public class RecommendationEngine {
     private record RecentEngagement(int recentLikes, int recentWatches) {
         double pulse() {
             if (recentLikes == 0 && recentWatches == 0) return 0.0;
-            double likePulse = Math.min(1.0, recentLikes / 50.0);
-            double watchPulse = Math.min(1.0, recentWatches / 200.0);
-            return likePulse * 0.6 + watchPulse * 0.4;
+            double likePulse = Math.min(1.0, recentLikes / RecommendationConfig.PULSE_LIKE_NORM);
+            double watchPulse = Math.min(1.0, recentWatches / RecommendationConfig.PULSE_WATCH_NORM);
+            return likePulse * RecommendationConfig.PULSE_LIKE_W + watchPulse * RecommendationConfig.PULSE_WATCH_W;
         }
 
-        /** 自适应活跃判断: 体量大的视频需要更多近期互动才算"活跃" */
         boolean isActive() {
-            return recentLikes >= 1 && recentWatches >= 3;
+            return recentLikes >= RecommendationConfig.RE_ACTIVE_LIKE_MIN
+                    && recentWatches >= RecommendationConfig.RE_ACTIVE_WATCH_MIN;
         }
     }
 
@@ -339,7 +317,7 @@ public class RecommendationEngine {
     private List<Long> contentRecall(UserContentProfile profile, Set<Long> excludeIds,
                                       int limit, Double minDuration) {
         List<Video> videos = videoMapper.findRecallCandidates(
-                new ArrayList<>(excludeIds), minDuration, limit * 2);
+                new ArrayList<>(excludeIds), minDuration, limit * RecommendationConfig.RECALL_OVERSAMPLE_CONTENT);
         if (profile == null || profile.getContentVector() == null || videos.isEmpty()) {
             return videos.stream().map(Video::getId).limit(limit).toList();
         }
@@ -364,11 +342,11 @@ public class RecommendationEngine {
 
     /** 协同过滤召回: Item-based CF —— 共同被赞的视频 */
     private List<Long> collaborativeRecall(Long userId, Set<Long> excludeIds, int limit, Double minDuration) {
-        List<Long> likedIds = likeMapper.findRecentLikedVideoIds(userId, 50);
+        List<Long> likedIds = likeMapper.findRecentLikedVideoIds(userId, RecommendationConfig.CF_RECENT_LIKED_LIMIT);
         if (likedIds.isEmpty()) return List.of();
 
         List<Map<String, Object>> rows = likeMapper.findCoLikedVideoIds(
-                likedIds, new ArrayList<>(excludeIds), limit * 3);
+                likedIds, new ArrayList<>(excludeIds), limit * RecommendationConfig.RECALL_OVERSAMPLE_CF);
         if (rows.isEmpty()) return List.of();
 
         // 验证视频有效性: 过滤已删除/非公开/时长不足的视频
@@ -389,10 +367,10 @@ public class RecommendationEngine {
         Set<Long> authorIds = new LinkedHashSet<>();
 
         List<Follow> follows = followMapper.selectList(new LambdaQueryWrapper<Follow>()
-                .eq(Follow::getUserId, userId).last("LIMIT 100"));
+                .eq(Follow::getUserId, userId).last("LIMIT " + RecommendationConfig.SOCIAL_FOLLOW_LIMIT));
         follows.forEach(f -> authorIds.add(f.getFollowId()));
 
-        List<Long> recentAuthors = videoMapper.findRecentAuthorIds(userId, 20);
+        List<Long> recentAuthors = videoMapper.findRecentAuthorIds(userId, RecommendationConfig.SOCIAL_RECENT_AUTHOR_LIMIT);
         authorIds.addAll(recentAuthors);
 
         if (authorIds.isEmpty()) return List.of();
@@ -425,7 +403,7 @@ public class RecommendationEngine {
     private List<Long> exploreRecall(UserContentProfile profile, Set<Long> excludeIds,
                                       int limit, Double minDuration) {
         List<Video> videos = videoMapper.findRecallCandidates(
-                new ArrayList<>(excludeIds), minDuration, limit * 3);
+                new ArrayList<>(excludeIds), minDuration, limit * RecommendationConfig.RECALL_OVERSAMPLE_EXPLORE);
 
         if (profile == null || profile.getCategoryWeights() == null) {
             Collections.shuffle(videos, ThreadLocalRandom.current());
@@ -440,9 +418,11 @@ public class RecommendationEngine {
                 .map(v -> {
                     VideoContent vc = contentMap.get(v.getId());
                     String cat = vc != null ? vc.getTextCategory() : null;
-                    double exploreScore = cat != null ? (1.0 - catWeights.getOrDefault(cat, 0.0)) : 0.5;
+                    double exploreScore = cat != null
+                            ? (1.0 - catWeights.getOrDefault(cat, 0.0))
+                            : RecommendationConfig.DEF_SCORE_HALF;
                     return new CandidateScore(v.getId(),
-                            exploreScore + ThreadLocalRandom.current().nextDouble() * 0.3);
+                            exploreScore + ThreadLocalRandom.current().nextDouble() / RecommendationConfig.EXPLORE_RANDOM_FACTOR);
                 })
                 .sorted(Comparator.comparingDouble(CandidateScore::score).reversed())
                 .limit(limit)
@@ -460,21 +440,20 @@ public class RecommendationEngine {
         Set<Long> authorIds = new LinkedHashSet<>();
         // 关注作者
         List<Follow> follows = followMapper.selectList(new LambdaQueryWrapper<Follow>()
-                .eq(Follow::getUserId, userId).last("LIMIT 100"));
+                .eq(Follow::getUserId, userId).last("LIMIT " + RecommendationConfig.BACKLOG_FOLLOW_LIMIT));
         follows.forEach(f -> authorIds.add(f.getFollowId()));
         // 互动作者
         authorIds.addAll(interactedAuthorIds);
 
         if (authorIds.isEmpty()) return List.of();
 
-        // 取这些作者的旧视频（7天前到30天内），按质量+互动量排序
         LambdaQueryWrapper<Video> wrapper = new LambdaQueryWrapper<Video>()
                 .in(Video::getAuthorUserId, authorIds)
                 .notIn(Video::getId, excludeIds.isEmpty() ? Set.of(-1L) : excludeIds)
                 .in(Video::getType, List.of("recommend-video", "image", "text"))
                 .eq(Video::getStatus, "APPROVED")
-                .le(Video::getCreateTime, LocalDateTime.now().minusDays(1))  // 至少1天前发布 (新视频走社交召回)
-                .ge(Video::getCreateTime, LocalDateTime.now().minusDays(90)) // 不超过90天
+                .le(Video::getCreateTime, LocalDateTime.now().minusDays(RecommendationConfig.DAYS_BACKLOG_MIN))
+                .ge(Video::getCreateTime, LocalDateTime.now().minusDays(RecommendationConfig.DAYS_BACKLOG_MAX))
                 .orderByDesc(Video::getLikeCount)
                 .orderByDesc(Video::getCreateTime)
                 .last("LIMIT " + limit);
@@ -511,7 +490,7 @@ public class RecommendationEngine {
         Map<String, Double> catSkipPenalties = catFeedback.skipPenalties();
         Map<String, Double> catLikeBoosts = catFeedback.likeBoosts();
         // 全局搜索趋势关键词
-        List<String> trendingKeywords = getTrendingKeywords(10);
+        List<String> trendingKeywords = getTrendingKeywords(RecommendationConfig.LIMIT_TRENDING_KEYWORDS);
 
         List<ScoredVideo> scored = new ArrayList<>(videos.size());
         for (Video v : videos) {
@@ -521,7 +500,7 @@ public class RecommendationEngine {
             Long authorFollowerCount = authorFollowerMap.getOrDefault(v.getAuthorUserId(), 0L);
 
             double contentMatch = calcContentMatch(userVec, userVecShort, vc);
-            double avgComp = avgCompletionMap.getOrDefault(vid, 0.5);
+            double avgComp = avgCompletionMap.getOrDefault(vid, RecommendationConfig.DEF_COMPLETION);
             double qualityScore = calcQualityScore(v, vc, authorFollowerCount, avgComp);
             double creatorAff = calcCreatorAffinity(v.getAuthorUserId(), creatorAffinity);
             double behavioral = calcBehavioralMatch(v, vc, recentSearches, catWeights, userType,
@@ -541,7 +520,7 @@ public class RecommendationEngine {
             double interactionPenalty = calcInteractionPenalty(vid, likedMap, collectedMap);
 
             // 完播软惩罚 (1~7 天内完整看过 → 降权但不禁)
-            double watchedPenalty = olderWatchedIds.contains(vid) ? 0.15 : 0.0;
+            double watchedPenalty = olderWatchedIds.contains(vid) ? RecommendationConfig.PEN_OLDER_WATCHED : 0.0;
 
             // 品类负反馈: 连续快划过的品类降权
             double categoryPenalty = 0.0;
@@ -555,19 +534,19 @@ public class RecommendationEngine {
                 categoryBoost = catLikeBoosts.getOrDefault(vc.getTextCategory(), 0.0);
             }
 
-            double score = CONTENT_WEIGHT * contentMatch
-                    + QUALITY_WEIGHT * qualityScore
-                    + CREATOR_AFFINITY_WEIGHT * creatorAff
-                    + BEHAVIORAL_WEIGHT * behavioral
-                    + SOCIAL_WEIGHT * socialScore
-                    + PERSONAL_HISTORY_WEIGHT * personalHist
-                    + POPULARITY_WEIGHT * popularity
-                    + FRESHNESS_WEIGHT * freshness
-                    + USER_TYPE_WEIGHT * userTypeBonus
-                    + EXPLORATION_WEIGHT * exploration
-                    - WATCH_HISTORY_PENALTY_WEIGHT * watchPenalty
-                    + SOCIAL_PROOF_WEIGHT * socialProof
-                    + CREATOR_INTERACTION_WEIGHT * creatorInteraction
+            double score = RecommendationConfig.W_CONTENT * contentMatch
+                    + RecommendationConfig.W_QUALITY * qualityScore
+                    + RecommendationConfig.W_CREATOR_AFFINITY * creatorAff
+                    + RecommendationConfig.W_BEHAVIORAL * behavioral
+                    + RecommendationConfig.W_SOCIAL * socialScore
+                    + RecommendationConfig.W_PERSONAL_HISTORY * personalHist
+                    + RecommendationConfig.W_POPULARITY * popularity
+                    + RecommendationConfig.W_FRESHNESS * freshness
+                    + RecommendationConfig.W_USER_TYPE * userTypeBonus
+                    + RecommendationConfig.W_EXPLORATION * exploration
+                    - RecommendationConfig.W_WATCH_PENALTY * watchPenalty
+                    + RecommendationConfig.W_SOCIAL_PROOF * socialProof
+                    + RecommendationConfig.W_CREATOR_INTERACTION * creatorInteraction
                     - interactionPenalty
                     - watchedPenalty
                     - categoryPenalty
@@ -597,13 +576,15 @@ public class RecommendationEngine {
 
         if (likedAt != null) {
             long daysAgo = ChronoUnit.DAYS.between(likedAt, LocalDateTime.now());
-            double decay = Math.max(0.1, Math.pow(0.5, (double) daysAgo / 30.0)); // 30天半衰, 最低10%
-            return 0.95 * decay;
+            double decay = Math.max(RecommendationConfig.PEN_INTERACTION_FLOOR,
+                    ScoringFunctions.expDecay(daysAgo * 24, RecommendationConfig.HL_INTERACTION));
+            return RecommendationConfig.PEN_LIKED_BASE * decay;
         }
         if (collectedAt != null) {
             long daysAgo = ChronoUnit.DAYS.between(collectedAt, LocalDateTime.now());
-            double decay = Math.max(0.1, Math.pow(0.5, (double) daysAgo / 30.0));
-            return 0.80 * decay;
+            double decay = Math.max(RecommendationConfig.PEN_INTERACTION_FLOOR,
+                    ScoringFunctions.expDecay(daysAgo * 24, RecommendationConfig.HL_INTERACTION));
+            return RecommendationConfig.PEN_COLLECTED_BASE * decay;
         }
         return 0.0;
     }
@@ -613,7 +594,7 @@ public class RecommendationEngine {
      * 同时计算正反馈 (完整看完) 和负反馈 (快速划走)。
      */
     private CategoryFeedback calcCategoryFeedback(Long userId) {
-        LocalDateTime since = LocalDateTime.now().minusDays(7);
+        LocalDateTime since = LocalDateTime.now().minusDays(RecommendationConfig.DAYS_CATEGORY_FEEDBACK);
         List<WatchHistory> recentWatches = watchHistoryMapper.selectList(
                 new LambdaQueryWrapper<WatchHistory>()
                         .eq(WatchHistory::getUserId, userId)
@@ -625,12 +606,12 @@ public class RecommendationEngine {
         List<Long> wellWatchedIds = new ArrayList<>();
         for (WatchHistory w : recentWatches) {
             Double swipe = w.getSwipeSeconds();
-            if (swipe != null && swipe < 3.0) {
+            if (swipe != null && swipe < RecommendationConfig.UP_BOUNCE_THRESHOLD_SEC) {
                 skippedIds.add(w.getVideoId());
             }
             Double wd = w.getWatchDuration();
             Double vd = w.getVideoDuration();
-            if (wd != null && vd != null && vd > 0 && (wd / vd) > 0.8) {
+            if (wd != null && vd != null && vd > 0 && (wd / vd) > RecommendationConfig.CAT_WELL_WATCHED_COMPLETION) {
                 wellWatchedIds.add(w.getVideoId());
             }
         }
@@ -660,16 +641,16 @@ public class RecommendationEngine {
         Map<String, Double> penalties = new HashMap<>();
         for (var entry : skipCounts.entrySet()) {
             int count = entry.getValue();
-            if (count >= 3) {
-                penalties.put(entry.getKey(), Math.min(0.20, count * 0.02));
+            if (count >= RecommendationConfig.CAT_SKIP_COUNT_THRESHOLD) {
+                penalties.put(entry.getKey(), Math.min(RecommendationConfig.CAT_SKIP_CEIL, count * RecommendationConfig.CAT_SKIP_PER));
             }
         }
 
         Map<String, Double> boosts = new HashMap<>();
         for (var entry : likeCounts.entrySet()) {
             int count = entry.getValue();
-            if (count >= 2) {
-                boosts.put(entry.getKey(), Math.min(0.12, count * 0.02));
+            if (count >= RecommendationConfig.CAT_LIKE_COUNT_THRESHOLD) {
+                boosts.put(entry.getKey(), Math.min(RecommendationConfig.CAT_LIKE_CEIL, count * RecommendationConfig.CAT_LIKE_PER));
             }
         }
 
@@ -682,11 +663,11 @@ public class RecommendationEngine {
      */
     private List<String> getTrendingKeywords(int topN) {
         long now = System.currentTimeMillis();
-        if (now - trendingKeywordsCacheTime < TRENDING_CACHE_MS) {
+        if (now - trendingKeywordsCacheTime < RecommendationConfig.TRENDING_CACHE_MS) {
             return cachedTrendingKeywords;
         }
         try {
-            LocalDateTime since = LocalDateTime.now().minusDays(3);
+            LocalDateTime since = LocalDateTime.now().minusDays(RecommendationConfig.DAYS_TRENDING_KEYWORD);
             List<UserContentProfile> recentProfiles = profileMapper.selectList(
                     new LambdaQueryWrapper<UserContentProfile>()
                             .ge(UserContentProfile::getUpdateTime, since)
@@ -696,13 +677,13 @@ public class RecommendationEngine {
             for (UserContentProfile p : recentProfiles) {
                 List<String> queries = parseRecentSearches(p.getRecentSearchQueries());
                 for (String q : queries) {
-                    if (q != null && q.length() >= 2) {
+                    if (q != null && q.length() >= RecommendationConfig.KEYWORD_MIN_LEN) {
                         keywordFreq.merge(q.toLowerCase(), 1, Integer::sum);
                     }
                 }
             }
             List<String> result = keywordFreq.entrySet().stream()
-                    .filter(e -> e.getValue() >= 2)  // 至少2人搜过
+                    .filter(e -> e.getValue() >= RecommendationConfig.LIMIT_TRENDING_MIN_FREQ)
                     .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
                     .limit(topN)
                     .map(Map.Entry::getKey)
@@ -721,14 +702,14 @@ public class RecommendationEngine {
 
     /** 内容匹配: 长期+短期向量双路余弦相似度 + 品类加成 */
     private double calcContentMatch(List<Double> longVec, List<Double> shortVec, VideoContent vc) {
-        if (vc == null || vc.getContentVector() == null) return 0.3;
+        if (vc == null || vc.getContentVector() == null) return RecommendationConfig.DEF_SCORE_MED;
         List<Double> videoVec = parseVector(vc.getContentVector());
-        if (videoVec == null) return 0.3;
+        if (videoVec == null) return RecommendationConfig.DEF_SCORE_MED;
 
         double longSim = longVec != null ? cosineSim(longVec, videoVec) : 0.0;
         double shortSim = shortVec != null ? cosineSim(shortVec, videoVec) : longSim;
 
-        return clamp(longSim * 0.6 + shortSim * 0.4, 0, 1);
+        return ScoringFunctions.clamp(longSim * RecommendationConfig.CM_LONG_W + shortSim * RecommendationConfig.CM_SHORT_W, 0, 1);
     }
 
     /**
@@ -743,29 +724,31 @@ public class RecommendationEngine {
         long shares = v.getShareCount() != null ? v.getShareCount() : 0;
 
         // 互动率: 收藏和转发是更强的信号 (各计 2 倍权重)
-        double interactions = likes + comments + collects * 2.0 + shares * 2.0;
-        double engageRate = Math.min(1.0, interactions / playCount * 5);
+        double interactions = likes + comments + collects * RecommendationConfig.QW_COLLECT_MULT + shares * RecommendationConfig.QW_SHARE_MULT;
+        double engageRate = Math.min(1.0, interactions / playCount * RecommendationConfig.QW_ENGAGE_SCALE);
 
-        // AI 内容质量分
-        double contentQuality = vc != null && vc.getQualityScore() != null ? vc.getQualityScore() : 0.5;
+        double contentQuality = vc != null && vc.getQualityScore() != null ? vc.getQualityScore() : RecommendationConfig.DEF_QUALITY;
 
         // 作者粉丝量对数归一化
         double followerScore = 0.0;
         if (followerCount > 0) {
-            followerScore = Math.min(1.0, Math.log(followerCount + 1) / Math.log(1_000_000));
+            followerScore = ScoringFunctions.logNormalize(followerCount, 1, RecommendationConfig.LOG_REF_FOLLOWER);
         }
 
         // 全站完播率: 大家普遍看完 = 内容质量好
-        double completionScore = clamp(avgCompletion, 0, 1);
+        double completionScore = ScoringFunctions.clamp(avgCompletion, 0, 1);
 
-        // 加权: 互动率(0.30) + 内容质量(0.25) + 完播率(0.25) + 粉丝量(0.20)
-        return engageRate * 0.30 + contentQuality * 0.25 + completionScore * 0.25 + followerScore * 0.20;
+        return engageRate * RecommendationConfig.QW_ENGAGE_RATE
+                + contentQuality * RecommendationConfig.QW_CONTENT_QUAL
+                + completionScore * RecommendationConfig.QW_COMPLETION
+                + followerScore * RecommendationConfig.QW_FOLLOWER;
     }
 
     /** 创作者亲和力: 用户对该创作者的历史喜好度 */
     private double calcCreatorAffinity(Long authorId, Map<String, Double> affinity) {
-        if (authorId == null || affinity.isEmpty()) return 0.1;
-        return clamp(affinity.getOrDefault(String.valueOf(authorId), 0.0), -0.5, 1.0);
+        if (authorId == null || affinity.isEmpty()) return RecommendationConfig.CA_DEFAULT;
+        return ScoringFunctions.clamp(affinity.getOrDefault(String.valueOf(authorId), 0.0),
+                RecommendationConfig.CA_CLAMP_MIN, RecommendationConfig.CA_CLAMP_MAX);
     }
 
     /** 行为匹配: 搜索词匹配 (渐进) + 趋势关键词 + 品类偏好 + 时长偏好 */
@@ -774,9 +757,8 @@ public class RecommendationEngine {
                                        Map<String, Double> catWeights,
                                        String userType,
                                        List<String> trendingKeywords) {
-        double score = 0.1;
+        double score = RecommendationConfig.DEF_SCORE_LOW;
 
-        // 搜索词渐进匹配: 全匹配 +0.3, 部分词匹配 +0.1/词
         if (v.getDesc() != null) {
             String descLower = v.getDesc().toLowerCase();
             List<String> descWords = Arrays.asList(descLower.split("\\s+"));
@@ -786,92 +768,100 @@ public class RecommendationEngine {
                     if (query == null) continue;
                     String qLower = query.toLowerCase();
                     if (descLower.contains(qLower)) {
-                        score += 0.3;  // 全匹配
+                        score += RecommendationConfig.BEH_FULL_QUERY_MATCH;
                         break;
                     }
-                    // 部分词匹配: 搜索词拆分后匹配
                     for (String qWord : qLower.split("\\s+")) {
-                        if (qWord.length() >= 2 && descLower.contains(qWord)) {
-                            score += 0.08;
+                        if (qWord.length() >= RecommendationConfig.KEYWORD_MIN_LEN
+                                && descLower.contains(qWord)) {
+                            score += RecommendationConfig.BEH_PARTIAL_WORD_MATCH;
                         }
                     }
                 }
             }
 
-            // 趋势关键词匹配: 全局热点唤醒旧视频
             if (!trendingKeywords.isEmpty()) {
                 int trendHits = 0;
                 for (String kw : trendingKeywords) {
                     if (descLower.contains(kw)) trendHits++;
                 }
-                score += Math.min(0.2, trendHits * 0.06);
+                score += Math.min(RecommendationConfig.BEH_TREND_CAP,
+                        trendHits * RecommendationConfig.BEH_TREND_PER_HIT);
             }
         }
 
         if (vc != null && vc.getTextCategory() != null) {
-            double catWeight = catWeights.getOrDefault(vc.getTextCategory(), 0.1);
-            score += catWeight * 0.2;
+            double catWeight = catWeights.getOrDefault(vc.getTextCategory(),
+                    RecommendationConfig.BEH_DEFAULT_CAT_W);
+            score += catWeight * RecommendationConfig.BEH_CAT_W_MULT;
         }
 
         if (v.getDuration() != null) {
             double dur = v.getDuration();
-            if (dur >= 10 && dur <= 90) score += 0.1;
+            if (dur >= RecommendationConfig.BEH_DURATION_MIN
+                    && dur <= RecommendationConfig.BEH_DURATION_MAX) {
+                score += RecommendationConfig.BEH_DURATION_BONUS;
+            }
         }
 
-        return clamp(score, 0, 1);
+        return ScoringFunctions.clamp(score, 0, 1);
     }
 
     /** 社交分: 关注 1.0, 间接关系 0.3, 无关系 0.1 */
     private double calcSocialScore(Long userId, Video v,
                                     Map<Long, Double> authorCache, Set<Long> followed) {
         Long authorId = v.getAuthorUserId();
-        if (authorId == null || authorId.equals(userId)) return 0.1;
+        if (authorId == null || authorId.equals(userId)) return RecommendationConfig.SOC_NONE;
         return authorCache.computeIfAbsent(authorId, aid -> {
-            if (followed.contains(aid)) return 1.0;
-            if (followed.isEmpty()) return 0.1;
+            if (followed.contains(aid)) return RecommendationConfig.SOC_FOLLOWED;
+            if (followed.isEmpty()) return RecommendationConfig.SOC_NONE;
             Long indirectCount = followMapper.selectCount(new LambdaQueryWrapper<Follow>()
                     .eq(Follow::getFollowId, aid)
                     .in(Follow::getUserId, followed));
-            if (indirectCount > 0) return 0.3;
-            return 0.1;
+            if (indirectCount > 0) return RecommendationConfig.SOC_INDIRECT;
+            return RecommendationConfig.SOC_NONE;
         });
     }
 
     /** 个人历史: 基于用户观看行为模式 */
     private double calcPersonalHistory(Long userId, Video v, VideoContent vc,
                                        UserContentProfile profile) {
-        double score = 0.1;
+        double score = RecommendationConfig.DEF_SCORE_LOW;
 
         double completionRate = profile.getAvgCompletionRate() != null
-                ? profile.getAvgCompletionRate() : 0.5;
+                ? profile.getAvgCompletionRate() : RecommendationConfig.DEF_COMPLETION;
         double repeatRate = profile.getRepeatViewRate() != null
-                ? profile.getRepeatViewRate() : 0.1;
-        if (repeatRate > 0.3 && completionRate > 0.7) {
-            score += 0.2;
+                ? profile.getRepeatViewRate() : RecommendationConfig.DEF_SCORE_LOW;
+        if (repeatRate > RecommendationConfig.DEF_SCORE_MED
+                && completionRate > RecommendationConfig.VAL_HIGH_COMPLETION) {
+            score += RecommendationConfig.PH_REPEAT_COMPLETION_BONUS;
         }
 
         Double prefMin = profile.getPreferredDurationMin();
         Double prefMax = profile.getPreferredDurationMax();
         if (prefMin != null && prefMax != null && v.getDuration() != null) {
             double dur = v.getDuration();
-            if (dur >= prefMin && dur <= prefMax) score += 0.15;
-            else if (dur >= prefMin * 0.5 && dur <= prefMax * 1.5) score += 0.05;
+            if (dur >= prefMin && dur <= prefMax) score += RecommendationConfig.PH_DURATION_EXACT_BONUS;
+            else if (dur >= prefMin * RecommendationConfig.PH_DURATION_MARGIN_FACTOR
+                    && dur <= prefMax * (1 + RecommendationConfig.PH_DURATION_MARGIN_FACTOR)) {
+                score += RecommendationConfig.PH_DURATION_MARGIN_BONUS;
+            }
         }
 
         if (vc != null && vc.getMusicBpm() != null
                 && profile.getPreferredBpmMin() != null && profile.getPreferredBpmMax() != null) {
             double bpm = vc.getMusicBpm();
             if (bpm >= profile.getPreferredBpmMin() && bpm <= profile.getPreferredBpmMax()) {
-                score += 0.1;
+                score += RecommendationConfig.PH_BPM_EXACT_BONUS;
             }
         }
 
-        return clamp(score, 0, 1);
+        return ScoringFunctions.clamp(score, 0, 1);
     }
 
     /** 热度趋势: 近期互动增长速度 */
     private double calcPopularityTrend(Video v) {
-        if (v.getCreateTime() == null || v.getPlayCount() == null) return 0.3;
+        if (v.getCreateTime() == null || v.getPlayCount() == null) return RecommendationConfig.DEF_SCORE_MED;
         long hoursSinceCreation = ChronoUnit.HOURS.between(v.getCreateTime(), LocalDateTime.now());
         if (hoursSinceCreation <= 0) hoursSinceCreation = 1;
 
@@ -880,8 +870,8 @@ public class RecommendationEngine {
                         + (v.getCommentCount() != null ? v.getCommentCount() : 0))
                 / hoursSinceCreation;
 
-        double trend = 1.0 / (1.0 + Math.exp(-0.5 * (interactionsPerHour - 3.0)));
-        return clamp(trend, 0, 1);
+        double trend = ScoringFunctions.sigmoid(interactionsPerHour, RecommendationConfig.SG_TREND_CENTER, RecommendationConfig.SG_TREND_STEEPNESS);
+        return ScoringFunctions.clamp(trend, 0, 1);
     }
 
     /**
@@ -894,15 +884,15 @@ public class RecommendationEngine {
      * - 新发布 + 无人问津 → 0.3~0.5 (新但没人看)
      */
     private double calcFreshness(Video v, RecentEngagement re) {
-        if (v.getCreateTime() == null) return 0.5;
+        if (v.getCreateTime() == null) return RecommendationConfig.DEF_SCORE_HALF;
         long hours = ChronoUnit.HOURS.between(v.getCreateTime(), LocalDateTime.now());
-        double timeScore = Math.pow(0.5, (double) hours / FRESHNESS_HALF_LIFE_HOURS);
-        double pulse = re != null ? re.pulse() : 0.0;
+        double timeScore = ScoringFunctions.expDecay(hours, RecommendationConfig.HL_FRESHNESS);
+        double pulse = re != null ? re.pulse() : RecommendationConfig.PULSE_INACTIVE;
 
-        // 近期有互动 → 用互动活跃度修正时间衰减
         if (re != null && re.isActive()) {
-            // 活跃度越高，时间衰减越弱 (翻红视频的时效分不低于 0.5)
-            return Math.max(0.5, timeScore * 0.3 + pulse * 0.7);
+            // 活跃度越高，时间衰减越弱
+            return Math.max(RecommendationConfig.DEF_SCORE_HALF,
+                    timeScore * (1 - RecommendationConfig.PULSE_LIKE_W) + pulse * RecommendationConfig.PULSE_LIKE_W);
         }
 
         // 无近期互动 → 正常时间衰减
@@ -914,35 +904,38 @@ public class RecommendationEngine {
                                      UserContentProfile profile) {
         switch (userType) {
             case "passive_consumer":
-                double quality = vc != null && vc.getQualityScore() != null ? vc.getQualityScore() : 0.5;
-                return quality * 0.8 + 0.2;
+                double quality = vc != null && vc.getQualityScore() != null
+                        ? vc.getQualityScore() : RecommendationConfig.DEF_QUALITY;
+                return quality * RecommendationConfig.UT_PASSIVE_CONSUMER_QUALITY_W
+                        + RecommendationConfig.UT_PASSIVE_CONSUMER_BASE;
             case "social_butterfly":
-                return 0.5;
+                return RecommendationConfig.UT_SOCIAL_BUTTERFLY;
             case "power_liker":
                 double engageRate = v.getLikeCount() != null && v.getPlayCount() != null
                         ? (double) v.getLikeCount() / Math.max(1, v.getPlayCount()) : 0;
-                return clamp(engageRate * 5, 0, 1);
+                return ScoringFunctions.clamp(engageRate * RecommendationConfig.UT_POWER_LIKER_SCALE, 0, 1);
             case "collector":
                 if (vc != null && vc.getTextCategory() != null) {
                     String cat = vc.getTextCategory();
-                    if (cat.contains("知识") || cat.contains("教程") || cat.contains("美食")) return 0.8;
+                    if (cat.contains("知识") || cat.contains("教程") || cat.contains("美食"))
+                        return RecommendationConfig.UT_COLLECTOR_MATCH;
                 }
-                return 0.4;
+                return RecommendationConfig.UT_COLLECTOR_DEFAULT;
             case "active_searcher":
-                return 0.5;
+                return RecommendationConfig.UT_ACTIVE_SEARCHER;
             case "creator_fan":
                 String affStr = profile.getCreatorAffinity();
                 if (affStr != null && v.getAuthorUserId() != null
                         && affStr.contains(String.valueOf(v.getAuthorUserId()))) {
-                    return 0.9;
+                    return RecommendationConfig.UT_CREATOR_FAN_MATCH;
                 }
-                return 0.3;
+                return RecommendationConfig.UT_CREATOR_FAN_DEFAULT;
             case "explorer":
-                return 0.6;
+                return RecommendationConfig.UT_EXPLORER;
             case "new_user":
-                return 0.7;
+                return RecommendationConfig.UT_NEW_USER;
             default:
-                return 0.5;
+                return RecommendationConfig.UT_BALANCED;
         }
     }
 
@@ -954,19 +947,20 @@ public class RecommendationEngine {
 
         if (vc != null && vc.getTextCategory() != null) {
             double catWeight = catWeights.getOrDefault(vc.getTextCategory(), 0.0);
-            bonus += (1.0 - catWeight) * 0.4;
+            bonus += (1.0 - catWeight) * RecommendationConfig.EXPLORE_CAT_MULT;
         }
 
         String affStr = profile.getCreatorAffinity();
         if (affStr == null || !affStr.contains(String.valueOf(v.getAuthorUserId()))) {
-            bonus += 0.15;
+            bonus += RecommendationConfig.EXPLORE_NEW_AUTHOR;
         }
 
-        if (vc != null && vc.getQualityScore() != null && vc.getQualityScore() > 0.6) {
-            bonus += 0.1;
+        if (vc != null && vc.getQualityScore() != null
+                && vc.getQualityScore() > RecommendationConfig.EXPLORE_QUAL_THRESHOLD) {
+            bonus += RecommendationConfig.EXPLORE_HIGH_QUAL;
         }
 
-        return clamp(bonus, 0, 1);
+        return ScoringFunctions.clamp(bonus, 0, 1);
     }
 
     // ===================== 新增信号 =====================
@@ -987,38 +981,34 @@ public class RecommendationEngine {
 
         double watchDuration = wh.getWatchDuration() != null ? wh.getWatchDuration() : 0;
         double videoDuration = wh.getVideoDuration() != null && wh.getVideoDuration() > 0
-                ? wh.getVideoDuration() : v.getDuration() != null ? v.getDuration() : 60;
+                ? wh.getVideoDuration() : v.getDuration() != null ? v.getDuration() : RecommendationConfig.DEFAULT_VIDEO_DURATION_SEC;
         boolean finished = wh.getFinished() != null && wh.getFinished() == 1;
         double swipeSeconds = wh.getSwipeSeconds() != null ? wh.getSwipeSeconds() : watchDuration;
 
-        // 完播惩罚：完整看完但没有标记喜欢 → 消重
         if (finished) {
-            // 完播了说明内容还不错，但如果重复推送会厌烦
-            // 根据用户的重复观看率调节：repeatViewRate 高 = 喜欢反复看 → 惩罚低
             double repeatRate = profile.getRepeatViewRate() != null
-                    ? profile.getRepeatViewRate() : 0.1;
-            return clamp(0.8 - repeatRate * 0.5, 0.3, 1.0);
+                    ? profile.getRepeatViewRate() : RecommendationConfig.DEF_SCORE_LOW;
+            return ScoringFunctions.clamp(
+                    RecommendationConfig.PEN_FINISHED_BASE - repeatRate * RecommendationConfig.PEN_FINISHED_REPEAT_FACTOR,
+                    RecommendationConfig.PEN_FINISHED_FLOOR, RecommendationConfig.PEN_FINISHED_CEIL);
         }
 
-        // 快速划走：3 秒内就划走了 → 明显不感兴趣
-        if (swipeSeconds < 3.0) {
-            return 0.7;
+        if (swipeSeconds < RecommendationConfig.UP_BOUNCE_THRESHOLD_SEC) {
+            return RecommendationConfig.PEN_FAST_SWIPE;
         }
 
-        // 看完一半以上的 → 有一定兴趣但不够，中等惩罚
         double completion = watchDuration / Math.max(1, videoDuration);
-        if (completion > 0.5) {
-            return 0.4;
+        if (completion > RecommendationConfig.DEF_SCORE_HALF) {
+            return RecommendationConfig.PEN_HALF_WATCH;
         }
 
-        // 快速划走但用户本身浏览率高（习惯性快划）→ 降低惩罚
-        double bounceRate = profile.getBounceRate() != null ? profile.getBounceRate() : 0.3;
-        if (completion < 0.3 && bounceRate > 0.5) {
-            return 0.2; // 用户习惯性快划，不一定是内容差
+        double bounceRate = profile.getBounceRate() != null
+                ? profile.getBounceRate() : RecommendationConfig.DEF_SCORE_MED;
+        if (completion < RecommendationConfig.DEF_SCORE_MED && bounceRate > RecommendationConfig.DEF_SCORE_HALF) {
+            return RecommendationConfig.PEN_HABITUAL;
         }
 
-        // 看了一小部分 → 可能不感兴趣
-        return 0.5;
+        return RecommendationConfig.PEN_SMALL_PORTION;
     }
 
     /**
@@ -1039,29 +1029,26 @@ public class RecommendationEngine {
         long shares = v.getShareCount() != null ? v.getShareCount() : 0;
         long plays = v.getPlayCount() != null ? v.getPlayCount() : 1;
 
-        // 对数归一化，避免大 V 垄断
-        double followerScore = Math.min(1.0, Math.log(followerCount + 1) / Math.log(1_000_000));
-        double likeScore = Math.min(1.0, Math.log(likes + 1) / Math.log(100_000));
-        double collectScore = Math.min(1.0, Math.log(collects + 1) / Math.log(10_000));
-        double shareScore = Math.min(1.0, Math.log(shares + 1) / Math.log(10_000));
+        double followerScore = ScoringFunctions.logNormalize(followerCount, 1, RecommendationConfig.LOG_REF_FOLLOWER);
+        double likeScore = ScoringFunctions.logNormalize(likes, 1, RecommendationConfig.LOG_REF_LIKES);
+        double collectScore = ScoringFunctions.logNormalize(collects, 1, RecommendationConfig.LOG_REF_COLLECT);
+        double shareScore = ScoringFunctions.logNormalize(shares, 1, RecommendationConfig.LOG_REF_SHARE);
 
-        // 互动率 (相对于播放量): 高互动率说明内容质量好
-        double totalInteractions = likes + collects * 2.0 + shares * 3.0;
-        double interactionRate = Math.min(1.0, totalInteractions / Math.max(1, plays) * 10);
+        double totalInteractions = likes + collects * RecommendationConfig.SPW_COLLECT_MULT + shares * RecommendationConfig.SPW_SHARE_MULT;
+        double interactionRate = Math.min(1.0, totalInteractions / Math.max(1, plays) * RecommendationConfig.SPW_INTERACT_SCALE);
 
-        double rawProof = followerScore * 0.10
-                + likeScore * 0.10
-                + collectScore * 0.30
-                + shareScore * 0.25
-                + interactionRate * 0.25;
+        double rawProof = followerScore * RecommendationConfig.SPW_FOLLOWER
+                + likeScore * RecommendationConfig.SPW_LIKE
+                + collectScore * RecommendationConfig.SPW_COLLECT
+                + shareScore * RecommendationConfig.SPW_SHARE
+                + interactionRate * RecommendationConfig.SPW_INTERACT_RATE;
 
-        // 动态时效因子: 有近期互动 → 不衰减; 无近期互动 → 时间衰减
         if (v.getCreateTime() != null) {
-            double pulse = re != null ? re.pulse() : 0.0;
-            if (pulse < 0.02) {
+            double pulse = re != null ? re.pulse() : RecommendationConfig.PULSE_INACTIVE;
+            if (pulse < RecommendationConfig.PULSE_INACTIVE) {
                 // 近期基本无互动 → 按年龄衰减 (30天半衰期)
                 long hours = ChronoUnit.HOURS.between(v.getCreateTime(), LocalDateTime.now());
-                double timeDecay = Math.pow(0.5, (double) hours / SOCIAL_PROOF_HALF_LIFE_HOURS);
+                double timeDecay = ScoringFunctions.expDecay(hours, RecommendationConfig.HL_SOCIAL_PROOF);
                 rawProof *= timeDecay;
             }
             // pulse >= 0.02: 视频仍有近期互动 → 不衰减，保留完整社交证明
@@ -1092,23 +1079,25 @@ public class RecommendationEngine {
 
         double baseScore;
         if (followed && interacted) {
-            baseScore = 0.9;  // 双重关系: 关注+互动 → 最强信号
+            baseScore = RecommendationConfig.CI_DOUBLE_RELATION;
         } else if (interacted) {
-            baseScore = 0.8;  // 仅互动: 点赞/收藏说明内容偏好
+            baseScore = RecommendationConfig.CI_INTERACTED_ONLY;
         } else {
-            baseScore = 0.7;  // 仅关注: 想看他/她的内容
+            baseScore = RecommendationConfig.CI_FOLLOWED_ONLY;
         }
 
-        // 时效性加成: 互动作者 7 天内新视频额外提权
         if (v.getCreateTime() != null && interacted) {
             long hours = ChronoUnit.HOURS.between(v.getCreateTime(), LocalDateTime.now());
-            if (hours <= 168) { // 7 天内
-                double recencyBoost = 1.0 + Math.max(0, (168.0 - hours) / 168.0) * 0.3;
+            if (hours <= RecommendationConfig.CI_RECENCY_HOURS) {
+                double recencyBoost = 1.0 + Math.max(0,
+                        (RecommendationConfig.CI_RECENCY_HOURS - hours)
+                                / (double) RecommendationConfig.CI_RECENCY_HOURS)
+                        * RecommendationConfig.CI_RECENCY_BOOST;
                 baseScore *= recencyBoost;
             }
         }
 
-        return clamp(baseScore, 0, 1);
+        return ScoringFunctions.clamp(baseScore, 0, 1);
     }
 
     // ===================== 多样性重排 =====================
@@ -1135,7 +1124,7 @@ public class RecommendationEngine {
         Map<String, Integer> typeCount = new HashMap<>();
         int recentCount = 0;
         int mainIdx = 0, exploreIdx = 0;
-        int exploreEvery = Math.max(3, pageSize / Math.max(1, (int) (pageSize * EXPLORE_INJECT_RATE)));
+        int exploreEvery = Math.max(3, pageSize / Math.max(1, (int) (pageSize * RecommendationConfig.EXPLORE_INJECT_RATE)));
 
         while (result.size() < pageSize) {
             boolean injectExplore = result.size() > 0 && result.size() % exploreEvery == 0;
@@ -1149,13 +1138,14 @@ public class RecommendationEngine {
                 int skipped = 0;
                 while (mainIdx < mainPool.size()) {
                     ScoredVideo candidate = mainPool.get(mainIdx);
-                    boolean isRecent = videoAgeHours.getOrDefault(candidate.videoId, 0L) < 48;
+                    boolean isRecent = videoAgeHours.getOrDefault(candidate.videoId, 0L)
+                            < RecommendationConfig.DIVERSITY_RECENT_HOURS;
 
                     if (violatesDiversity(candidate, authorCount, catCount, typeCount, videoTypeMap)) {
                         mainIdx++;
                         skipped++;
-                        if (skipped > 10) break;
-                    } else if (needOlder && isRecent && skipped < 8) {
+                        if (skipped > RecommendationConfig.DIVERSITY_MAX_SKIP) break;
+                    } else if (needOlder && isRecent && skipped < RecommendationConfig.DIVERSITY_TIME_SKIP) {
                         mainIdx++;
                         skipped++;
                     } else {
@@ -1164,7 +1154,7 @@ public class RecommendationEngine {
                         break;
                     }
                 }
-                if (skipped > 10) {
+                if (skipped > RecommendationConfig.DIVERSITY_MAX_SKIP) {
                     if (mainIdx < mainPool.size()) {
                         picked = mainPool.get(mainIdx++);
                     } else if (exploreIdx < explorePool.size()) {
@@ -1189,7 +1179,8 @@ public class RecommendationEngine {
                 }
                 String vtype = videoTypeMap.getOrDefault(picked.videoId, "unknown");
                 typeCount.merge(vtype, 1, Integer::sum);
-                if (videoAgeHours.getOrDefault(picked.videoId, 0L) < 48) recentCount++;
+                if (videoAgeHours.getOrDefault(picked.videoId, 0L)
+                        < RecommendationConfig.DIVERSITY_RECENT_HOURS) recentCount++;
                 picked = null;
             }
         }
@@ -1201,17 +1192,17 @@ public class RecommendationEngine {
                                        Map<String, Integer> catCount,
                                        Map<String, Integer> typeCount,
                                        Map<Long, String> videoTypeMap) {
-        if (authorCount.getOrDefault(sv.authorId, 0) >= MAX_PER_AUTHOR) return true;
-        if (sv.category != null && catCount.getOrDefault(sv.category, 0) >= MAX_PER_CATEGORY) return true;
+        if (authorCount.getOrDefault(sv.authorId, 0) >= RecommendationConfig.MAX_PER_AUTHOR) return true;
+        if (sv.category != null && catCount.getOrDefault(sv.category, 0) >= RecommendationConfig.MAX_PER_CATEGORY) return true;
         String vtype = videoTypeMap.getOrDefault(sv.videoId, "unknown");
-        if (typeCount.getOrDefault(vtype, 0) >= MAX_PER_TYPE) return true;
+        if (typeCount.getOrDefault(vtype, 0) >= RecommendationConfig.MAX_PER_TYPE) return true;
         return false;
     }
 
     // ===================== 曝光管理 =====================
 
     private Set<Long> getRecentExposures(Long userId) {
-        LocalDateTime since = LocalDateTime.now().minusHours(24);
+        LocalDateTime since = LocalDateTime.now().minusHours(RecommendationConfig.DIVERSITY_RECENT_HOURS);
         return exposureMapper.selectList(new LambdaQueryWrapper<VideoExposure>()
                 .eq(VideoExposure::getUserId, userId)
                 .ge(VideoExposure::getExposureTime, since)
@@ -1277,7 +1268,7 @@ public class RecommendationEngine {
     private double categoryBonus(UserContentProfile profile, VideoContent vc) {
         if (profile == null || vc == null || vc.getTextCategory() == null) return 0;
         Map<String, Double> weights = parseCategoryWeights(profile.getCategoryWeights());
-        return weights.getOrDefault(vc.getTextCategory(), 0.0) * 0.3;
+        return weights.getOrDefault(vc.getTextCategory(), 0.0) * RecommendationConfig.TM_CATEGORY_CROSS_MULT;
     }
 
     private Map<String, Double> parseCategoryWeights(String json) {
@@ -1301,10 +1292,6 @@ public class RecommendationEngine {
         try {
             return objectMapper.readValue(json, new TypeReference<List<String>>() {});
         } catch (Exception e) { return List.of(); }
-    }
-
-    private double clamp(double val, double min, double max) {
-        return Math.max(min, Math.min(max, val));
     }
 
     // ===================== 内部类 =====================

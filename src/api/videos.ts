@@ -66,7 +66,12 @@ export function recordShare(videoId: number) {
   return request({ url: `/video/share/${videoId}`, method: 'post' })
 }
 
-export function postComment(data: { video_id: string; content: string; parent_id?: string; reply_to_user_id?: string }) {
+export function postComment(data: {
+  video_id: string
+  content: string
+  parent_id?: string
+  reply_to_user_id?: string
+}) {
   return request({ url: '/video/comments', method: 'post', data })
 }
 
@@ -86,8 +91,24 @@ export function searchVideos(keyword: string) {
   return request({ url: '/video/search', method: 'get', params: { keyword } })
 }
 
-export function recordWatch(videoId: string, data: { watch_duration: number; video_duration: number; finished: boolean }) {
+export function recordWatch(
+  videoId: string,
+  data: {
+    watch_duration: number
+    video_duration: number
+    finished: boolean
+    session_id?: string
+    swipe_seconds?: number
+    traffic_source?: string
+    last_position?: number
+  }
+) {
   return request({ url: `/video/watch/${videoId}`, method: 'post', data })
+}
+
+/** 获取视频的上次播放位置，用于断点续播 */
+export function getLastPosition(videoId: string) {
+  return request({ url: `/video/watch/position/${videoId}`, method: 'get' })
 }
 
 /** 搜索输入联想 */

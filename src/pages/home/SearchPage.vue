@@ -2,7 +2,16 @@
   <div class="Search">
     <div class="header">
       <dy-back mode="light" @click="router.back" class="mr1r"></dy-back>
-      <Search ref="searchRef" v-model="data.searchKey" placeholder="搜索视频/用户" :isShowRightText="true" :rightText="'搜索'" @notice="doSearch" @search="doSearch" @clear="clearSearch"></Search>
+      <Search
+        ref="searchRef"
+        v-model="data.searchKey"
+        placeholder="搜索视频/用户"
+        :isShowRightText="true"
+        :rightText="'搜索'"
+        @notice="doSearch"
+        @search="doSearch"
+        @clear="clearSearch"
+      ></Search>
     </div>
     <div class="content">
       <!-- 搜索建议列表（输入中但未提交搜索） -->
@@ -12,7 +21,10 @@
             class="suggest-item"
             v-for="(item, index) in data.suggestions"
             :key="index"
-            @click="data.searchKey = item; doSearch()"
+            @click="
+              data.searchKey = item
+              doSearch()
+            "
           >
             <img class="search-icon" src="../../assets/img/icon/search-gray.png" alt="" />
             <span class="text">{{ item }}</span>
@@ -30,26 +42,38 @@
           <div class="search-tabs">
             <div
               class="tab"
-              v-for="(tab, i) in TAB_LIST"
+              v-for="tab in TAB_LIST"
               :key="tab"
               :class="{ active: data.searchTab === tab }"
               @click="switchTab(tab)"
-            >{{ tab }}</div>
+            >
+              {{ tab }}
+            </div>
           </div>
         </div>
 
         <!-- AI 智能总结 (仅综合 Tab) -->
         <template v-if="data.searchTab === '综合'">
           <div class="ai-summary" v-if="data.aiSummary && !data.aiExpanded">
-            <div class="ai-text">{{ data.aiSummary }}</div>
-            <div class="ai-fade"></div>
-            <div class="ai-expand-btn" @click="data.aiExpanded = true">
+            <div class="ai-text">{{ displayedSummary }}<span class="ai-cursor">|</span></div>
+            <div class="ai-fade" v-if="displayedSummary.length > 150"></div>
+            <div
+              class="ai-expand-btn"
+              v-if="displayedSummary.length > 150"
+              @click="expandSummary()"
+            >
               <span>展开更多</span>
               <Icon icon="icon-park-outline:down" class="expand-arrow" />
             </div>
           </div>
           <div class="ai-summary expanded" v-else-if="data.aiSummary && data.aiExpanded">
             <div class="ai-text full">{{ data.aiSummary }}</div>
+          </div>
+          <div class="ai-summary ai-loading" v-else-if="data.aiLoading">
+            <span class="ai-loading-dot"></span>
+            <span class="ai-loading-dot"></span>
+            <span class="ai-loading-dot"></span>
+            <span class="ai-loading-text">AI 正在分析搜索结果...</span>
           </div>
         </template>
 
@@ -66,12 +90,18 @@
             >
               <div class="cover-wrap">
                 <img class="cover" v-lazy="_checkImgUrl(item.video.cover.url_list[0])" alt="" />
-                <span class="duration" v-if="item.duration">{{ _formatDuration(item.duration) }}</span>
+                <span class="duration" v-if="item.duration">{{
+                  _formatDuration(item.duration)
+                }}</span>
               </div>
               <div class="info">
                 <div class="desc">{{ item.desc }}</div>
                 <div class="meta">
-                  <img class="avatar" v-lazy="_checkImgUrl(item.author.avatar_168x168?.url_list?.[0])" alt="" />
+                  <img
+                    class="avatar"
+                    v-lazy="_checkImgUrl(item.author.avatar_168x168?.url_list?.[0])"
+                    alt=""
+                  />
                   <div class="author-info">
                     <span class="name">{{ item.author.nickname }}</span>
                     <span class="time">{{ _formatTime(item.create_time) }}</span>
@@ -99,12 +129,18 @@
             >
               <div class="cover-wrap">
                 <img class="cover" v-lazy="_checkImgUrl(item.video.cover.url_list[0])" alt="" />
-                <span class="duration" v-if="item.duration">{{ _formatDuration(item.duration) }}</span>
+                <span class="duration" v-if="item.duration">{{
+                  _formatDuration(item.duration)
+                }}</span>
               </div>
               <div class="info">
                 <div class="desc">{{ item.desc }}</div>
                 <div class="meta">
-                  <img class="avatar" v-lazy="_checkImgUrl(item.author.avatar_168x168?.url_list?.[0])" alt="" />
+                  <img
+                    class="avatar"
+                    v-lazy="_checkImgUrl(item.author.avatar_168x168?.url_list?.[0])"
+                    alt=""
+                  />
                   <div class="author-info">
                     <span class="name">{{ item.author.nickname }}</span>
                     <span class="time">{{ _formatTime(item.create_time) }}</span>
@@ -130,7 +166,11 @@
               :key="item.uid"
               @click="goUserHome(item)"
             >
-              <img class="u-avatar" v-lazy="_checkImgUrl(item.avatar_168x168?.url_list?.[0])" alt="" />
+              <img
+                class="u-avatar"
+                v-lazy="_checkImgUrl(item.avatar_168x168?.url_list?.[0])"
+                alt=""
+              />
               <div class="u-info">
                 <div class="u-name">{{ item.nickname }}</div>
                 <div class="u-sub">
@@ -141,7 +181,10 @@
               </div>
               <div
                 class="u-follow-btn"
-                :class="{ followed: item.is_followed, mutual: item.is_following_me && item.is_followed }"
+                :class="{
+                  followed: item.is_followed,
+                  mutual: item.is_following_me && item.is_followed
+                }"
                 @click.stop="toggleFollow(item)"
               >
                 <span v-if="item.is_followed && item.is_following_me">互相关注</span>
@@ -165,12 +208,18 @@
             >
               <div class="cover-wrap">
                 <img class="cover" v-lazy="_checkImgUrl(item.video.cover.url_list[0])" alt="" />
-                <span class="duration" v-if="item.duration">{{ _formatDuration(item.duration) }}</span>
+                <span class="duration" v-if="item.duration">{{
+                  _formatDuration(item.duration)
+                }}</span>
               </div>
               <div class="info">
                 <div class="desc">{{ item.desc }}</div>
                 <div class="meta">
-                  <img class="avatar" v-lazy="_checkImgUrl(item.author.avatar_168x168?.url_list?.[0])" alt="" />
+                  <img
+                    class="avatar"
+                    v-lazy="_checkImgUrl(item.author.avatar_168x168?.url_list?.[0])"
+                    alt=""
+                  />
                   <div class="author-info">
                     <span class="name">{{ item.author.nickname }}</span>
                     <span class="time">{{ _formatTime(item.create_time) }}</span>
@@ -193,189 +242,143 @@
 
       <!-- 默认内容：搜索历史、猜你想搜、排行榜 -->
       <template v-else>
-      <div class="history">
-        <div class="row" :key="index" v-for="(item, index) in lHistory" @click="data.searchKey = item; doSearch()">
-          <div class="left">
-            <img src="../../assets/img/icon/home/time-white.png" alt="" />
-            <span> {{ item }}</span>
+        <div class="history">
+          <div
+            class="row"
+            :key="index"
+            v-for="(item, index) in lHistory"
+            @click="
+              data.searchKey = item
+              doSearch()
+            "
+          >
+            <div class="left">
+              <img src="../../assets/img/icon/home/time-white.png" alt="" />
+              <span> {{ item }}</span>
+            </div>
+            <dy-back
+              img="close"
+              mode="gray"
+              @click.stop="deleteHistoryKeyword(item)"
+              scale=".7"
+            ></dy-back>
           </div>
-          <dy-back
-            img="close"
-            mode="gray"
-            @click.stop="deleteHistoryKeyword(item)"
-            scale=".7"
-          ></dy-back>
-        </div>
-        <div v-if="data.history.length > 2" class="history-expand" @click="toggle">
-          {{ data.isExpand ? '清除全部搜索记录' : '展开全部' }}
-        </div>
-      </div>
-      <div class="guess">
-        <div class="title">
-          <div class="left">猜你想搜</div>
-          <div class="right" @click.stop="refresh">
-            <img class="scan" src="../../assets/img/icon/home/refresh-gray.png" />
-            <span>换一换</span>
-          </div>
-        </div>
-        <div class="keys">
-          <div class="key" :key="index" v-for="(item, index) in data.randomGuess">
-            <span class="desc">{{ item.name }}</span>
-            <img
-              v-if="item.type === 1"
-              src="../../assets/img/icon/home/new.webp"
-              alt=""
-              class="type"
-            />
+          <div v-if="data.history.length > 2" class="history-expand" @click="toggle">
+            {{ data.isExpand ? '清除全部搜索记录' : '展开全部' }}
           </div>
         </div>
-      </div>
-      <div class="rank-list">
-        <div class="indicator">
-          <div class="tab" :class="{ active: data.slideIndex === 0 }" @click="data.slideIndex = 0">
-            SeekFlow热榜
+        <div class="guess">
+          <div class="title">
+            <div class="left">猜你想搜</div>
+            <div class="right" @click.stop="refresh">
+              <img class="scan" src="../../assets/img/icon/home/refresh-gray.png" />
+              <span>换一换</span>
+            </div>
           </div>
-          <div class="tab" :class="{ active: data.slideIndex === 1 }" @click="data.slideIndex = 1">
-            直播榜
-          </div>
-          <div class="tab" :class="{ active: data.slideIndex === 2 }" @click="data.slideIndex = 2">
-            音乐榜
-          </div>
-          <div class="tab" :class="{ active: data.slideIndex === 3 }" @click="data.slideIndex = 3">
-            品牌榜
+          <div class="keys">
+            <div class="key" :key="index" v-for="(item, index) in data.randomGuess">
+              <span class="desc">{{ item.name }}</span>
+              <img
+                v-if="item.type === 1"
+                src="../../assets/img/icon/home/new.webp"
+                alt=""
+                class="type"
+              />
+            </div>
           </div>
         </div>
-        <!--        TODO 滚动到下面的时候，应该禁止slide-move，因为每个slideitem的高度不一样，高的切到矮的，会闪屏-->
-        <SlideHorizontal v-model:index="data.slideIndex" :style="slideListHeight">
-          <SlideItem>
-            <div class="slide0" ref="slide0">
-              <div class="l-row">
-                <div class="rank-wrapper">
-                  <img src="../../assets/img/icon/home/to-top-yellow.png" class="rank" />
-                </div>
-                <div class="right">
-                  <div class="center">
-                    <div class="desc">专题：嘻嘻嘻哈哈瞄瞄嘻嘻嘻</div>
+        <div class="rank-list">
+          <div class="indicator">
+            <div
+              class="tab"
+              :class="{ active: data.slideIndex === 0 }"
+              @click="data.slideIndex = 0"
+            >
+              SeekFlow热榜
+            </div>
+            <div
+              class="tab"
+              :class="{ active: data.slideIndex === 1 }"
+              @click="data.slideIndex = 1"
+            >
+              直播榜
+            </div>
+            <div
+              class="tab"
+              :class="{ active: data.slideIndex === 2 }"
+              @click="data.slideIndex = 2"
+            >
+              音乐榜
+            </div>
+            <div
+              class="tab"
+              :class="{ active: data.slideIndex === 3 }"
+              @click="data.slideIndex = 3"
+            >
+              品牌榜
+            </div>
+          </div>
+          <!--        TODO 滚动到下面的时候，应该禁止slide-move，因为每个slideitem的高度不一样，高的切到矮的，会闪屏-->
+          <SlideHorizontal v-model:index="data.slideIndex" :style="slideListHeight">
+            <SlideItem>
+              <div class="slide0" ref="slide0">
+                <div class="l-row">
+                  <div class="rank-wrapper">
+                    <img src="../../assets/img/icon/home/to-top-yellow.png" class="rank" />
+                  </div>
+                  <div class="right">
+                    <div class="center">
+                      <div class="desc">专题：嘻嘻嘻哈哈瞄瞄嘻嘻嘻</div>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div class="l-row" :key="index" v-for="(item, index) in data.hotRankList">
-                <div class="rank-wrapper">
-                  <img
-                    v-if="index === 0"
-                    src="../../assets/img/icon/home/hot1.webp"
-                    alt=""
-                    class="rank"
-                  />
-                  <img
-                    v-else-if="index === 1"
-                    src="../../assets/img/icon/home/hot2.webp"
-                    alt=""
-                    class="rank"
-                  />
-                  <img
-                    v-else-if="index === 2"
-                    src="../../assets/img/icon/home/hot3.webp"
-                    alt=""
-                    class="rank"
-                  />
-                  <div v-else class="rank">{{ index + 1 }}</div>
-                </div>
-                <div class="right">
-                  <div class="center">
-                    <div class="desc">{{ item.name }}</div>
+                <div class="l-row" :key="index" v-for="(item, index) in data.hotRankList">
+                  <div class="rank-wrapper">
                     <img
-                      v-if="item.type === 1"
-                      src="../../assets/img/icon/home/new.webp"
+                      v-if="index === 0"
+                      src="../../assets/img/icon/home/hot1.webp"
                       alt=""
-                      class="type"
+                      class="rank"
                     />
                     <img
-                      v-if="item.type === 0"
-                      src="../../assets/img/icon/home/hot.webp"
+                      v-else-if="index === 1"
+                      src="../../assets/img/icon/home/hot2.webp"
                       alt=""
-                      class="type"
+                      class="rank"
                     />
+                    <img
+                      v-else-if="index === 2"
+                      src="../../assets/img/icon/home/hot3.webp"
+                      alt=""
+                      class="rank"
+                    />
+                    <div v-else class="rank">{{ index + 1 }}</div>
                   </div>
-                  <div class="count">999w</div>
+                  <div class="right">
+                    <div class="center">
+                      <div class="desc">{{ item.name }}</div>
+                      <img
+                        v-if="item.type === 1"
+                        src="../../assets/img/icon/home/new.webp"
+                        alt=""
+                        class="type"
+                      />
+                      <img
+                        v-if="item.type === 0"
+                        src="../../assets/img/icon/home/hot.webp"
+                        alt=""
+                        class="type"
+                      />
+                    </div>
+                    <div class="count">999w</div>
+                  </div>
                 </div>
+                <div class="more" @click="_no">查看完整热点榜 ></div>
               </div>
-              <div class="more" @click="_no">查看完整热点榜 ></div>
-            </div>
-          </SlideItem>
-          <SlideItem>
-            <div class="slide1" ref="slide1">
-              <div class="l-row" :key="index" v-for="(item, index) in data.liveRankList">
-                <div class="rank-wrapper">
-                  <div class="rank" :class="{ top: index < 3 }">
-                    {{ index + 1 }}
-                  </div>
-                </div>
-                <div class="right">
-                  <div class="center">
-                    <div class="avatar-wrapper">
-                      <img src="../../assets/img/icon/avatar/1.png" alt="" class="avatar" />
-                    </div>
-                    <div class="desc">{{ item.name }}</div>
-                    <div v-if="item.type === 0" class="live-type">
-                      <img class="type1" src="../../assets/img/icon/home/pk.webp" />
-                      <span>PK</span>
-                    </div>
-                    <div v-if="item.type === 1" class="live-type">
-                      <img class="type2" src="../../assets/img/icon/home/redpack.png" />
-                      <span>红包</span>
-                    </div>
-                  </div>
-                  <div class="count">999w人气</div>
-                </div>
-              </div>
-              <div class="more" @click="_no">查看完整直播榜 ></div>
-            </div>
-          </SlideItem>
-          <SlideItem>
-            <div class="slide2" ref="slide2">
-              <div
-                class="l-row"
-                :key="index"
-                v-for="(item, index) in data.musicRankList"
-                @click="nav('/home/music-rank-list')"
-              >
-                <div class="rank-wrapper">
-                  <div class="rank" :class="{ top: index < 3 }">
-                    {{ index + 1 }}
-                  </div>
-                </div>
-                <div class="right">
-                  <div class="center">
-                    <div class="avatar-wrapper">
-                      <img v-lazy="_checkImgUrl(item.cover)" alt="" class="avatar" />
-                    </div>
-                    <div class="desc">{{ item.name }}</div>
-                  </div>
-                  <div class="count">
-                    <img src="../../assets/img/icon/home/hot-gray.png" alt="" />
-                    <span>{{ _formatNumber(item.use_count) }}</span>
-                  </div>
-                </div>
-              </div>
-              <div class="more" @click="nav('/home/music-rank-list')">查看完整音乐榜 ></div>
-            </div>
-          </SlideItem>
-          <SlideItem>
-            <div class="slide3" ref="slide3">
-              <div class="slide4-wrapper">
-                <div class="brands">
-                  <div
-                    class="brand"
-                    @click="toggleKey(key, i)"
-                    :key="i"
-                    :class="{ active: key === data.selectBrandKey }"
-                    v-for="(key, i) in Object.keys(data.brandRankList)"
-                  >
-                    {{ key }}
-                  </div>
-                </div>
-                <div class="l-row" :key="index" v-for="(item, index) in selectBrandList">
+            </SlideItem>
+            <SlideItem>
+              <div class="slide1" ref="slide1">
+                <div class="l-row" :key="index" v-for="(item, index) in data.liveRankList">
                   <div class="rank-wrapper">
                     <div class="rank" :class="{ top: index < 3 }">
                       {{ index + 1 }}
@@ -383,51 +386,121 @@
                   </div>
                   <div class="right">
                     <div class="center">
-                      <div class="avatar-wrapper" :class="item.living ? 'living' : ''">
-                        <div class="avatar-out-line"></div>
-                        <img v-lazy="_checkImgUrl(item.logo)" alt="" class="avatar" />
+                      <div class="avatar-wrapper">
+                        <img src="../../assets/img/icon/avatar/1.png" alt="" class="avatar" />
+                      </div>
+                      <div class="desc">{{ item.name }}</div>
+                      <div v-if="item.type === 0" class="live-type">
+                        <img class="type1" src="../../assets/img/icon/home/pk.webp" />
+                        <span>PK</span>
+                      </div>
+                      <div v-if="item.type === 1" class="live-type">
+                        <img class="type2" src="../../assets/img/icon/home/redpack.png" />
+                        <span>红包</span>
+                      </div>
+                    </div>
+                    <div class="count">999w人气</div>
+                  </div>
+                </div>
+                <div class="more" @click="_no">查看完整直播榜 ></div>
+              </div>
+            </SlideItem>
+            <SlideItem>
+              <div class="slide2" ref="slide2">
+                <div
+                  class="l-row"
+                  :key="index"
+                  v-for="(item, index) in data.musicRankList"
+                  @click="nav('/home/music-rank-list')"
+                >
+                  <div class="rank-wrapper">
+                    <div class="rank" :class="{ top: index < 3 }">
+                      {{ index + 1 }}
+                    </div>
+                  </div>
+                  <div class="right">
+                    <div class="center">
+                      <div class="avatar-wrapper">
+                        <img v-lazy="_checkImgUrl(item.cover)" alt="" class="avatar" />
                       </div>
                       <div class="desc">{{ item.name }}</div>
                     </div>
                     <div class="count">
                       <img src="../../assets/img/icon/home/hot-gray.png" alt="" />
-                      <span>{{ _formatNumber(item.hot_count) }}</span>
+                      <span>{{ _formatNumber(item.use_count) }}</span>
                     </div>
                   </div>
                 </div>
-                <div class="more" @click="_no">查看完整品牌榜 ></div>
+                <div class="more" @click="nav('/home/music-rank-list')">查看完整音乐榜 ></div>
               </div>
+            </SlideItem>
+            <SlideItem>
+              <div class="slide3" ref="slide3">
+                <div class="slide4-wrapper">
+                  <div class="brands">
+                    <div
+                      class="brand"
+                      @click="toggleKey(key, i)"
+                      :key="i"
+                      :class="{ active: key === data.selectBrandKey }"
+                      v-for="(key, i) in Object.keys(data.brandRankList)"
+                    >
+                      {{ key }}
+                    </div>
+                  </div>
+                  <div class="l-row" :key="index" v-for="(item, index) in selectBrandList">
+                    <div class="rank-wrapper">
+                      <div class="rank" :class="{ top: index < 3 }">
+                        {{ index + 1 }}
+                      </div>
+                    </div>
+                    <div class="right">
+                      <div class="center">
+                        <div class="avatar-wrapper" :class="item.living ? 'living' : ''">
+                          <div class="avatar-out-line"></div>
+                          <img v-lazy="_checkImgUrl(item.logo)" alt="" class="avatar" />
+                        </div>
+                        <div class="desc">{{ item.name }}</div>
+                      </div>
+                      <div class="count">
+                        <img src="../../assets/img/icon/home/hot-gray.png" alt="" />
+                        <span>{{ _formatNumber(item.hot_count) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="more" @click="_no">查看完整品牌榜 ></div>
+                </div>
 
-              <SlideHorizontal v-model:index="data.adIndex" :autoplay="true" indicator>
-                <SlideItem>
-                  <div class="ad">AD1</div>
-                </SlideItem>
-                <SlideItem>
-                  <div class="ad">AD2</div>
-                </SlideItem>
-                <SlideItem>
-                  <div class="ad">AD3</div>
-                </SlideItem>
-                <SlideItem>
-                  <div class="ad">AD4</div>
-                </SlideItem>
-                <SlideItem>
-                  <div class="ad">AD5</div>
-                </SlideItem>
-                <SlideItem>
-                  <div class="ad">AD6</div>
-                </SlideItem>
-                <SlideItem>
-                  <div class="ad">AD7</div>
-                </SlideItem>
-                <SlideItem>
-                  <div class="ad">AD8</div>
-                </SlideItem>
-              </SlideHorizontal>
-            </div>
-          </SlideItem>
-        </SlideHorizontal>
-      </div>
+                <SlideHorizontal v-model:index="data.adIndex" :autoplay="true" indicator>
+                  <SlideItem>
+                    <div class="ad">AD1</div>
+                  </SlideItem>
+                  <SlideItem>
+                    <div class="ad">AD2</div>
+                  </SlideItem>
+                  <SlideItem>
+                    <div class="ad">AD3</div>
+                  </SlideItem>
+                  <SlideItem>
+                    <div class="ad">AD4</div>
+                  </SlideItem>
+                  <SlideItem>
+                    <div class="ad">AD5</div>
+                  </SlideItem>
+                  <SlideItem>
+                    <div class="ad">AD6</div>
+                  </SlideItem>
+                  <SlideItem>
+                    <div class="ad">AD7</div>
+                  </SlideItem>
+                  <SlideItem>
+                    <div class="ad">AD8</div>
+                  </SlideItem>
+                </SlideHorizontal>
+              </div>
+            </SlideItem>
+          </SlideHorizontal>
+        </div>
       </template>
     </div>
   </div>
@@ -435,12 +508,19 @@
 <script setup lang="ts">
 import Search from '../../components/Search.vue'
 import Dom from '../../utils/dom'
-import { computed, nextTick, onMounted, reactive, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { _checkImgUrl, _formatNumber, _no, _showSimpleConfirmDialog, sampleSize } from '@/utils'
 import { useRoute, useRouter } from 'vue-router'
 import { useNav } from '@/utils/hooks/useNav'
 import { searchVideos, searchSummary } from '@/api/videos'
-import { searchUsers, toggleFollowUser, getSearchHistory, saveSearchHistory, clearSearchHistory, deleteSearchHistoryKeyword } from '@/api/user'
+import {
+  searchUsers,
+  toggleFollowUser,
+  getSearchHistory,
+  saveSearchHistory,
+  clearSearchHistory,
+  deleteSearchHistoryKeyword
+} from '@/api/user'
 import { _duration } from '@/utils'
 import { useBaseStore } from '@/store/pinia'
 
@@ -466,6 +546,7 @@ const data = reactive({
   suggestions: [] as string[],
   aiSummary: '',
   aiExpanded: false,
+  aiLoading: false,
   adIndex: 0,
   history: [] as string[],
   guess: [
@@ -550,24 +631,186 @@ const data = reactive({
     { name: '智勋勋勋勋', type: 0 }
   ],
   musicRankList: [
-    { name: '龙卷风', mp3: 'http://im5.tongbu.com/rings/singerring/zt_uunGo_1/5605.mp3', cover: new URL('../../assets/img/music-cover/1.jpg', import.meta.url).href, author: '周杰伦', duration: 99, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '爱在西元前', mp3: 'https://m3.8js.net:99/1916/501204165042405.mp3', cover: new URL('../../assets/img/music-cover/2.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '蜗牛', mp3: 'http://im5.tongbu.com/rings/singerring/zt_uunGo_1/3684.mp3', cover: new URL('../../assets/img/music-cover/3.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '半岛铁盒', mp3: 'https://m3.8js.net:99/2016n/46/94745.mp3', cover: new URL('../../assets/img/music-cover/4.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '轨迹', mp3: 'https://m3.8js.net:99/1832/411204324135934.mp3', cover: new URL('../../assets/img/music-cover/5.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '七里香', mp3: 'https://m3.8js.net:99/2016n/14/53717.mp3', cover: new URL('../../assets/img/music-cover/6.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '发如雪', mp3: 'https://m3.8js.net:99/2014/211204142150965.mp3', cover: new URL('../../assets/img/music-cover/7.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '霍元甲', mp3: 'https://m3.8js.net:99/1921/261204212643140.mp3', cover: new URL('../../assets/img/music-cover/8.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '千里之外(周杰伦/费玉清)', mp3: 'http://im5.tongbu.com/rings/singerring/zt_uunGo_1/121.mp3', cover: new URL('../../assets/img/music-cover/9.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '菊花台', mp3: 'http://im5.tongbu.com/rings/singerring/zt_uunGo_1/2022.mp3', cover: new URL('../../assets/img/music-cover/10.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '不能说的秘密', mp3: 'http://im5.tongbu.com/rings/singerring/zt_uunGo_1/165.mp3', cover: new URL('../../assets/img/music-cover/11.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '牛仔很忙', mp3: 'http://im5.tongbu.com/rings/singerring/zt_uunGo_1/219.mp3', cover: new URL('../../assets/img/music-cover/12.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '给我一首歌的时间', mp3: 'https://m3.8js.net:99/1938/041204380445445.mp3', cover: new URL('../../assets/img/music-cover/18.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '烟花易冷', mp3: 'https://m3.8js.net:99/1828/051204280535192.mp3', cover: new URL('../../assets/img/music-cover/14.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '惊叹号', mp3: 'https://m3.8js.net:99/20111103/150.mp3', cover: new URL('../../assets/img/music-cover/15.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '明明就', mp3: 'https://m3.8js.net:99/2016n/27/96537.mp3', cover: new URL('../../assets/img/music-cover/16.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '算什么男人', mp3: 'https://m3.8js.net:99/20150107/429.mp3', cover: new URL('../../assets/img/music-cover/17.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false },
-    { name: '告白气球', mp3: 'https://m3.8js.net:99/20161016/481.mp3', cover: new URL('../../assets/img/music-cover/18.jpg', import.meta.url).href, author: '周杰伦', duration: 60, use_count: 37441000, is_collect: false, is_play: false }
+    {
+      name: '龙卷风',
+      mp3: 'http://im5.tongbu.com/rings/singerring/zt_uunGo_1/5605.mp3',
+      cover: new URL('../../assets/img/music-cover/1.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 99,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '爱在西元前',
+      mp3: 'https://m3.8js.net:99/1916/501204165042405.mp3',
+      cover: new URL('../../assets/img/music-cover/2.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '蜗牛',
+      mp3: 'http://im5.tongbu.com/rings/singerring/zt_uunGo_1/3684.mp3',
+      cover: new URL('../../assets/img/music-cover/3.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '半岛铁盒',
+      mp3: 'https://m3.8js.net:99/2016n/46/94745.mp3',
+      cover: new URL('../../assets/img/music-cover/4.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '轨迹',
+      mp3: 'https://m3.8js.net:99/1832/411204324135934.mp3',
+      cover: new URL('../../assets/img/music-cover/5.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '七里香',
+      mp3: 'https://m3.8js.net:99/2016n/14/53717.mp3',
+      cover: new URL('../../assets/img/music-cover/6.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '发如雪',
+      mp3: 'https://m3.8js.net:99/2014/211204142150965.mp3',
+      cover: new URL('../../assets/img/music-cover/7.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '霍元甲',
+      mp3: 'https://m3.8js.net:99/1921/261204212643140.mp3',
+      cover: new URL('../../assets/img/music-cover/8.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '千里之外(周杰伦/费玉清)',
+      mp3: 'http://im5.tongbu.com/rings/singerring/zt_uunGo_1/121.mp3',
+      cover: new URL('../../assets/img/music-cover/9.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '菊花台',
+      mp3: 'http://im5.tongbu.com/rings/singerring/zt_uunGo_1/2022.mp3',
+      cover: new URL('../../assets/img/music-cover/10.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '不能说的秘密',
+      mp3: 'http://im5.tongbu.com/rings/singerring/zt_uunGo_1/165.mp3',
+      cover: new URL('../../assets/img/music-cover/11.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '牛仔很忙',
+      mp3: 'http://im5.tongbu.com/rings/singerring/zt_uunGo_1/219.mp3',
+      cover: new URL('../../assets/img/music-cover/12.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '给我一首歌的时间',
+      mp3: 'https://m3.8js.net:99/1938/041204380445445.mp3',
+      cover: new URL('../../assets/img/music-cover/18.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '烟花易冷',
+      mp3: 'https://m3.8js.net:99/1828/051204280535192.mp3',
+      cover: new URL('../../assets/img/music-cover/14.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '惊叹号',
+      mp3: 'https://m3.8js.net:99/20111103/150.mp3',
+      cover: new URL('../../assets/img/music-cover/15.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '明明就',
+      mp3: 'https://m3.8js.net:99/2016n/27/96537.mp3',
+      cover: new URL('../../assets/img/music-cover/16.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '算什么男人',
+      mp3: 'https://m3.8js.net:99/20150107/429.mp3',
+      cover: new URL('../../assets/img/music-cover/17.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    },
+    {
+      name: '告白气球',
+      mp3: 'https://m3.8js.net:99/20161016/481.mp3',
+      cover: new URL('../../assets/img/music-cover/18.jpg', import.meta.url).href,
+      author: '周杰伦',
+      duration: 60,
+      use_count: 37441000,
+      is_collect: false,
+      is_play: false
+    }
   ],
   brandRankList: {} as Record<string, any[]>,
   selectBrandKey: '汽车',
@@ -580,26 +823,124 @@ const data = reactive({
 // 初始化 brandRankList (保持原有数据)
 ;(data as any).brandRankList = {
   汽车: [
-    { name: '五菱汽车', logo: 'https://www.wuling.com/favicon.ico', hot_count: 1395, living: false },
-    { name: '宝马', logo: 'https://www.bmw.com.cn/etc/clientlibs/digitals2/clientlib/media/img/BMW_Grey_Logo.svg', hot_count: 1395, living: true },
-    { name: '吉利汽车', logo: 'http://www.cargc.com/uploads/allimg/200828/1401364511-2.jpg', hot_count: 1395, living: false },
-    { name: '一汽大众-奥迪', logo: 'https://www.audi.cn/bin/nemo.static.20210916063431/cms4i-nemo/assets/icons/favicon/favicon-v4.ico', hot_count: 1395, living: false },
+    {
+      name: '五菱汽车',
+      logo: 'https://www.wuling.com/favicon.ico',
+      hot_count: 1395,
+      living: false
+    },
+    {
+      name: '宝马',
+      logo: 'https://www.bmw.com.cn/etc/clientlibs/digitals2/clientlib/media/img/BMW_Grey_Logo.svg',
+      hot_count: 1395,
+      living: true
+    },
+    {
+      name: '吉利汽车',
+      logo: 'http://www.cargc.com/uploads/allimg/200828/1401364511-2.jpg',
+      hot_count: 1395,
+      living: false
+    },
+    {
+      name: '一汽大众-奥迪',
+      logo: 'https://www.audi.cn/bin/nemo.static.20210916063431/cms4i-nemo/assets/icons/favicon/favicon-v4.ico',
+      hot_count: 1395,
+      living: false
+    },
     { name: '一汽-大众', logo: 'https://www.vw.com.cn/favicon.ico', hot_count: 1395, living: false }
   ],
   手机: [
-    { name: '华为', logo: 'https://isesglobal.com/wp-content/uploads/2021/01/Huawei.jpg', hot_count: 1395, living: false },
+    {
+      name: '华为',
+      logo: 'https://isesglobal.com/wp-content/uploads/2021/01/Huawei.jpg',
+      hot_count: 1395,
+      living: false
+    },
     { name: '小米', logo: 'https://s01.mifile.cn/favicon.ico', hot_count: 1395, living: true },
-    { name: 'vivo', logo: 'http://wwwstatic.vivo.com.cn/vivoportal/web/dist/img/common/favicon_ecf768e.ico', hot_count: 1395, living: false },
-    { name: 'oppo', logo: 'https://code.oppo.com/etc.clientlibs/global-site/clientlibs/clientlib-design/resources/icons/favicon.ico', hot_count: 1395, living: false },
-    { name: '三星', logo: 'https://www.samsung.com/etc.clientlibs/samsung/clientlibs/consumer/global/clientlib-common/resources/images/Favicon.png', hot_count: 1395, living: false }
+    {
+      name: 'vivo',
+      logo: 'http://wwwstatic.vivo.com.cn/vivoportal/web/dist/img/common/favicon_ecf768e.ico',
+      hot_count: 1395,
+      living: false
+    },
+    {
+      name: 'oppo',
+      logo: 'https://code.oppo.com/etc.clientlibs/global-site/clientlibs/clientlib-design/resources/icons/favicon.ico',
+      hot_count: 1395,
+      living: false
+    },
+    {
+      name: '三星',
+      logo: 'https://www.samsung.com/etc.clientlibs/samsung/clientlibs/consumer/global/clientlib-common/resources/images/Favicon.png',
+      hot_count: 1395,
+      living: false
+    }
   ],
   美妆: [
-    { name: '巴黎欧莱雅', logo: 'https://oap-cn-prd-cd.e-loreal.cn/-/media/project/loreal/brand-sites/oap/apac/cn/identity/image-2020-06-19-20-48-00-996.png', hot_count: 1395, living: false },
-    { name: '花西子', logo: 'https://www.haoyunbb.com/img/allimg/210607/001I43462-0.png', hot_count: 1395, living: false },
-    { name: '完美日记', logo: 'http://5b0988e595225.cdn.sohucs.com/images/20200412/9c6caafca79e438f98d98d3986ebce4d.png', hot_count: 1395, living: false },
-    { name: '雅诗兰黛', logo: 'https://vipyidiancom.oss-cn-beijing.aliyuncs.com/vipyidian.com/article/1_150918143107_1.png', hot_count: 1395, living: false },
-    { name: 'COLORKEY珂拉琪', logo: 'https://www.80wzbk.com/uploads/logo/20210129/20210129104015_541.jpg', hot_count: 1395, living: false }
+    {
+      name: '巴黎欧莱雅',
+      logo: 'https://oap-cn-prd-cd.e-loreal.cn/-/media/project/loreal/brand-sites/oap/apac/cn/identity/image-2020-06-19-20-48-00-996.png',
+      hot_count: 1395,
+      living: false
+    },
+    {
+      name: '花西子',
+      logo: 'https://www.haoyunbb.com/img/allimg/210607/001I43462-0.png',
+      hot_count: 1395,
+      living: false
+    },
+    {
+      name: '完美日记',
+      logo: 'http://5b0988e595225.cdn.sohucs.com/images/20200412/9c6caafca79e438f98d98d3986ebce4d.png',
+      hot_count: 1395,
+      living: false
+    },
+    {
+      name: '雅诗兰黛',
+      logo: 'https://vipyidiancom.oss-cn-beijing.aliyuncs.com/vipyidian.com/article/1_150918143107_1.png',
+      hot_count: 1395,
+      living: false
+    },
+    {
+      name: 'COLORKEY珂拉琪',
+      logo: 'https://www.80wzbk.com/uploads/logo/20210129/20210129104015_541.jpg',
+      hot_count: 1395,
+      living: false
+    }
   ]
+}
+
+// ==================== 打字机效果 ====================
+const typingTimer = ref<ReturnType<typeof setInterval> | null>(null)
+const displayedSummary = ref('')
+
+function stopTypewriter() {
+  if (typingTimer.value) {
+    clearInterval(typingTimer.value)
+    typingTimer.value = null
+  }
+}
+
+function startTypewriter(text: string) {
+  stopTypewriter()
+  displayedSummary.value = ''
+  let cursor = 0
+  const charsPerTick = 6
+  typingTimer.value = setInterval(() => {
+    cursor += charsPerTick
+    if (cursor >= text.length) {
+      displayedSummary.value = text
+      stopTypewriter()
+    } else {
+      displayedSummary.value = text.slice(0, cursor)
+    }
+  }, 25)
+}
+
+function expandSummary() {
+  stopTypewriter()
+  displayedSummary.value = data.aiSummary
+  data.aiExpanded = true
 }
 
 const lHistory = computed(() => {
@@ -641,10 +982,10 @@ const imageOnlyResults = computed(() =>
 
 const suggestionPool = computed(() => {
   const names = new Set<string>()
-  data.guess.forEach(g => names.add(g.name))
-  data.hotRankList.forEach(h => names.add(h.name))
-  data.liveRankList.forEach(l => names.add(l.name))
-  data.musicRankList.forEach(m => names.add(m.name))
+  data.guess.forEach((g) => names.add(g.name))
+  data.hotRankList.forEach((h) => names.add(h.name))
+  data.liveRankList.forEach((l) => names.add(l.name))
+  data.musicRankList.forEach((m) => names.add(m.name))
   return Array.from(names)
 })
 
@@ -663,15 +1004,15 @@ watch(
       data.userResults = []
       data.aiSummary = ''
       data.aiExpanded = false
+      stopTypewriter()
+      displayedSummary.value = ''
     }
     const kw = (newVal || '').trim().toLowerCase()
     if (!kw) {
       data.suggestions = []
       return
     }
-    data.suggestions = suggestionPool.value
-      .filter(s => s.toLowerCase().includes(kw))
-      .slice(0, 10)
+    data.suggestions = suggestionPool.value.filter((s) => s.toLowerCase().includes(kw)).slice(0, 10)
   }
 )
 
@@ -715,6 +1056,8 @@ async function doSearch() {
   data.suggestions = []
   data.aiExpanded = false
   data.aiSummary = ''
+  stopTypewriter()
+  displayedSummary.value = ''
   data.searchTab = '综合'
 
   // 并行请求
@@ -730,7 +1073,9 @@ async function doSearch() {
       } else {
         data.videoResults = []
       }
-    } catch { data.videoResults = [] }
+    } catch {
+      data.videoResults = []
+    }
     data.videoLoading = false
   })()
 
@@ -743,18 +1088,27 @@ async function doSearch() {
       } else {
         data.userResults = []
       }
-    } catch { data.userResults = [] }
+    } catch {
+      data.userResults = []
+    }
     data.userLoading = false
   })()
 
   // AI 总结
+  data.aiLoading = true
+  stopTypewriter()
+  displayedSummary.value = ''
   const aiPromise = (async () => {
     try {
       const res = await searchSummary(kw)
       if (res.success && res.data?.summary) {
         data.aiSummary = res.data.summary
+        startTypewriter(res.data.summary)
       }
-    } catch { /* 忽略 */ }
+    } catch {
+      /* 忽略 */
+    }
+    data.aiLoading = false
   })()
 
   await Promise.all([videoPromise, userPromise, aiPromise])
@@ -768,6 +1122,8 @@ function clearSearch() {
   data.isSearched = false
   data.suggestions = []
   data.aiSummary = ''
+  stopTypewriter()
+  displayedSummary.value = ''
   data.aiExpanded = false
 }
 
@@ -828,7 +1184,9 @@ async function toggleFollow(item: any) {
     if (res.success) {
       item.is_followed = !item.is_followed
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 function _formatDuration(ms: number): string {
@@ -867,7 +1225,9 @@ async function loadHistory() {
   try {
     const res = await getSearchHistory()
     if (res.success && Array.isArray(res.data)) data.history = res.data as string[]
-  } catch { /* 未登录或接口不可用时保持空列表 */ }
+  } catch {
+    /* 未登录或接口不可用时保持空列表 */
+  }
 }
 
 function saveHistory(keyword: string) {
@@ -880,12 +1240,20 @@ function saveHistory(keyword: string) {
 async function deleteHistoryKeyword(keyword: string) {
   const kw = keyword.trim()
   data.history = data.history.filter((h) => h !== kw)
-  try { await deleteSearchHistoryKeyword(kw) } catch {}
+  try {
+    await deleteSearchHistoryKeyword(kw)
+  } catch {
+    /* ignore */
+  }
 }
 
 async function clearHistory() {
   data.history = []
-  try { await clearSearchHistory() } catch {}
+  try {
+    await clearSearchHistory()
+  } catch {
+    /* ignore */
+  }
 }
 
 function toggleKey(key: string, i: number) {
@@ -900,13 +1268,7 @@ function refresh() {
 
 function toggle() {
   if (data.isExpand) {
-    _showSimpleConfirmDialog(
-      '是否清空历史记录？',
-      clearHistory,
-      null,
-      '确定',
-      '取消'
-    )
+    _showSimpleConfirmDialog('是否清空历史记录？', clearHistory, null, '确定', '取消')
   } else {
     data.isExpand = true
   }
@@ -936,8 +1298,12 @@ function toggle() {
     margin-left: 5rem;
     border-radius: 2rem;
 
-    &.hot { background: var(--primary-btn-color); }
-    &.new { background: rgb(186, 51, 226); }
+    &.hot {
+      background: var(--primary-btn-color);
+    }
+    &.new {
+      background: rgb(186, 51, 226);
+    }
   }
 
   .header {
@@ -955,8 +1321,14 @@ function toggle() {
     box-sizing: border-box;
     top: 0;
 
-    .search-ctn { flex: 1; }
-    .scan { transform: scale(2); height: 10rem; width: 10rem; }
+    .search-ctn {
+      flex: 1;
+    }
+    .scan {
+      transform: scale(2);
+      height: 10rem;
+      width: 10rem;
+    }
   }
 
   .content {
@@ -976,11 +1348,25 @@ function toggle() {
         border-bottom: 0.5px solid rgba(255, 255, 255, 0.06);
         cursor: pointer;
 
-        &:active { opacity: 0.6; }
+        &:active {
+          opacity: 0.6;
+        }
 
-        .search-icon { width: 16rem; height: 16rem; opacity: 0.5; }
-        .text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        &.no-match { color: var(--second-text-color); cursor: default; }
+        .search-icon {
+          width: 16rem;
+          height: 16rem;
+          opacity: 0.5;
+        }
+        .text {
+          flex: 1;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        &.no-match {
+          color: var(--second-text-color);
+          cursor: default;
+        }
       }
     }
 
@@ -991,7 +1377,9 @@ function toggle() {
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
 
-      &::-webkit-scrollbar { display: none; }
+      &::-webkit-scrollbar {
+        display: none;
+      }
     }
 
     .search-tabs {
@@ -1010,7 +1398,9 @@ function toggle() {
         margin-right: 4rem;
         transition: all 0.2s;
 
-        &:active { opacity: 0.7; }
+        &:active {
+          opacity: 0.7;
+        }
 
         &.active {
           color: white;
@@ -1037,7 +1427,68 @@ function toggle() {
         max-height: 220rem;
         overflow: hidden;
 
-        &.full { max-height: none; }
+        &.full {
+          max-height: none;
+        }
+      }
+
+      .ai-cursor {
+        color: var(--second-text-color);
+        animation: ai-blink 0.7s step-end infinite;
+      }
+
+      @keyframes ai-blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0;
+        }
+      }
+
+      @keyframes ai-loading-bounce {
+        0%,
+        80%,
+        100% {
+          transform: scale(0.6);
+          opacity: 0.4;
+        }
+        40% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      &.ai-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6rem;
+        padding: 16rem 12rem;
+
+        .ai-loading-dot {
+          width: 8rem;
+          height: 8rem;
+          border-radius: 50%;
+          background: var(--second-btn-color-tran);
+          animation: ai-loading-bounce 1.2s ease-in-out infinite;
+          &:nth-child(1) {
+            animation-delay: 0s;
+          }
+          &:nth-child(2) {
+            animation-delay: 0.2s;
+          }
+          &:nth-child(3) {
+            animation-delay: 0.4s;
+          }
+        }
+
+        .ai-loading-text {
+          margin-left: 4rem;
+          font-size: 12rem;
+          color: var(--second-text-color);
+        }
       }
 
       .ai-fade {
@@ -1074,7 +1525,9 @@ function toggle() {
         gap: 4rem;
         z-index: 2;
 
-        &:active { opacity: 0.8; }
+        &:active {
+          opacity: 0.8;
+        }
 
         .expand-arrow {
           width: 14rem;
@@ -1083,7 +1536,9 @@ function toggle() {
       }
 
       &.expanded {
-        .ai-text { max-height: none; }
+        .ai-text {
+          max-height: none;
+        }
       }
     }
 
@@ -1101,7 +1556,9 @@ function toggle() {
         overflow: hidden;
         cursor: pointer;
 
-        &:active { opacity: 0.85; }
+        &:active {
+          opacity: 0.85;
+        }
 
         .cover-wrap {
           position: relative;
@@ -1183,7 +1640,10 @@ function toggle() {
               color: var(--second-text-color);
               flex-shrink: 0;
 
-              svg { width: 14rem; height: 14rem; }
+              svg {
+                width: 14rem;
+                height: 14rem;
+              }
             }
           }
         }
@@ -1202,7 +1662,9 @@ function toggle() {
         border-bottom: 0.5px solid rgba(255, 255, 255, 0.06);
         cursor: pointer;
 
-        &:active { opacity: 0.6; }
+        &:active {
+          opacity: 0.6;
+        }
 
         .u-avatar {
           width: 52rem;
@@ -1232,7 +1694,10 @@ function toggle() {
             overflow: hidden;
             text-overflow: ellipsis;
 
-            .u-sep { margin: 0 6rem; opacity: 0.3; }
+            .u-sep {
+              margin: 0 6rem;
+              opacity: 0.3;
+            }
           }
         }
 
@@ -1246,7 +1711,9 @@ function toggle() {
           color: white;
           cursor: pointer;
 
-          &:active { opacity: 0.8; }
+          &:active {
+            opacity: 0.8;
+          }
 
           &.followed {
             background: var(--second-btn-color-tran);
@@ -1263,7 +1730,8 @@ function toggle() {
       }
     }
 
-    .loading-tip, .empty-tip {
+    .loading-tip,
+    .empty-tip {
       text-align: center;
       padding: 40rem 0;
       color: var(--second-text-color);
@@ -1272,8 +1740,14 @@ function toggle() {
 
     // ==================== 默认页面 (历史/猜你想搜/排行榜) ====================
     .history {
-      .row { min-height: 40rem; }
-      .history-expand { text-align: center; padding: 10rem; color: var(--second-text-color); }
+      .row {
+        min-height: 40rem;
+      }
+      .history-expand {
+        text-align: center;
+        padding: 10rem;
+        color: var(--second-text-color);
+      }
     }
 
     .guess {
@@ -1290,7 +1764,11 @@ function toggle() {
         .right {
           display: flex;
           align-items: center;
-          img { margin-right: 5rem; width: 13rem; height: 13rem; }
+          img {
+            margin-right: 5rem;
+            width: 13rem;
+            height: 13rem;
+          }
         }
       }
 
@@ -1360,7 +1838,13 @@ function toggle() {
           .rank-wrapper {
             display: flex;
             align-items: center;
-            .rank { width: 18rem; height: 18rem; line-height: 18rem; text-align: center; margin-right: 15rem; }
+            .rank {
+              width: 18rem;
+              height: 18rem;
+              line-height: 18rem;
+              text-align: center;
+              margin-right: 15rem;
+            }
           }
 
           .right {
@@ -1386,7 +1870,9 @@ function toggle() {
                 overflow: hidden;
               }
             }
-            .count { font-size: 12rem; }
+            .count {
+              font-size: 12rem;
+            }
           }
         }
       }
@@ -1406,12 +1892,23 @@ function toggle() {
           align-items: center;
           color: var(--second-text-color);
 
-          &:active { opacity: 0.5; }
+          &:active {
+            opacity: 0.5;
+          }
 
           .rank-wrapper {
             display: flex;
             align-items: center;
-            .rank { width: 18rem; height: 18rem; line-height: 18rem; text-align: center; margin-right: 15rem; &.top { color: yellow; } }
+            .rank {
+              width: 18rem;
+              height: 18rem;
+              line-height: 18rem;
+              text-align: center;
+              margin-right: 15rem;
+              &.top {
+                color: yellow;
+              }
+            }
           }
 
           .right {
@@ -1439,10 +1936,21 @@ function toggle() {
                 border-radius: 50%;
                 background: var(--primary-btn-color);
 
-                .avatar { width: @width - 0.3; border-radius: 50%; padding: 1rem; background: black; }
+                .avatar {
+                  width: @width - 0.3;
+                  border-radius: 50%;
+                  padding: 1rem;
+                  background: black;
+                }
               }
 
-              .desc { max-width: 55%; font-size: 14rem; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+              .desc {
+                max-width: 55%;
+                font-size: 14rem;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+                overflow: hidden;
+              }
 
               .live-type {
                 height: 22rem;
@@ -1457,11 +1965,21 @@ function toggle() {
                 border-radius: 2rem;
                 background: var(--second-btn-color-tran);
 
-                .type2 { margin-right: 2rem; width: 10rem; height: 10rem; }
-                .type1 { margin-right: 2rem; width: 15rem; height: 10rem; }
+                .type2 {
+                  margin-right: 2rem;
+                  width: 10rem;
+                  height: 10rem;
+                }
+                .type1 {
+                  margin-right: 2rem;
+                  width: 15rem;
+                  height: 10rem;
+                }
               }
             }
-            .count { font-size: 12rem; }
+            .count {
+              font-size: 12rem;
+            }
           }
         }
       }
@@ -1480,12 +1998,23 @@ function toggle() {
           margin-bottom: 10rem;
           align-items: center;
           color: var(--second-text-color);
-          &:active { opacity: 0.5; }
+          &:active {
+            opacity: 0.5;
+          }
 
           .rank-wrapper {
             display: flex;
             align-items: center;
-            .rank { width: 18rem; height: 18rem; line-height: 18rem; text-align: center; margin-right: 15rem; &.top { color: yellow; } }
+            .rank {
+              width: 18rem;
+              height: 18rem;
+              line-height: 18rem;
+              text-align: center;
+              margin-right: 15rem;
+              &.top {
+                color: yellow;
+              }
+            }
           }
 
           .right {
@@ -1504,17 +2033,31 @@ function toggle() {
 
               .avatar-wrapper {
                 margin-right: 10rem;
-                .avatar { width: 30rem; height: 30rem; border-radius: 2rem; }
+                .avatar {
+                  width: 30rem;
+                  height: 30rem;
+                  border-radius: 2rem;
+                }
               }
 
-              .desc { max-width: 95%; font-size: 14rem; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+              .desc {
+                max-width: 95%;
+                font-size: 14rem;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+                overflow: hidden;
+              }
             }
 
             .count {
               display: flex;
               align-items: center;
               font-size: 12rem;
-              img { margin-right: 2rem; width: 15rem; height: 15rem; }
+              img {
+                margin-right: 2rem;
+                width: 15rem;
+                height: 15rem;
+              }
             }
           }
         }
@@ -1539,7 +2082,10 @@ function toggle() {
               margin-right: 10rem;
               padding: 5rem 10rem;
               background: var(--second-btn-color-tran);
-              &.active { color: white; background: var(--second-btn-color); }
+              &.active {
+                color: white;
+                background: var(--second-btn-color);
+              }
             }
           }
 
@@ -1549,12 +2095,23 @@ function toggle() {
             margin-bottom: 10rem;
             align-items: center;
             color: var(--second-text-color);
-            &:active { opacity: 0.5; }
+            &:active {
+              opacity: 0.5;
+            }
 
             .rank-wrapper {
               display: flex;
               align-items: center;
-              .rank { width: 18rem; height: 18rem; line-height: 18rem; text-align: center; margin-right: 15rem; &.top { color: yellow; } }
+              .rank {
+                width: 18rem;
+                height: 18rem;
+                line-height: 18rem;
+                text-align: center;
+                margin-right: 15rem;
+                &.top {
+                  color: yellow;
+                }
+              }
             }
 
             .right {
@@ -1593,9 +2150,20 @@ function toggle() {
                       border-radius: 50%;
                       border: 2rem solid var(--primary-btn-color);
                       animation: avatar-out-line 1s infinite;
-                      @keyframes avatar-out-line { from { padding: 0; } to { opacity: 0; padding: 2rem; } }
+                      @keyframes avatar-out-line {
+                        from {
+                          padding: 0;
+                        }
+                        to {
+                          opacity: 0;
+                          padding: 2rem;
+                        }
+                      }
                     }
-                    .avatar { padding: 1rem; animation: avatar 1s infinite alternate; }
+                    .avatar {
+                      padding: 1rem;
+                      animation: avatar 1s infinite alternate;
+                    }
                   }
 
                   .avatar {
@@ -1606,12 +2174,34 @@ function toggle() {
                     border-radius: 50%;
                     background: black;
                     box-sizing: border-box;
-                    @keyframes avatar { from { padding: 1rem; } to { padding: 2rem; } }
+                    @keyframes avatar {
+                      from {
+                        padding: 1rem;
+                      }
+                      to {
+                        padding: 2rem;
+                      }
+                    }
                   }
                 }
-                .desc { max-width: 95%; font-size: 14rem; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+                .desc {
+                  max-width: 95%;
+                  font-size: 14rem;
+                  white-space: nowrap;
+                  text-overflow: ellipsis;
+                  overflow: hidden;
+                }
               }
-              .count { display: flex; align-items: center; font-size: 12rem; img { margin-right: 2rem; width: 15rem; height: 15rem; } }
+              .count {
+                display: flex;
+                align-items: center;
+                font-size: 12rem;
+                img {
+                  margin-right: 2rem;
+                  width: 15rem;
+                  height: 15rem;
+                }
+              }
             }
           }
         }

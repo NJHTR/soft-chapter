@@ -55,8 +55,12 @@ public interface VideoService extends IService<Video> {
     /** 搜索视频 */
     List<VideoVO> searchVideos(String keyword);
 
-    /** 记录观看历史(INSERT 或 UPDATE 已有时长, 含流量来源/会话/划走速度) */
+    /** 记录观看历史(INSERT 或 UPDATE 已有时长, 含流量来源/会话/划走速度/断点续播位置) */
     void recordWatch(Long userId, Long videoId, Long authorUserId,
                      double watchDuration, double videoDuration, boolean finished,
-                     String trafficSource, String sessionId, double swipeSeconds);
+                     String trafficSource, String sessionId, double swipeSeconds,
+                     double lastPosition);
+
+    /** 获取用户上次观看某视频的播放位置(秒), 无记录返回 0 */
+    Double getLastPosition(Long userId, Long videoId);
 }

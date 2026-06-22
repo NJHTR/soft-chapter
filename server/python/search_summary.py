@@ -20,6 +20,10 @@ import logging
 import os
 import sys
 import torch
+
+# 阻断所有 HuggingFace Hub 网络请求 (本地模型已下载)
+os.environ["HF_HUB_OFFLINE"] = "1"
+
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 if sys.platform == "win32":
@@ -60,17 +64,18 @@ def load_model(model_name):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     log.info("设备: %s, 加载模型: %s", device, model_name)
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True,
+                                              local_files_only=True)
 
     if device == "cuda":
-        # 先尝试 fp16, OOM 则自动回退 4-bit 量化
         try:
-            log.info("尝试 fp16 加载...")
+            log.info("尝试 fp16 加载 (仅本地)...")
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 torch_dtype=torch.float16,
                 device_map="auto",
                 trust_remote_code=True,
+                local_files_only=True,
             )
         except (torch.cuda.OutOfMemoryError, RuntimeError) as e:
             log.warning("fp16 OOM, 回退到 4-bit 量化: %s", e)
@@ -85,12 +90,14 @@ def load_model(model_name):
                 quantization_config=bnb_config,
                 device_map="auto",
                 trust_remote_code=True,
+                local_files_only=True,
             )
     else:
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             torch_dtype=torch.float32,
             trust_remote_code=True,
+            local_files_only=True,
         ).to("cpu")
 
     model.eval()
@@ -100,49 +107,82 @@ def load_model(model_name):
 
 
 def build_user_message(context: dict) -> str:
-    """将搜索上下文构建为自然段落, 然后追加极简指令"""
+    """构建多段落搜索摘要 prompt: 数据洞察 + 智能解答 + 浏览建议"""
     keyword = context.get("keyword", "")
     videos = context.get("videos", [])
     users = context.get("users", [])
     total_videos = context.get("totalVideos", len(videos))
-    total_users = context.get("totalUsers", len(users))
-    top_categories = context.get("topCategories", "")
+    total_likes = context.get("totalLikes", 0)
+    total_plays = context.get("totalPlays", 0)
+    total_comments = context.get("totalComments", 0)
+    avg_duration = context.get("avgDuration", 0)
+    top_categories = context.get("topCategories", "综合")
+    type_dist = context.get("typeDistribution", "")
+    user_count = context.get("totalUsers", len(users))
+    total_followers = context.get("totalFollowers", 0)
 
     lines = []
 
-    # 1. 用一句话概括搜索结果
+    # 数据部分
+    lines.append(f"【搜索关键词】{keyword}")
+    lines.append(f"【搜索结果统计】共找到 {total_videos} 个视频、{user_count} 位创作者")
+    lines.append(f"【内容品类】{top_categories}")
+    if type_dist:
+        lines.append(f"【内容类型分布】{type_dist}")
+    lines.append(f"【互动数据】共 {total_plays} 播放，{total_likes} 点赞，{total_comments} 评论")
+    if avg_duration > 0:
+        lines.append(f"【平均时长】约 {avg_duration} 秒")
+    if total_followers > 0:
+        lines.append(f"【创作者粉丝总量】{total_followers}")
+
+    # 视频列表
     if videos:
-        titles = "、".join(v.get("title", "")[:40] for v in videos[:10] if v.get("title"))
-        cat_info = f"，主要品类是{top_categories}" if top_categories else ""
-        lines.append(
-            f'用户搜索了"{keyword}"。平台共找到{total_videos}个相关视频{cat_info}，'
-            f'例如：{titles}。'
-        )
-    else:
-        lines.append(f'用户搜索了"{keyword}"。平台暂未找到相关视频。')
+        lines.append("\n【热门视频 TOP8】")
+        for v in videos[:8]:
+            lines.append(
+                f"- {v.get('title', '')[:60]} "
+                f"[{v.get('type', '视频')} | {v.get('category', '综合')} | "
+                f"{v.get('likes', 0)}赞 | {v.get('plays', 0)}播放 | "
+                f"质量分{v.get('qualityScore', 0):.1f}]"
+            )
 
-    # 2. 热门视频的点赞数 (挑前3)
-    hot = [v for v in videos[:10] if v.get("likes", 0) > 0][:3]
-    if hot:
-        hot_str = "，".join(
-            f"《{v['title'][:30]}》有{v['likes']}个赞" for v in hot
-        )
-        lines.append(f"其中热门内容：{hot_str}。")
-
-    # 3. 匹配到的创作者
+    # 创作者列表
     if users:
-        user_str = "、".join(u.get("name", "") for u in users[:5] if u.get("name"))
-        if user_str:
-            lines.append(f"相关创作者包括：{user_str}。")
+        top_users = sorted(users, key=lambda u: u.get("followerCount", 0), reverse=True)
+        lines.append("\n【相关创作者 TOP5】")
+        for u in top_users[:5]:
+            fc = u.get("followerCount", 0)
+            if fc >= 10000:
+                level = f"{fc/10000:.1f}万粉丝"
+            elif fc >= 1000:
+                level = f"{fc/1000:.0f}千粉丝"
+            else:
+                level = f"{fc}粉丝"
+            lines.append(f"- {u['name']} ({level})")
 
-    # 4. 极简指令 — 不放系统提示里, 直接放在数据后面
+    # 指令部分 — 要求多段落输出
     kw = keyword
-    lines.append(
-        f"请用流畅自然的中文，写一段3-5句话的搜索结果摘要，"
-        f'告诉用户搜索"{kw}"能在平台看到什么样的内容。'
-        f"直接写摘要正文，不要加标题、前缀或任何格式标记。"
-    )
+    lines.append(f"""
 
+请基于以上真实数据，用专业编辑的口吻生成一份多段落搜索摘要。严格按以下结构输出，每段用 ## 标题：
+
+## 数据洞察
+基于上面的数据进行分析：搜索结果的整体质量和热度如何？
+哪些品类的内容最丰富？内容类型分布有什么特点？
+（不要简单罗列数据，要给出有见地的分析。至少 3 句话。）
+
+## 智能解答
+用户搜索"{kw}"，很可能想了解什么？请结合你的知识，给出关于"{kw}"的知识性解答。
+如果搜索词是一个问题，请直接回答；如果是名词，请介绍其背景、要点和有趣的信息。
+（至少 4 句话，越详细越好。）
+
+## 浏览建议
+根据搜索结果的数据特征，给用户具体的浏览建议：
+- 可以从哪些角度筛选内容？
+- 有哪些优质创作者值得关注？
+- 如何找到最适合自己的内容？
+（至少 3 条建议。）
+""")
     return "\n".join(lines)
 
 
@@ -150,11 +190,13 @@ def generate(tokenizer, model, device, keyword_or_context):
     if isinstance(keyword_or_context, dict):
         user_content = build_user_message(keyword_or_context)
     else:
+        kw = keyword_or_context
         user_content = (
-            f'用户搜索了"{keyword_or_context}"。'
-            f'请用流畅自然的中文，写一段2-4句话的搜索结果摘要，'
-            f'告诉用户搜索"{keyword_or_context}"能在平台看到什么样的内容。'
-            f'直接写摘要正文，不要加任何前缀或格式标记。'
+            f'用户搜索了"{kw}"。\n\n'
+            f'请按照以下格式生成搜索结果摘要，每段用 ## 标题分隔：\n\n'
+            f'## 搜索概况\n(根据关键词分析这个搜索主题的概况)\n\n'
+            f'## 智能解答\n(直接回答用户"{kw}"相关的问题，给出知识性解答)\n\n'
+            f'## 浏览建议\n(给用户提供浏览和筛选建议)\n'
         )
 
     messages = [{"role": "user", "content": user_content}]
@@ -184,11 +226,11 @@ def generate(tokenizer, model, device, keyword_or_context):
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
-            max_new_tokens=256,
-            temperature=0.2,
-            top_p=0.8,
+            max_new_tokens=768,
+            temperature=0.5,
+            top_p=0.85,
             do_sample=True,
-            repetition_penalty=1.2,
+            repetition_penalty=1.15,
             pad_token_id=tokenizer.eos_token_id,
         )
 

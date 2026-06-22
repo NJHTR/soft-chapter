@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -29,9 +30,9 @@ public class UserProfileService {
 
     private static final int SHORT_TERM_HOURS = 24;
     private static final int LONG_TERM_DAYS = 30;
-    private static final double EMA_ALPHA_SHORT = 0.15;
-    private static final double EMA_ALPHA_LONG = 0.05;
-    private static final double CATEGORY_DECAY = 0.92;  // 品类权重日衰减
+    private static final double EMA_ALPHA_SHORT = RecommendationConfig.ALPHA_SHORT_TERM;
+    private static final double EMA_ALPHA_LONG = RecommendationConfig.ALPHA_LONG_TERM;
+    private static final double CATEGORY_DECAY = RecommendationConfig.ALPHA_CATEGORY;
 
     private final UserContentProfileMapper profileMapper;
     private final WatchHistoryMapper watchHistoryMapper;
@@ -42,7 +43,19 @@ public class UserProfileService {
     private final SearchHistoryMapper searchHistoryMapper;
     private final VisitorMapper visitorMapper;
     private final VideoContentMapper contentMapper;
+    private final VideoTagService videoTagService;
     private final ObjectMapper objectMapper;
+
+    /** sessionId → 上次观看 (videoId + 完播率) — 共观扩散追踪 */
+    private final ConcurrentHashMap<String, SessionWatchInfo> sessionLastWatch = new ConcurrentHashMap<>();
+    private static class SessionWatchInfo {
+        final Long videoId;
+        final double completion;
+        SessionWatchInfo(Long videoId, double completion) {
+            this.videoId = videoId;
+            this.completion = completion;
+        }
+    }
 
     public UserProfileService(UserContentProfileMapper profileMapper,
                               WatchHistoryMapper watchHistoryMapper,
@@ -52,7 +65,8 @@ public class UserProfileService {
                               FollowMapper followMapper,
                               SearchHistoryMapper searchHistoryMapper,
                               VisitorMapper visitorMapper,
-                              VideoContentMapper contentMapper) {
+                              VideoContentMapper contentMapper,
+                              VideoTagService videoTagService) {
         this.profileMapper = profileMapper;
         this.watchHistoryMapper = watchHistoryMapper;
         this.exposureMapper = exposureMapper;
@@ -62,6 +76,7 @@ public class UserProfileService {
         this.searchHistoryMapper = searchHistoryMapper;
         this.visitorMapper = visitorMapper;
         this.contentMapper = contentMapper;
+        this.videoTagService = videoTagService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -109,8 +124,8 @@ public class UserProfileService {
         UserContentProfile p = getOrCreate(userId);
         VideoContent vc = contentMapper.selectById(videoId);
 
-        boolean finished = videoDurationSec > 0 && watchDurationSec >= videoDurationSec * 0.9;
-        boolean isBounce = watchDurationSec < 3.0;
+        boolean finished = videoDurationSec > 0 && watchDurationSec >= videoDurationSec * RecommendationConfig.CAT_WELL_WATCHED_COMPLETION;
+        boolean isBounce = watchDurationSec < RecommendationConfig.UP_BOUNCE_THRESHOLD_SEC;
         double completion = videoDurationSec > 0
                 ? Math.min(1.0, watchDurationSec / videoDurationSec) : 0;
 
@@ -119,15 +134,13 @@ public class UserProfileService {
 
         // 平均观看时长 (EMA)
         double oldAvg = p.getAvgWatchDuration() != null ? p.getAvgWatchDuration() : 0;
-        p.setAvgWatchDuration(oldAvg * 0.9 + watchDurationSec * 0.1);
+        p.setAvgWatchDuration(oldAvg * (1 - RecommendationConfig.ALPHA_PROFILE) + watchDurationSec * RecommendationConfig.ALPHA_PROFILE);
 
-        // 完播率
         double oldComp = p.getAvgCompletionRate() != null ? p.getAvgCompletionRate() : 0;
-        p.setAvgCompletionRate(oldComp * 0.95 + completion * 0.05);
+        p.setAvgCompletionRate(oldComp * (1 - RecommendationConfig.ALPHA_COMPLETION) + completion * RecommendationConfig.ALPHA_COMPLETION);
 
-        // 快速划走率
         double oldBounce = p.getBounceRate() != null ? p.getBounceRate() : 0;
-        p.setBounceRate(oldBounce * 0.95 + (isBounce ? 1.0 : 0.0) * 0.05);
+        p.setBounceRate(oldBounce * (1 - RecommendationConfig.ALPHA_BOUNCE) + (isBounce ? 1.0 : 0.0) * RecommendationConfig.ALPHA_BOUNCE);
 
         // 观看次数
         p.setTotalWatchCount((p.getTotalWatchCount() != null ? p.getTotalWatchCount() : 0) + 1);
@@ -143,6 +156,34 @@ public class UserProfileService {
             updateCreatorAffinity(p, authorId, watchDurationSec, isBounce);
         }
 
+        // 动态标签: 共观扩散 (session 内连续观看)
+        if (sessionId != null && !sessionId.isEmpty()) {
+            SessionWatchInfo prev = sessionLastWatch.get(sessionId);
+            if (prev != null && !prev.videoId.equals(videoId)) {
+                try {
+                    videoTagService.onConsecutiveWatch(sessionId, prev.videoId, videoId,
+                            prev.completion, completion);
+                } catch (Exception ignored) {}
+            }
+            sessionLastWatch.put(sessionId, new SessionWatchInfo(videoId, completion));
+            // 防内存泄漏: 超过 20000 条全量清理
+            if (sessionLastWatch.size() > RecommendationConfig.SESSION_MAP_MAX) {
+                sessionLastWatch.clear();
+            }
+        }
+
+        // 动态标签: 搜索→观看关联 (用户近期搜索词 + 完播验证)
+        if (!isBounce && watchDurationSec >= RecommendationConfig.UP_SEARCH_WATCH_MIN_SEC) {
+            try {
+                List<String> recentSearches = parseRecentSearches(p.getRecentSearchQueries());
+                for (String kw : recentSearches) {
+                    if (kw != null && kw.length() >= 2) {
+                        videoTagService.onSearchWatch(videoId, kw, completion);
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
         // 流量来源分布
         if (trafficSource != null) {
             updateTrafficSources(p, trafficSource);
@@ -150,6 +191,16 @@ public class UserProfileService {
 
         // 活跃时段
         updateActiveHours(p);
+
+        // 音乐偏好累积: 高完播(>50%)时更新BPM范围+能量偏好
+        if (vc != null && completion > RecommendationConfig.UP_MUSIC_COMPLETION_MIN) {
+            if (vc.getMusicBpm() != null && vc.getMusicBpm() > 0) {
+                updateMusicBpmPreference(p, vc.getMusicBpm());
+            }
+            if (vc.getMusicEnergy() != null) {
+                updateMusicEnergyPreference(p, vc.getMusicEnergy());
+            }
+        }
 
         // 活跃天数
         updateActiveDays(p);
@@ -167,7 +218,7 @@ public class UserProfileService {
         p.setTotalLikeCount((p.getTotalLikeCount() != null ? p.getTotalLikeCount() : 0) + 1);
         p.setTotalInteractCount((p.getTotalInteractCount() != null ? p.getTotalInteractCount() : 0) + 1);
         updateRate("like", p);
-        updateCreatorAffinity(p, authorId, 30, false); // like = 高权重正向信号
+        updateCreatorAffinity(p, authorId, RecommendationConfig.UP_AFF_INC_LIKE, false);
         p.setUpdateTime(LocalDateTime.now());
         profileMapper.insertOrUpdate(p);
     }
@@ -178,7 +229,7 @@ public class UserProfileService {
         p.setTotalCollectCount((p.getTotalCollectCount() != null ? p.getTotalCollectCount() : 0) + 1);
         p.setTotalInteractCount((p.getTotalInteractCount() != null ? p.getTotalInteractCount() : 0) + 1);
         updateRate("collect", p);
-        updateCreatorAffinity(p, authorId, 40, false); // 收藏 = 更高权重
+        updateCreatorAffinity(p, authorId, RecommendationConfig.UP_AFF_INC_COLLECT, false);
         VideoContent vc = contentMapper.selectById(videoId);
         if (vc != null && vc.getContentVector() != null) {
             updateContentVectorEMA(p, vc.getContentVector(), true);
@@ -193,7 +244,7 @@ public class UserProfileService {
         p.setTotalShareCount((p.getTotalShareCount() != null ? p.getTotalShareCount() : 0) + 1);
         p.setTotalInteractCount((p.getTotalInteractCount() != null ? p.getTotalInteractCount() : 0) + 1);
         updateRate("share", p);
-        updateCreatorAffinity(p, authorId, 35, false);
+        updateCreatorAffinity(p, authorId, RecommendationConfig.UP_AFF_INC_SHARE, false);
         p.setUpdateTime(LocalDateTime.now());
         profileMapper.insertOrUpdate(p);
     }
@@ -204,7 +255,7 @@ public class UserProfileService {
         p.setTotalCommentCount((p.getTotalCommentCount() != null ? p.getTotalCommentCount() : 0) + 1);
         p.setTotalInteractCount((p.getTotalInteractCount() != null ? p.getTotalInteractCount() : 0) + 1);
         updateRate("comment", p);
-        updateCreatorAffinity(p, authorId, 20, false);
+        updateCreatorAffinity(p, authorId, RecommendationConfig.UP_AFF_INC_COMMENT, false);
         p.setUpdateTime(LocalDateTime.now());
         profileMapper.insertOrUpdate(p);
     }
@@ -212,9 +263,10 @@ public class UserProfileService {
     /** 关注 */
     public void onFollow(Long userId, Long followId) {
         UserContentProfile p = getOrCreate(userId);
-        updateCreatorAffinity(p, followId, 50, false);
+        updateCreatorAffinity(p, followId, RecommendationConfig.UP_AFF_INC_FOLLOW, false);
         p.setSocialEngagementRate(
-                Math.min(1.0, (p.getSocialEngagementRate() != null ? p.getSocialEngagementRate() : 0) + 0.02));
+                Math.min(1.0, (p.getSocialEngagementRate() != null ? p.getSocialEngagementRate() : 0)
+                        + RecommendationConfig.UP_SOCIAL_ENGAGE_PER_FOLLOW));
         p.setUpdateTime(LocalDateTime.now());
         profileMapper.insertOrUpdate(p);
     }
@@ -226,12 +278,14 @@ public class UserProfileService {
 
         // 搜索频率 (每10次观看的搜索次数)
         int views = Math.max(1, p.getTotalViewCount() != null ? p.getTotalViewCount() : 1);
-        p.setSearchFrequency((double) (p.getTotalSearchCount() != null ? p.getTotalSearchCount() : 0) / views * 10);
+        p.setSearchFrequency((double) (p.getTotalSearchCount() != null ? p.getTotalSearchCount() : 0)
+                / views * RecommendationConfig.UP_SEARCH_FREQ_SCALE);
 
         // 近期搜索词 (保留最近10条)
         List<String> recent = parseRecentSearches(p.getRecentSearchQueries());
         recent.add(0, keyword);
-        if (recent.size() > 10) recent = recent.subList(0, 10);
+        if (recent.size() > RecommendationConfig.LIMIT_RECENT_SEARCHES)
+            recent = recent.subList(0, RecommendationConfig.LIMIT_RECENT_SEARCHES);
         try {
             p.setRecentSearchQueries(objectMapper.writeValueAsString(recent));
         } catch (JsonProcessingException ignored) {}
@@ -245,8 +299,9 @@ public class UserProfileService {
         UserContentProfile p = getOrCreate(userId);
         p.setProfileVisitCount((p.getProfileVisitCount() != null ? p.getProfileVisitCount() : 0) + 1);
         p.setSocialEngagementRate(
-                Math.min(1.0, (p.getSocialEngagementRate() != null ? p.getSocialEngagementRate() : 0) + 0.01));
-        updateCreatorAffinity(p, visitedUserId, 5, false);
+                Math.min(1.0, (p.getSocialEngagementRate() != null ? p.getSocialEngagementRate() : 0)
+                        + RecommendationConfig.UP_SOCIAL_ENGAGE_PER_VISIT));
+        updateCreatorAffinity(p, visitedUserId, RecommendationConfig.UP_AFF_INC_PROFILE_VISIT, false);
         p.setUpdateTime(LocalDateTime.now());
         profileMapper.insertOrUpdate(p);
     }
@@ -337,7 +392,7 @@ public class UserProfileService {
             double vdur = w.getVideoDuration() != null ? w.getVideoDuration() : 1;
             sumDuration += dur;
             sumCompletion += vdur > 0 ? Math.min(1.0, dur / vdur) : 0;
-            if (dur < 3.0) bounceCount++;
+            if (dur < RecommendationConfig.UP_BOUNCE_THRESHOLD_SEC) bounceCount++;
             if (w.getRepeatCount() != null && w.getRepeatCount() > 1) repeatCount++;
             totalTime += (long) dur;
         }
@@ -379,7 +434,8 @@ public class UserProfileService {
         long followingCount = followMapper.selectCount(new LambdaQueryWrapper<Follow>()
                 .eq(Follow::getUserId, userId));
         p.setSocialEngagementRate(followingCount > 0
-                ? Math.min(1.0, (double) profileVisits / Math.max(1, followingCount) * 0.1)
+                ? Math.min(1.0, (double) profileVisits / Math.max(1, followingCount)
+                        * RecommendationConfig.UP_SOCIAL_RATE_FACTOR)
                 : 0.0);
     }
 
@@ -392,14 +448,14 @@ public class UserProfileService {
         p.setTotalSearchCount((int) searchCount);
 
         int views = Math.max(1, p.getTotalViewCount() != null ? p.getTotalViewCount() : 1);
-        p.setSearchFrequency((double) searchCount / views * 10);
+        p.setSearchFrequency((double) searchCount / views * RecommendationConfig.UP_SEARCH_FREQ_SCALE);
 
         // 近期搜索词 (最近10条)
         List<SearchHistory> recent = searchHistoryMapper.selectList(
                 new LambdaQueryWrapper<SearchHistory>()
                         .eq(SearchHistory::getUserId, userId)
                         .orderByDesc(SearchHistory::getCreateTime)
-                        .last("LIMIT 10"));
+                        .last("LIMIT " + RecommendationConfig.LIMIT_RECENT_SEARCHES));
         try {
             p.setRecentSearchQueries(objectMapper.writeValueAsString(
                     recent.stream().map(SearchHistory::getKeyword).toList()));
@@ -458,7 +514,7 @@ public class UserProfileService {
                 .collect(Collectors.groupingBy(WatchHistory::getSessionId));
         if (!sessions.isEmpty()) {
             double avgSession = sessions.values().stream()
-                    .mapToDouble(list -> list.size() * 15.0) // 粗略: 每个视频 ~15 秒
+                    .mapToDouble(list -> list.size() * RecommendationConfig.UP_SESSION_SEC_PER_VIDEO)
                     .average().orElse(0);
             p.setAvgSessionDuration(avgSession);
         }
@@ -491,12 +547,16 @@ public class UserProfileService {
         int totalViews = p.getTotalViewCount() != null ? p.getTotalViewCount() : 0;
 
         // 规则优先级
-        if (totalViews < 20) { p.setUserType("balanced"); return; }
-        if (bounce > 0.65 && likeRate < 0.05 && collectRate < 0.02) { p.setUserType("passive_consumer"); return; }
-        if (socialEng > 0.3 && profileVisits > 10) { p.setUserType("social_butterfly"); return; }
-        if (likeRate > 0.4 && collectRate < 0.05) { p.setUserType("power_liker"); return; }
-        if (collectRate > 0.1) { p.setUserType("collector"); return; }
-        if (searchFreq > 2.0) { p.setUserType("active_searcher"); return; }
+        if (totalViews < RecommendationConfig.UCLASS_MIN_VIEWS) { p.setUserType("balanced"); return; }
+        if (bounce > RecommendationConfig.UCLASS_BOUNCE_HIGH
+                && likeRate < RecommendationConfig.UCLASS_LIKE_LOW
+                && collectRate < RecommendationConfig.UCLASS_COLLECT_LOW) { p.setUserType("passive_consumer"); return; }
+        if (socialEng > RecommendationConfig.UCLASS_SOCIAL_HIGH
+                && profileVisits > RecommendationConfig.UCLASS_PROFILE_VISIT_MIN) { p.setUserType("social_butterfly"); return; }
+        if (likeRate > RecommendationConfig.UCLASS_LIKE_HIGH
+                && collectRate < RecommendationConfig.UCLASS_COLLECT_LOW) { p.setUserType("power_liker"); return; }
+        if (collectRate > RecommendationConfig.UCLASS_COLLECT_HIGH) { p.setUserType("collector"); return; }
+        if (searchFreq > RecommendationConfig.UCLASS_SEARCH_HIGH) { p.setUserType("active_searcher"); return; }
         if (hasHighCreatorAffinity(p)) { p.setUserType("creator_fan"); return; }
         if (hasHighCategoryDiversity(p)) { p.setUserType("explorer"); return; }
         p.setUserType("balanced");
@@ -507,7 +567,7 @@ public class UserProfileService {
         try {
             Map<String, Double> aff = objectMapper.readValue(p.getCreatorAffinity(),
                     new TypeReference<Map<String, Double>>() {});
-            return aff.values().stream().anyMatch(v -> v > 0.5);
+            return aff.values().stream().anyMatch(v -> v > RecommendationConfig.UCLASS_AFF_HIGH);
         } catch (JsonProcessingException e) { return false; }
     }
 
@@ -516,8 +576,9 @@ public class UserProfileService {
         try {
             Map<String, Double> cats = objectMapper.readValue(p.getCategoryWeights(),
                     new TypeReference<Map<String, Double>>() {});
-            int significantCats = (int) cats.values().stream().filter(v -> v > 0.1).count();
-            return significantCats >= 5;
+            int significantCats = (int) cats.values().stream()
+                    .filter(v -> v > RecommendationConfig.UCLASS_CAT_DIV_SIG).count();
+            return significantCats >= RecommendationConfig.UCLASS_CAT_DIV_MIN;
         } catch (JsonProcessingException e) { return false; }
     }
 
@@ -525,9 +586,11 @@ public class UserProfileService {
         int views = p.getTotalViewCount() != null ? p.getTotalViewCount() : 0;
         int activeDays = p.getActiveDaysLastWeek() != null ? p.getActiveDaysLastWeek() : 0;
 
-        if (views < 50) p.setUserSegment("new_user");
-        else if (views < 300 || activeDays < 3) p.setUserSegment("light");
-        else if (views < 1500 || activeDays < 5) p.setUserSegment("medium");
+        if (views < RecommendationConfig.SEG_NEW_USER) p.setUserSegment("new_user");
+        else if (views < RecommendationConfig.SEG_LIGHT_MAX
+                || activeDays < RecommendationConfig.SEG_LIGHT_DAYS_MIN) p.setUserSegment("light");
+        else if (views < RecommendationConfig.SEG_MEDIUM_MAX
+                || activeDays < RecommendationConfig.SEG_MEDIUM_DAYS_MIN) p.setUserSegment("medium");
         else p.setUserSegment("heavy");
     }
 
@@ -571,10 +634,10 @@ public class UserProfileService {
         if (category == null || category.isEmpty()) return;
 
         Map<String, Double> weights = parseCategoryWeights(p.getCategoryWeights());
-        double increment = Math.min(0.3, watchDurationSec / 300.0); // 最多+0.3/次
+        double increment = Math.min(RecommendationConfig.UP_CAT_INCREMENT_MAX,
+                watchDurationSec / RecommendationConfig.UP_CAT_NORM_SEC);
 
-        // 所有品类衰减
-        weights.replaceAll((cat, w) -> Math.max(0.01, w * CATEGORY_DECAY));
+        weights.replaceAll((cat, w) -> Math.max(RecommendationConfig.UP_CAT_DECAY_FLOOR, w * CATEGORY_DECAY));
         // 当前品类加成
         weights.merge(category, increment, (old, inc) -> Math.min(1.0, old + inc));
 
@@ -585,17 +648,19 @@ public class UserProfileService {
 
     private void updateCreatorAffinity(UserContentProfile p, Long authorId, double increment, boolean isBounce) {
         if (authorId == null) return;
-        double effectiveInc = isBounce ? -increment * 0.1 : increment;
+        double effectiveInc = isBounce ? -increment * RecommendationConfig.UP_AFF_BOUNCE_DAMP : increment;
 
         Map<String, Double> aff = parseCreatorAffinity(p.getCreatorAffinity());
-        aff.merge(String.valueOf(authorId), Math.max(-1.0, effectiveInc),
-                (old, inc) -> Math.max(-0.5, Math.min(1.0, old * 0.95 + inc * 0.01)));
+        aff.merge(String.valueOf(authorId), Math.max(RecommendationConfig.UP_AFF_INIT_MIN, effectiveInc),
+                (old, inc) -> Math.max(RecommendationConfig.UP_AFF_CLAMP_MIN,
+                        Math.min(RecommendationConfig.UP_AFF_CLAMP_MAX,
+                                old * RecommendationConfig.UP_AFF_OLD_DECAY
+                                        + inc * RecommendationConfig.UP_AFF_INC_FACTOR)));
 
-        // 只保留 Top-50
-        if (aff.size() > 50) {
+        if (aff.size() > RecommendationConfig.LIMIT_CREATOR_AFFINITY) {
             aff = aff.entrySet().stream()
                     .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                    .limit(50)
+                    .limit(RecommendationConfig.LIMIT_CREATOR_AFFINITY)
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
                             (a, b) -> a, LinkedHashMap::new));
         }
@@ -607,7 +672,8 @@ public class UserProfileService {
 
     private void updateTrafficSources(UserContentProfile p, String source) {
         Map<String, Double> sources = parseTrafficSources(p.getTrafficSources());
-        sources.merge(source, 0.02, (old, inc) -> Math.min(1.0, old + inc));
+        sources.merge(source, RecommendationConfig.UP_TRAFFIC_INCREMENT,
+                (old, inc) -> Math.min(1.0, old + inc));
         // 衰减
         double total = sources.values().stream().mapToDouble(Double::doubleValue).sum();
         if (total > 0) {
@@ -618,10 +684,39 @@ public class UserProfileService {
         } catch (JsonProcessingException ignored) {}
     }
 
+    private void updateMusicBpmPreference(UserContentProfile p, double bpm) {
+        double alpha = RecommendationConfig.ALPHA_MUSIC_BPM;
+        if (p.getPreferredBpmMin() == null || p.getPreferredBpmMax() == null) {
+            p.setPreferredBpmMin(bpm * RecommendationConfig.UP_BPM_INIT_MIN_FACTOR);
+            p.setPreferredBpmMax(bpm * RecommendationConfig.UP_BPM_INIT_MAX_FACTOR);
+        } else {
+            p.setPreferredBpmMin(p.getPreferredBpmMin() * (1 - alpha)
+                    + (bpm * RecommendationConfig.UP_BPM_INIT_MIN_FACTOR) * alpha);
+            p.setPreferredBpmMax(p.getPreferredBpmMax() * (1 - alpha)
+                    + (bpm * RecommendationConfig.UP_BPM_INIT_MAX_FACTOR) * alpha);
+            if (p.getPreferredBpmMin() > p.getPreferredBpmMax()) {
+                double tmp = p.getPreferredBpmMin();
+                p.setPreferredBpmMin(p.getPreferredBpmMax());
+                p.setPreferredBpmMax(tmp);
+            }
+        }
+        double range = p.getPreferredBpmMax() - p.getPreferredBpmMin();
+        if (range < RecommendationConfig.UP_BPM_MIN_RANGE) {
+            p.setPreferredBpmMin(p.getPreferredBpmMin() - RecommendationConfig.UP_BPM_RANGE_PAD);
+            p.setPreferredBpmMax(p.getPreferredBpmMax() + RecommendationConfig.UP_BPM_RANGE_PAD);
+        }
+    }
+
+    private void updateMusicEnergyPreference(UserContentProfile p, double energy) {
+        double alpha = RecommendationConfig.ALPHA_MUSIC_ENERGY;
+        double old = p.getPreferredEnergy() != null ? p.getPreferredEnergy() : energy;
+        p.setPreferredEnergy(ScoringFunctions.clamp(old * (1 - alpha) + energy * alpha, 0, 1));
+    }
+
     private void updateActiveHours(UserContentProfile p) {
         int hour = LocalDateTime.now().getHour();
         int[] hours = parseActiveHours(p.getActiveHours());
-        hours[hour] = Math.min(255, hours[hour] + 1);
+        hours[hour] = Math.min(RecommendationConfig.UP_ACTIVE_HOURS_CAP, hours[hour] + 1);
         try {
             p.setActiveHours(objectMapper.writeValueAsString(hours));
         } catch (JsonProcessingException ignored) {}
@@ -699,5 +794,9 @@ public class UserProfileService {
         try {
             return objectMapper.readValue(json, int[].class);
         } catch (Exception e) { return new int[24]; }
+    }
+
+    private double clamp(double val, double min, double max) {
+        return Math.max(min, Math.min(max, val));
     }
 }

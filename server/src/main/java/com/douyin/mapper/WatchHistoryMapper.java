@@ -44,4 +44,29 @@ public interface WatchHistoryMapper extends BaseMapper<WatchHistory> {
     List<Long> findRecentWatchersOfVideo(@Param("videoId") Long videoId,
                                           @Param("since") java.time.LocalDateTime since,
                                           @Param("limit") int limit);
+
+    /** 计算单个视频的行为指标 (用于标签置信度校准) */
+    @Select("SELECT " +
+            "AVG(CASE WHEN video_duration > 0 THEN LEAST(1.0, watch_duration / video_duration) ELSE 0 END) as avg_completion, " +
+            "SUM(CASE WHEN watch_duration < 3 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) as bounce_rate, " +
+            "COUNT(*) as view_count " +
+            "FROM t_watch_history " +
+            "WHERE video_id = #{videoId} AND create_time >= #{since}")
+    java.util.Map<String, Object> computeVideoBehaviorMetrics(@Param("videoId") Long videoId,
+                                                               @Param("since") java.time.LocalDateTime since);
+
+    /** 批量统计共观对 (videoA → videoB): 同一session内先后观看的用户数 */
+    @Select("<script>SELECT prev_video_id as video_a, next_video_id as video_b, " +
+            "COUNT(DISTINCT user_id) as pair_count " +
+            "FROM t_watch_history " +
+            "WHERE create_time >= #{since} " +
+            "AND prev_video_id IS NOT NULL AND prev_video_id != 0 " +
+            "AND video_id IN <foreach collection='videoIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> " +
+            "GROUP BY prev_video_id, video_id " +
+            "HAVING pair_count >= #{minPairs} " +
+            "ORDER BY pair_count DESC LIMIT #{limit}</script>")
+    List<java.util.Map<String, Object>> findCoWatchPairs(@Param("videoIds") List<Long> videoIds,
+                                                           @Param("since") java.time.LocalDateTime since,
+                                                           @Param("minPairs") int minPairs,
+                                                           @Param("limit") int limit);
 }

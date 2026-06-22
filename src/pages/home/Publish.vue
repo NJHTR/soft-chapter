@@ -268,8 +268,8 @@
         </div>
       </div>
       <div class="preview-bottom">
-        <div class="add-more-btn" @click="selectMorePhotos" v-if="photoList.length < 9">
-          <Icon icon="mingcute:add-circle-line" /><span>添加图片 ({{ photoList.length }}/9)</span>
+        <div class="add-more-btn" @click="selectMorePhotos" v-if="photoList.length < 35">
+          <Icon icon="mingcute:add-circle-line" /><span>添加图片 ({{ photoList.length }}/35)</span>
         </div>
         <div class="preview-bottom-row" style="justify-content: space-between">
           <div></div>
@@ -457,7 +457,9 @@
           <span>限时日常</span>
         </div>
         <div class="publish-btn" @click="doUpload" :class="{ loading: uploading }">
-          {{ uploading ? (uploadProgress > 0 ? `上传中 ${uploadProgress}%` : '上传中...') : '发作品' }}
+          {{
+            uploading ? (uploadProgress > 0 ? `上传中 ${uploadProgress}%` : '上传中...') : '发作品'
+          }}
         </div>
       </div>
 
@@ -951,7 +953,7 @@ function finishTextEdit() {
       carouselIdx.value = 0
       previewSrc.value = URL.createObjectURL(blob)
       showPreview.value = true
-      curMode.value = 'photo' // 复用照片预览
+      // 不再设 curMode (computed), goPostEdit 里通过 photoBlob 判断
     },
     'image/jpeg',
     0.9
@@ -1201,8 +1203,9 @@ function goPostEdit() {
     previewEl.value.pause()
   }
   showPostEdit.value = true
-  // 只有视频才抓封面，照片直接用预览图（多图用第一张）
-  if (curMode.value !== 'photo' && previewSrc.value) {
+  // 封面：视频抓帧，文字/照片用预览图（多图用第一张）
+  const isEffectivelyPhoto = curMode.value === 'photo' || (!!photoBlob.value && !recordedBlob.value)
+  if (!isEffectivelyPhoto && previewSrc.value) {
     captureCoverFrame()
   } else if (photoList.value.length > 0) {
     coverDataUrl.value = getPhotoUrl(photoList.value[0])
@@ -1303,7 +1306,7 @@ function onFileSelected(e: Event) {
     const newBlobs = files.filter((f) => f.type.startsWith('image/'))
     if (newBlobs.length === 0) return
     // 限制最多9张
-    const remaining = 9 - photoList.value.length
+    const remaining = 35 - photoList.value.length
     const toAdd = newBlobs.slice(0, remaining)
     photoList.value.push(...toAdd)
     carouselIdx.value = photoList.value.length - 1
@@ -1403,8 +1406,8 @@ async function doUpload() {
       uploadProgress.value = 0
       const uploader = createChunkUploader(file, {
         chunkSize: 5 * 1024 * 1024, // 5MB/片
-        concurrency: 2,              // 2片并发
-        maxRetries: 3               // 每片最多重试3次
+        concurrency: 2, // 2片并发
+        maxRetries: 3 // 每片最多重试3次
       })
 
       uploader.on('progress', (pct: number) => {

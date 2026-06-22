@@ -530,7 +530,8 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
     @Transactional
     public void recordWatch(Long userId, Long videoId, Long authorUserId,
                             double watchDuration, double videoDuration, boolean finished,
-                            String trafficSource, String sessionId, double swipeSeconds) {
+                            String trafficSource, String sessionId, double swipeSeconds,
+                            double lastPosition) {
         if (userId == null || videoId == null) return;
         WatchHistory exist = watchHistoryMapper.selectOne(new LambdaQueryWrapper<WatchHistory>()
                 .eq(WatchHistory::getUserId, userId)
@@ -545,6 +546,7 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
             if (trafficSource != null) exist.setTrafficSource(trafficSource);
             if (sessionId != null) exist.setSessionId(sessionId);
             if (swipeSeconds > 0) exist.setSwipeSeconds(swipeSeconds);
+            if (lastPosition > 0) exist.setLastPosition(lastPosition);
             watchHistoryMapper.updateById(exist);
         } else {
             WatchHistory wh = new WatchHistory();
@@ -558,7 +560,20 @@ public class VideoServiceImpl extends ServiceImpl<VideoMapper, Video> implements
             wh.setTrafficSource(trafficSource);
             wh.setSessionId(sessionId);
             wh.setSwipeSeconds(swipeSeconds);
+            wh.setLastPosition(lastPosition);
             watchHistoryMapper.insert(wh);
         }
+    }
+
+    @Override
+    public Double getLastPosition(Long userId, Long videoId) {
+        if (userId == null || videoId == null) return 0.0;
+        WatchHistory wh = watchHistoryMapper.selectOne(new LambdaQueryWrapper<WatchHistory>()
+                .eq(WatchHistory::getUserId, userId)
+                .eq(WatchHistory::getVideoId, videoId)
+                .select(WatchHistory::getLastPosition));
+        if (wh == null || wh.getLastPosition() == null) return 0.0;
+        // 留 1 秒余量, 避免刚好卡在上次结束帧
+        return Math.max(0, wh.getLastPosition() - 1);
     }
 }

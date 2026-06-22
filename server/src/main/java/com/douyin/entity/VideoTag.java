@@ -14,4 +14,8 @@ public class VideoTag {
     private String tag;
     private String source;
     private Double weight;
+    private Double confidence;
+    private Integer signalCount;
+    private Double aiBase;
+    private java.time.LocalDateTime lastSignal;
 }

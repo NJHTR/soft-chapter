@@ -79,11 +79,30 @@ export function getUserActivityFlow(params?: { hours?: number }) {
 export function getUserProfile(uid: number) {
   return request({ url: '/admin/analytics/user-profile/' + uid, method: 'get' })
 }
-export function getVideoTags(videoId: number) {
+export function getVideoTags(videoId: string) {
   return request({ url: '/admin/analytics/video-tags/' + videoId, method: 'get' })
 }
-export function updateVideoTags(videoId: number, tags: any[]) {
+export function listVideoTags(params: {
+  page?: number
+  pageSize?: number
+  keyword?: string
+  extractStatus?: string
+}) {
+  return request({ url: '/admin/analytics/video-tags', method: 'get', params })
+}
+export function updateVideoTags(videoId: string, tags: any[]) {
   return request({ url: '/admin/analytics/video-tags/' + videoId, method: 'put', data: { tags } })
+}
+
+// === Content Feature Re-extraction ===
+export function reExtractVideo(videoId: string) {
+  return request({ url: '/admin/analytics/re-extract/' + videoId, method: 'post' })
+}
+export function reExtractAllFailed() {
+  return request({ url: '/admin/analytics/re-extract-failed', method: 'post' })
+}
+export function getExtractQueueStatus() {
+  return request({ url: '/admin/analytics/extract-queue-status', method: 'get' })
 }
 
 // === Enhanced Analytics ===

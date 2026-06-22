@@ -10,13 +10,7 @@
     <header v-if="!bigScreenFs" class="top-nav">
       <div class="top-nav-left">
         <router-link to="/big-screen" class="top-logo">
-          <span class="logo-mark">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 18V5l12-2v13"/>
-              <circle cx="6" cy="18" r="3"/>
-              <circle cx="18" cy="16" r="3"/>
-            </svg>
-          </span>
+          <img class="logo-mark" src="/gznxl-gu0vc-001.ico" alt="logo" />
           <span class="logo-text">SeekFlow</span>
           <small>运营管理</small>
         </router-link>
@@ -81,7 +75,10 @@
           </template>
         </div>
 
-        <main class="admin-content" :class="{ 'fs-content': bigScreenFs, 'no-padding': isBigScreen }">
+        <main
+          class="admin-content"
+          :class="{ 'fs-content': bigScreenFs, 'no-padding': isBigScreen }"
+        >
           <router-view v-slot="{ Component }">
             <transition name="fade" mode="out-in">
               <component :is="Component" />
@@ -99,12 +96,41 @@
 import { ref, computed, provide, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { Bell, BarChart3, Tv, Video, Users, MessageCircle, Globe, Flame, User, Brain, CheckCheck, ClipboardList, Tag, Flag, Search, Settings } from 'lucide-vue-next'
+import {
+  Bell,
+  BarChart3,
+  Tv,
+  Video,
+  Users,
+  MessageCircle,
+  Globe,
+  Flame,
+  User,
+  Brain,
+  CheckCheck,
+  ClipboardList,
+  Tag,
+  Flag,
+  Search,
+  Settings
+} from 'lucide-vue-next'
 
 const sidebarIcons: Record<string, any> = {
-  '📊': BarChart3, '📺': Tv, '📹': Video, '👥': Users, '💬': MessageCircle, '🌍': Globe, '🔥': Flame,
-  '👤': User, '🧠': Brain, '✅': CheckCheck, '📋': ClipboardList, '🏷️': Tag, '🚩': Flag,
-  '🔍': Search, '⚙️': Settings,
+  '📊': BarChart3,
+  '📺': Tv,
+  '📹': Video,
+  '👥': Users,
+  '💬': MessageCircle,
+  '🌍': Globe,
+  '🔥': Flame,
+  '👤': User,
+  '🧠': Brain,
+  '✅': CheckCheck,
+  '📋': ClipboardList,
+  '🏷️': Tag,
+  '🚩': Flag,
+  '🔍': Search,
+  '⚙️': Settings
 }
 
 const route = useRoute()
@@ -117,43 +143,51 @@ const bigScreenFs = ref(false)
 provide('bigScreenFs', bigScreenFs)
 
 // ===== 顶部导航配置 =====
-interface TopNavItem { key: string; label: string; firstRoute: string }
+interface TopNavItem {
+  key: string
+  label: string
+  firstRoute: string
+}
 
 const topNavItems: TopNavItem[] = [
   { key: 'bigscreen', label: '数字大屏', firstRoute: '/big-screen' },
-  { key: 'data',      label: '数据中心', firstRoute: '/data/dashboard' },
-  { key: 'users',     label: '用户中心', firstRoute: '/users' },
-  { key: 'works',     label: '作品中心', firstRoute: '/works/review' },
-  { key: 'config',    label: '系统配置', firstRoute: '/config/search' },
+  { key: 'data', label: '数据中心', firstRoute: '/data/dashboard' },
+  { key: 'users', label: '用户中心', firstRoute: '/users' },
+  { key: 'works', label: '作品中心', firstRoute: '/works/review' },
+  { key: 'config', label: '系统配置', firstRoute: '/config/search' }
 ]
 
-interface SidebarItem { label: string; route: string; icon: string }
+interface SidebarItem {
+  label: string
+  route: string
+  icon: string
+}
 
 const sidebarMap: Record<string, SidebarItem[]> = {
   bigscreen: [],
   data: [
-    { label: '仪表盘',       route: '/data/dashboard',     icon: '📊' },
-    { label: '数据大屏',     route: '/big-screen',         icon: '📺' },
+    { label: '仪表盘', route: '/data/dashboard', icon: '📊' },
+    { label: '数据大屏', route: '/big-screen', icon: '📺' },
     { label: '作品数据监控', route: '/data/video-monitor', icon: '📹' },
     { label: '用户数据监控', route: '/data/user-monitor', icon: '👥' },
-    { label: '交互数据监控', route: '/data/engagement',   icon: '💬' },
-    { label: '地域分布',     route: '/data/geo',           icon: '🌍' },
-    { label: '搜索热门词',   route: '/data/search-hot',    icon: '🔥' },
+    { label: '交互数据监控', route: '/data/engagement', icon: '💬' },
+    { label: '地域分布', route: '/data/geo', icon: '🌍' },
+    { label: '搜索热门词', route: '/data/search-hot', icon: '🔥' }
   ],
   users: [
-    { label: '用户管理', route: '/users',            icon: '👤' },
-    { label: '用户画像', route: '/users/portraits',  icon: '🧠' },
+    { label: '用户管理', route: '/users', icon: '👤' },
+    { label: '用户画像', route: '/users/portraits', icon: '🧠' }
   ],
   works: [
-    { label: '作品审核', route: '/works/review',  icon: '✅' },
-    { label: '作品管理', route: '/works/manage',  icon: '📋' },
-    { label: '标签管理', route: '/works/tags',    icon: '🏷️' },
-    { label: '举报处理', route: '/works/reports', icon: '🚩' },
+    { label: '作品审核', route: '/works/review', icon: '✅' },
+    { label: '作品管理', route: '/works/manage', icon: '📋' },
+    { label: '标签管理', route: '/works/tags', icon: '🏷️' },
+    { label: '举报处理', route: '/works/reports', icon: '🚩' }
   ],
   config: [
     { label: '搜索配置', route: '/config/search', icon: '🔍' },
-    { label: '系统设置', route: '/config/system', icon: '⚙️' },
-  ],
+    { label: '系统设置', route: '/config/system', icon: '⚙️' }
+  ]
 }
 
 // ===== 由当前路由推导 active top nav =====
@@ -170,7 +204,7 @@ const activeTopNav = computed(() => {
 })
 
 const activeTopNavLabel = computed(() => {
-  return topNavItems.find(i => i.key === activeTopNav.value)?.label || ''
+  return topNavItems.find((i) => i.key === activeTopNav.value)?.label || ''
 })
 
 const currentSidebarItems = computed(() => {
@@ -180,7 +214,7 @@ const currentSidebarItems = computed(() => {
 // 面包屑
 const breadcrumbs = computed(() => {
   const crumbs: string[] = [activeTopNavLabel.value]
-  const item = currentSidebarItems.value.find(i => i.route === route.path)
+  const item = currentSidebarItems.value.find((i) => i.route === route.path)
   if (item && item.label !== activeTopNavLabel.value) crumbs.push(item.label)
   return crumbs
 })
@@ -205,7 +239,9 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
 </script>
 
 <style scoped lang="less">
-.auth-shell { min-height: 100vh; }
+.auth-shell {
+  min-height: 100vh;
+}
 
 .admin-shell {
   display: flex;
@@ -226,25 +262,30 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
   z-index: 200;
 }
 
-.top-nav-left { display: flex; align-items: center; }
+.top-nav-left {
+  display: flex;
+  align-items: center;
+}
 .top-logo {
   display: flex;
   align-items: center;
   gap: 8px;
   text-decoration: none;
   .logo-mark {
-    background: #fe2c55;
-    color: #fff;
-    font-size: 14px;
-    font-weight: 700;
-    width: 28px; height: 28px;
+    width: 28px;
+    height: 28px;
     border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    object-fit: cover;
   }
-  .logo-text { font-size: 15px; font-weight: 700; color: #fff; }
-  small { font-size: 10px; color: rgba(255,255,255,0.4); }
+  .logo-text {
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+  }
+  small {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.4);
+  }
 }
 
 .top-nav-center {
@@ -256,7 +297,7 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
 .top-nav-item {
   background: none;
   border: none;
-  color: rgba(255,255,255,0.65);
+  color: rgba(255, 255, 255, 0.65);
   font-size: 13px;
   padding: 8px 18px;
   border-radius: 6px;
@@ -264,11 +305,22 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
   transition: all 0.2s;
   white-space: nowrap;
 
-  &:hover { color: #fff; background: rgba(255,255,255,0.08); }
-  &.active { color: #fff; background: rgba(254,44,85,0.3); font-weight: 500; }
+  &:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+  }
+  &.active {
+    color: #fff;
+    background: rgba(254, 44, 85, 0.3);
+    font-weight: 500;
+  }
 }
 
-.top-nav-right { display: flex; align-items: center; gap: 8px; }
+.top-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
 .header-btn {
   background: none;
@@ -277,22 +329,28 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
   cursor: pointer;
   padding: 6px 8px;
   border-radius: 6px;
-  color: rgba(255,255,255,0.65);
+  color: rgba(255, 255, 255, 0.65);
   transition: all 0.2s;
-  &:hover { background: rgba(255,255,255,0.08); color: #fff; }
+  &:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+  }
 }
 
-.user-menu { position: relative; }
+.user-menu {
+  position: relative;
+}
 .user-btn {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 4px 10px;
   font-size: 13px;
-  color: rgba(255,255,255,0.75) !important;
+  color: rgba(255, 255, 255, 0.75) !important;
 }
 .user-avatar {
-  width: 28px; height: 28px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: linear-gradient(135deg, #fe2c55, #ff6b81);
   color: #fff;
@@ -308,7 +366,9 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.user-arrow { font-size: 10px; }
+.user-arrow {
+  font-size: 10px;
+}
 
 .user-dropdown {
   position: absolute;
@@ -317,7 +377,7 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
   margin-top: 6px;
   background: #fff;
   border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   min-width: 180px;
   z-index: 500;
   overflow: hidden;
@@ -330,11 +390,29 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
   text-decoration: none;
   cursor: pointer;
   transition: background 0.15s;
-  &:hover:not(.disabled) { background: #f5f5f5; }
-  &.disabled { cursor: default; small { display: block; color: #999; font-size: 11px; } }
-  &.danger { color: #ef4444; &:hover { background: #fef2f2; } }
+  &:hover:not(.disabled) {
+    background: #f5f5f5;
+  }
+  &.disabled {
+    cursor: default;
+    small {
+      display: block;
+      color: #999;
+      font-size: 11px;
+    }
+  }
+  &.danger {
+    color: #ef4444;
+    &:hover {
+      background: #fef2f2;
+    }
+  }
 }
-.dropdown-divider { height: 1px; background: #eee; margin: 4px 0; }
+.dropdown-divider {
+  height: 1px;
+  background: #eee;
+  margin: 4px 0;
+}
 
 // ===================== 侧边栏 + 主体 =====================
 .admin-body {
@@ -379,7 +457,10 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
   border-left: 3px solid transparent;
   transition: all 0.15s;
 
-  &:hover { color: #333; background: #f9f9f9; }
+  &:hover {
+    color: #333;
+    background: #f9f9f9;
+  }
   &.router-link-active {
     color: #fe2c55;
     background: #fff5f7;
@@ -387,8 +468,12 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
     font-weight: 500;
   }
 }
-.sidebar-icon { flex-shrink: 0; }
-.sidebar-label { white-space: nowrap; }
+.sidebar-icon {
+  flex-shrink: 0;
+}
+.sidebar-label {
+  white-space: nowrap;
+}
 
 // ===================== 主体 =====================
 .admin-main {
@@ -410,23 +495,39 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
   border-bottom: 1px solid #eee;
   flex-shrink: 0;
 }
-.crumb-sep { margin: 0 6px; color: #ddd; }
-.crumb-active { color: #333; font-weight: 500; }
+.crumb-sep {
+  margin: 0 6px;
+  color: #ddd;
+}
+.crumb-active {
+  color: #333;
+  font-weight: 500;
+}
 
 .admin-content {
   flex: 1;
   overflow-y: auto;
   padding: 20px 24px;
 }
-.admin-content.no-padding { padding: 0; }
+.admin-content.no-padding {
+  padding: 0;
+}
 .admin-content.fs-content {
   padding: 0;
   overflow: hidden;
 }
 
-.fade-enter-active, .fade-leave-active { transition: opacity 0.12s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.12s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 .admin-shell.fs-mode .admin-main {
-  position: fixed; inset: 0; z-index: 9999;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
 }
 </style>

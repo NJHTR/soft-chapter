@@ -9,7 +9,11 @@
       </div>
       <transition-group name="comment-status" tag="div" class="loveds">
         <div class="type-loved" :key="i" v-for="i in loveAnimations">
-          <img :src="_checkImgUrl(store.userinfo?.avatar_168x168?.url_list?.[0] || '')" class="avatar" alt="" />
+          <img
+            :src="_checkImgUrl(store.userinfo?.avatar_168x168?.url_list?.[0] || '')"
+            class="avatar"
+            alt=""
+          />
           <img src="../../assets/img/icon/love.svg" class="loved" alt="" />
         </div>
       </transition-group>
@@ -21,6 +25,7 @@
 import { computed, onMounted, onUnmounted, provide, ref } from 'vue'
 import { _checkImgUrl } from '@/utils'
 import { toggleVideoLike, recordWatch } from '@/api/videos'
+import { getBrowsingSessionId } from '@/utils/session'
 import { useBaseStore } from '@/store/pinia'
 import bus, { EVENT_KEY } from '@/utils/bus'
 import ItemToolbar from './ItemToolbar.vue'
@@ -51,9 +56,18 @@ const isMy = computed(() => {
   return itemUid !== '' && itemUid === myUid
 })
 
-provide('item', computed(() => props.item))
-provide('position', computed(() => props.position))
-provide('isPlaying', computed(() => props.isPlay))
+provide(
+  'item',
+  computed(() => props.item)
+)
+provide(
+  'position',
+  computed(() => props.position)
+)
+provide(
+  'isPlaying',
+  computed(() => props.isPlay)
+)
 provide('isMuted', false)
 
 // ====== 观看历史 ======
@@ -68,7 +82,10 @@ function sendWatchProgress(finished = false) {
   recordWatch(videoId.value, {
     watch_duration: watchSec,
     video_duration: 0,
-    finished
+    finished,
+    session_id: getBrowsingSessionId(),
+    swipe_seconds: watchSec,
+    traffic_source: 'HOME_RECOMMEND'
   }).catch(() => {})
 }
 
@@ -95,6 +112,7 @@ async function doDoubleTapLike() {
   liking = true
   const prevLoved = props.item.is_loved
   const prevCount = props.item.statistics?.digg_count || 0
+  /* eslint-disable vue/no-mutating-props */
   props.item.is_loved = true
   if (props.item.statistics) props.item.statistics.digg_count += 1
 
@@ -118,6 +136,7 @@ async function doDoubleTapLike() {
   } catch {
     props.item.is_loved = prevLoved
     if (props.item.statistics) props.item.statistics.digg_count = prevCount
+    /* eslint-enable vue/no-mutating-props */
   } finally {
     liking = false
   }
@@ -200,12 +219,26 @@ async function doDoubleTapLike() {
   animation: loveOut 0.3s ease forwards;
 }
 @keyframes loveIn {
-  0% { opacity: 1; transform: translate(-50%, -50%) scale(0); }
-  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
-  100% { opacity: 0.8; transform: translate(-50%, -50%) scale(1); }
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+  100% {
+    opacity: 0.8;
+    transform: translate(-50%, -50%) scale(1);
+  }
 }
 @keyframes loveOut {
-  0% { opacity: 0.8; }
-  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+  0% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.5);
+  }
 }
 </style>

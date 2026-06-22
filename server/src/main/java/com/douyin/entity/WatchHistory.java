@@ -31,6 +31,9 @@ public class WatchHistory {
     /** 划走耗时(秒) */
     private Double swipeSeconds;
 
+    /** 上次播放位置(秒), 用于断点续播 */
+    private Double lastPosition;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

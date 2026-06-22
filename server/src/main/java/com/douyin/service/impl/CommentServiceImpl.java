@@ -11,6 +11,7 @@ import com.douyin.mapper.CommentMapper;
 import com.douyin.mapper.UserMapper;
 import com.douyin.mapper.VideoMapper;
 import com.douyin.service.CommentService;
+import com.douyin.service.VideoTagService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,11 +25,14 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     private final UserMapper userMapper;
     private final VideoMapper videoMapper;
     private final CommentLikeMapper commentLikeMapper;
+    private final VideoTagService videoTagService;
 
-    public CommentServiceImpl(UserMapper userMapper, VideoMapper videoMapper, CommentLikeMapper commentLikeMapper) {
+    public CommentServiceImpl(UserMapper userMapper, VideoMapper videoMapper,
+                              CommentLikeMapper commentLikeMapper, VideoTagService videoTagService) {
         this.userMapper = userMapper;
         this.videoMapper = videoMapper;
         this.commentLikeMapper = commentLikeMapper;
+        this.videoTagService = videoTagService;
     }
 
     @Override
@@ -161,6 +165,12 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
                 parent.setReplyCount((parent.getReplyCount() != null ? parent.getReplyCount() : 0) + 1);
                 updateById(parent);
             }
+        }
+        // 动态标签: 评论关键词 → 候选标签
+        try {
+            videoTagService.onComment(comment.getVideoId(), comment.getContent());
+        } catch (Exception ignored) {
+            // 标签提取失败不影响评论发布
         }
         return comment;
     }

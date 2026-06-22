@@ -582,10 +582,12 @@ public class VideoController {
                 ? body.get("session_id").toString() : null;
         double swipeSeconds = body.get("swipe_seconds") != null
                 ? Double.parseDouble(body.get("swipe_seconds").toString()) : watchDuration;
+        double lastPosition = body.get("last_position") != null
+                ? Double.parseDouble(body.get("last_position").toString()) : 0;
 
         videoService.recordWatch(userId, videoId, video.getAuthorUserId(),
                 watchDuration, videoDuration, finished,
-                trafficSource, sessionId, swipeSeconds);
+                trafficSource, sessionId, swipeSeconds, lastPosition);
 
         // 更新全行为画像
         try {
@@ -634,5 +636,15 @@ public class VideoController {
         result.put("total", total);
         result.put("success", success);
         return Result.ok(result);
+    }
+
+    /** 获取上次播放位置，用于断点续播 */
+    @GetMapping("/watch/position/{videoId}")
+    public Result<Map<String, Object>> getLastPosition(@PathVariable Long videoId,
+                                                        HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        Double position = videoService.getLastPosition(userId, videoId);
+        return Result.ok(Map.of("position", position != null ? position : 0));
     }
 }

@@ -24,6 +24,9 @@ from functools import lru_cache
 from threading import Lock
 from typing import Optional
 
+# 阻断所有 HuggingFace Hub 网络请求 (本地模型已下载)
+os.environ["HF_HUB_OFFLINE"] = "1"
+
 import torch
 from transformers import (
     AutoModelForCausalLM,
@@ -116,7 +119,7 @@ class SummaryService:
     # ------------------------------------------------------------------
 
     def generate(self, keyword: str, context: dict = None,
-                 max_new_tokens: int = 512, temperature: float = 0.3) -> str:
+                 max_new_tokens: int = 1024, temperature: float = 0.5) -> str:
         """生成搜索摘要"""
         if self.model is None:
             return "[错误] 模型未加载"
@@ -131,7 +134,12 @@ class SummaryService:
             prompt = self._build_prompt(keyword, context)
 
             messages = [
-                {"role": "system", "content": "你是SeekFlow视频平台的搜索助手。请根据收到的平台数据，生成详细的中文搜索摘要。"},
+                {"role": "system", "content": (
+                    "你是SeekFlow视频平台的智能搜索助手。你的任务是基于平台返回的真实数据，"
+                    "生成一份结构清晰、内容丰富的多段落搜索摘要。"
+                    "你必须严格按照要求的格式组织输出，使用Markdown标记但不使用代码块。"
+                    "语言流畅自然，像一位专业的编辑在为用户梳理搜索结果。"
+                )},
                 {"role": "user", "content": prompt},
             ]
 
@@ -178,33 +186,91 @@ class SummaryService:
     # ------------------------------------------------------------------
 
     def _build_prompt(self, keyword: str, context: dict = None) -> str:
-        """构建推理 prompt (精简版, 与训练格式一致)"""
+        """构建推理 prompt (多段落格式: 数据洞察 + 智能解答 + 浏览建议)"""
         if context is None:
-            return f'搜索词："{keyword}"\n\n请生成搜索结果摘要。'
+            return (
+                f'用户搜索了"{keyword}"。\n\n'
+                f'请按照以下格式生成搜索结果摘要，每段用 ## 标题分隔：\n\n'
+                f'## 搜索概况\n(根据关键词分析这个搜索主题的概况)\n\n'
+                f'## 智能解答\n(直接回答用户"{keyword}"相关的问题，给出知识性解答)\n\n'
+                f'## 浏览建议\n(给用户提供浏览和筛选建议)\n'
+            )
 
         kw = context.get("keyword", keyword)
         videos = context.get("videos", [])
         users = context.get("users", [])
-        stats = context.get("platformStats", {})
+        total_videos = context.get("totalVideos", len(videos))
+        total_likes = context.get("totalLikes", 0)
+        total_plays = context.get("totalPlays", 0)
+        total_comments = context.get("totalComments", 0)
+        avg_duration = context.get("avgDuration", 0)
+        top_categories = context.get("topCategories", "综合")
+        type_dist = context.get("typeDistribution", "")
+        user_count = context.get("totalUsers", 0)
+        total_followers = context.get("totalFollowers", 0)
 
-        parts = [f"搜索词：{kw}"]
+        parts = []
 
+        # 数据部分
+        parts.append(f"【搜索关键词】{kw}")
+        parts.append(f"【搜索结果统计】共找到 {total_videos} 个视频、{user_count} 位创作者")
+        parts.append(f"【内容品类】{top_categories}")
+        if type_dist:
+            parts.append(f"【内容类型分布】{type_dist}")
+        parts.append(f"【互动数据】共 {total_plays} 播放，{total_likes} 点赞，{total_comments} 评论")
+        if avg_duration > 0:
+            parts.append(f"【平均时长】约 {avg_duration} 秒")
+        if total_followers > 0:
+            parts.append(f"【创作者粉丝总量】{total_followers}")
+
+        # 视频列表
         if videos:
-            parts.append(f"\n匹配到 {context.get('totalVideos', len(videos))} 个相关内容：")
-            for v in videos[:12]:
-                author = v.get("author", {})
+            parts.append(f"\n【热门视频 TOP8】")
+            for v in videos[:8]:
                 parts.append(
-                    f"- {v.get('title', '')} "
-                    f"({v.get('likes', 0)}赞 | {v.get('plays', 0)}播放 | "
-                    f"作者: {author.get('name', '')})"
+                    f"- {v.get('title', '')[:60]} "
+                    f"[{v.get('type', '视频')} | {v.get('category', '综合')} | "
+                    f"{v.get('likes', 0)}赞 | {v.get('plays', 0)}播放 | "
+                    f"质量分{v.get('qualityScore', 0):.1f}]"
                 )
-        else:
-            parts.append("\n暂未匹配到相关内容")
 
+        # 创作者列表
         if users:
-            parts.append(f"\n相关创作者: {', '.join(u['name'] for u in users[:5])}")
+            top_users = sorted(users, key=lambda u: u.get("followerCount", 0), reverse=True)
+            parts.append(f"\n【相关创作者 TOP5】")
+            for u in top_users[:5]:
+                # 计算粉丝量级
+                fc = u.get("followerCount", 0)
+                if fc >= 10000:
+                    level = f"{fc/10000:.1f}万粉丝"
+                elif fc >= 1000:
+                    level = f"{fc/1000:.0f}千粉丝"
+                else:
+                    level = f"{fc}粉丝"
+                parts.append(f"- {u['name']} ({level})")
 
-        parts.append(f"\n平台数据: {stats.get('totalVideos', 0)}个视频, {stats.get('totalUsers', 0)}位用户")
+        # 指令部分 — 要求多段落输出
+        parts.append(f"""
+
+请基于以上真实数据，用专业编辑的口吻生成一份多段落搜索摘要。严格按以下结构输出，每段用 ## 标题：
+
+## 数据洞察
+基于上面的数据进行分析：搜索结果的整体质量和热度如何？
+哪些品类的内容最丰富？内容类型分布有什么特点？
+（不要简单罗列数据，要给出有见地的分析。至少 3 句话。）
+
+## 智能解答
+用户搜索"{kw}"，很可能想了解什么？请结合你的知识，给出关于"{kw}"的知识性解答。
+如果搜索词是一个问题，请直接回答；如果是名词，请介绍其背景、要点和有趣的信息。
+（至少 4 句话，越详细越好。）
+
+## 浏览建议
+根据搜索结果的数据特征，给用户具体的浏览建议：
+- 可以从哪些角度筛选内容？
+- 有哪些优质创作者值得关注？
+- 如何找到最适合自己的内容？
+（至少 3 条建议。）
+""")
         return "\n".join(parts)
 
     # ------------------------------------------------------------------

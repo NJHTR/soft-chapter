@@ -35,6 +35,7 @@ public class SearchSuggestionService {
     private final LikeMapper likeMapper;
     private final UserMapper userMapper;
     private final SearchService searchService;
+    private final VideoTagService videoTagService;
     private final ObjectMapper objectMapper;
 
     public SearchSuggestionService(VideoMapper videoMapper,
@@ -43,7 +44,8 @@ public class SearchSuggestionService {
                                    WatchHistoryMapper watchHistoryMapper,
                                    LikeMapper likeMapper,
                                    UserMapper userMapper,
-                                   SearchService searchService) {
+                                   SearchService searchService,
+                                   VideoTagService videoTagService) {
         this.videoMapper = videoMapper;
         this.contentMapper = contentMapper;
         this.profileMapper = profileMapper;
@@ -51,6 +53,7 @@ public class SearchSuggestionService {
         this.likeMapper = likeMapper;
         this.userMapper = userMapper;
         this.searchService = searchService;
+        this.videoTagService = videoTagService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -73,16 +76,18 @@ public class SearchSuggestionService {
         List<Long> userSearchVideoIds = getSearchVideoIds(profile);
 
         // 1. 前缀匹配: 从视频描述中提取匹配词
-        List<SuggestionItem> prefixMatches = prefixMatch(q, userSearchVideoIds, limit * 3);
+        List<SuggestionItem> prefixMatches = prefixMatch(q, userSearchVideoIds, limit * RecommendationConfig.SS_PREFIX_OVERSAMPLE);
 
         // 2. 语义相似: 用户搜索历史 + 视频描述向量
-        List<SuggestionItem> semanticMatches = semanticMatch(q, profile, userSearchVideoIds, limit * 3);
+        List<SuggestionItem> semanticMatches = semanticMatch(q, profile, userSearchVideoIds,
+                limit * RecommendationConfig.SS_SEMANTIC_OVERSAMPLE);
 
         // 3. 场景上下文: 当前视频关联词 + 协同搜索
-        List<SuggestionItem> contextMatches = contextMatch(q, currentVideoId, userId, limit * 2);
+        List<SuggestionItem> contextMatches = contextMatch(q, currentVideoId, userId,
+                limit * RecommendationConfig.SS_CONTEXT_OVERSAMPLE);
 
         // 4. 搜索频率: 高频搜索词
-        List<SuggestionItem> freqMatches = frequencyMatch(q, profile, limit * 2);
+        List<SuggestionItem> freqMatches = frequencyMatch(q, profile, limit * RecommendationConfig.SS_FREQ_OVERSAMPLE);
 
         // 合并去重 + 加权排序
         Map<String, SuggestionItem> merged = new LinkedHashMap<>();
@@ -105,7 +110,7 @@ public class SearchSuggestionService {
                 .toList();
 
         // 热门搜索词 (不受前缀限制)
-        List<String> hotQueries = getHotQueries(profile, 5);
+        List<String> hotQueries = getHotQueries(profile, RecommendationConfig.SS_HOT_QUERIES_LIMIT);
 
         return new SuggestionResult(suggestions, hotQueries);
     }
@@ -125,14 +130,15 @@ public class SearchSuggestionService {
         VideoContent vc = contentMapper.selectById(videoId);
 
         Map<String, Double> scoredHints = new LinkedHashMap<>();
+        Map<String, Integer> coSearchFreq = new HashMap<>();  // 提到外层, 供协同搜索和标签回写共用
 
         // 1. 协同搜索: 最近看过该视频的用户在搜什么
         List<Long> recentWatchers = watchHistoryMapper.findRecentWatchersOfVideo(
-                videoId, LocalDateTime.now().minusDays(7), 100);
+                videoId, LocalDateTime.now().minusDays(RecommendationConfig.DAYS_RECENT_ENGAGEMENT),
+                RecommendationConfig.SS_RECENT_WATCHERS);
         if (!recentWatchers.isEmpty()) {
             // 排除本人
             if (userId != null) recentWatchers.remove(userId);
-            Map<String, Integer> coSearchFreq = new HashMap<>();
             try {
                 profileMapper.findSearchQueriesByUserIds(recentWatchers)
                         .forEach(row -> {
@@ -151,7 +157,10 @@ public class SearchSuggestionService {
             } catch (Exception ignored) {}
 
             coSearchFreq.forEach((keyword, cnt) -> {
-                double score = clamp(Math.min(0.8, cnt * 0.08), 0, 1);
+                double score = clamp(
+                        Math.min(RecommendationConfig.SS_CO_SEARCH_CAP,
+                                cnt * RecommendationConfig.SS_CO_SEARCH_PER),
+                        0, 1);
                 scoredHints.merge(keyword, score, Double::max);
             });
         }
@@ -161,11 +170,11 @@ public class SearchSuggestionService {
             List<String> keywords = parseJsonList(vc.getKeywords());
             for (String kw : keywords) {
                 if (kw != null && kw.length() >= 2) {
-                    scoredHints.merge(kw, 0.5, Double::max);
+                    scoredHints.merge(kw, RecommendationConfig.SS_CONTENT_KW, Double::max);
                 }
             }
             if (vc.getTextCategory() != null && vc.getTextCategory().length() >= 2) {
-                scoredHints.merge(vc.getTextCategory(), 0.4, Double::max);
+                scoredHints.merge(vc.getTextCategory(), RecommendationConfig.SS_CATEGORY, Double::max);
             }
         }
         if (video != null && video.getDesc() != null) {
@@ -174,7 +183,7 @@ public class SearchSuggestionService {
             for (String part : desc.split(",")) {
                 String trimmed = part.trim();
                 if (trimmed.length() >= 2 && trimmed.length() <= 10) {
-                    scoredHints.merge(trimmed, 0.35, Double::max);
+                    scoredHints.merge(trimmed, RecommendationConfig.SS_DESC_PHRASE, Double::max);
                 }
             }
         }
@@ -182,14 +191,26 @@ public class SearchSuggestionService {
         // 3. 趋势唤醒: 该品类当前热词 (简化: 用视频关键词搜索近7天热门同类视频)
         if (vc != null && vc.getTextCategory() != null) {
             String cat = vc.getTextCategory();
-            scoredHints.merge(cat, 0.3, Double::max);
+            scoredHints.merge(cat, RecommendationConfig.SS_TREND_CAT, Double::max);
         }
+
+        // 4. 协同搜索高频词 → 回写为动态标签
+        coSearchFreq.forEach((keyword, cnt) -> {
+            if (cnt >= 3) {
+                try {
+                    double tagScore = clamp(cnt * RecommendationConfig.SS_CO_SEARCH_WRITE_PER,
+                            RecommendationConfig.SS_CO_SEARCH_WRITE_MIN,
+                            RecommendationConfig.SS_CO_SEARCH_WRITE_MAX);
+                    videoTagService.onCoSearchHint(videoId, keyword, tagScore);
+                } catch (Exception ignored) {}
+            }
+        });
 
         return scoredHints.entrySet().stream()
                 .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
                 .limit(limit)
                 .map(e -> new SuggestionItem(e.getKey(), e.getValue(), 0,
-                        e.getValue() >= 0.5 ? "collaborative" : "content"))
+                        e.getValue() >= RecommendationConfig.SS_HINT_TYPE_THRESHOLD ? "collaborative" : "content"))
                 .toList();
     }
 
@@ -223,8 +244,11 @@ public class SearchSuggestionService {
                     String wt = w.trim().toLowerCase();
                     if (wt.startsWith(q) && wt.length() >= 2 && wt.length() <= 20
                             && !wt.equals(q)) {
-                        double score = 0.3 + 0.05 * Math.min(5,
-                                (v.getLikeCount() != null ? v.getLikeCount() : 0) / 100);
+                        double score = RecommendationConfig.SS_PREFIX_BASE
+                                + RecommendationConfig.SS_PREFIX_LIKE_PER
+                                * Math.min(RecommendationConfig.SS_PREFIX_LIKE_CAP,
+                                        (v.getLikeCount() != null ? v.getLikeCount() : 0)
+                                                / RecommendationConfig.SS_PREFIX_LIKE_DIV);
                         scored.merge(wt, clamp(score, 0, 1), Double::max);
                     }
                 }
@@ -251,7 +275,9 @@ public class SearchSuggestionService {
                 if (hq == null) continue;
                 String hql = hq.toLowerCase();
                 if (hql.contains(q) || q.contains(hql)) {
-                    scored.merge(hq, 0.5 + 0.1 * Math.min(3, overlap(hql, q)),
+                    scored.merge(hq, RecommendationConfig.SS_SEMANTIC_BASE
+                            + RecommendationConfig.SS_SEMANTIC_OVERLAP
+                            * Math.min(RecommendationConfig.SS_SEMANTIC_OVERLAP_CAP, overlap(hql, q)),
                             Double::max);
                 }
             }
@@ -268,8 +294,9 @@ public class SearchSuggestionService {
                     if (desc.contains(q)) {
                         for (String word : desc.split("[\\s,，。！？、]+")) {
                             String wt = word.trim().toLowerCase();
-                            if (wt.contains(q) && wt.length() >= 2 && wt.length() <= 20) {
-                                scored.merge(wt, 0.35, Double::max);
+                            if (wt.contains(q) && wt.length() >= RecommendationConfig.SS_KW_MIN_LEN
+                                    && wt.length() <= RecommendationConfig.SS_MAX_WORD_LEN) {
+                                scored.merge(wt, RecommendationConfig.SS_SEMANTIC_WORD, Double::max);
                             }
                         }
                     }
@@ -287,7 +314,7 @@ public class SearchSuggestionService {
                 List<String> kws = parseJsonList(vc.getKeywords());
                 for (String kw : kws) {
                     if (kw != null && kw.toLowerCase().contains(q) && kw.length() >= 2) {
-                        scored.merge(kw, 0.3, Double::max);
+                        scored.merge(kw, RecommendationConfig.SS_SEMANTIC_KW, Double::max);
                     }
                 }
             }
@@ -312,19 +339,20 @@ public class SearchSuggestionService {
                 List<String> kws = parseJsonList(vc.getKeywords());
                 for (String kw : kws) {
                     if (kw != null && kw.toLowerCase().contains(q) && kw.length() >= 2) {
-                        scored.merge(kw, 0.45, Double::max);
+                        scored.merge(kw, RecommendationConfig.SS_CONTEXT_KW, Double::max);
                     }
                 }
                 if (vc.getTextCategory() != null
                         && vc.getTextCategory().toLowerCase().contains(q)) {
-                    scored.merge(vc.getTextCategory(), 0.4, Double::max);
+                    scored.merge(vc.getTextCategory(), RecommendationConfig.SS_CONTEXT_CAT, Double::max);
                 }
             }
 
             // 协同搜索: 看过此视频的人在搜什么
             try {
                 List<Long> watchers = watchHistoryMapper.findRecentWatchersOfVideo(
-                        currentVideoId, LocalDateTime.now().minusDays(7), 50);
+                        currentVideoId, LocalDateTime.now().minusDays(RecommendationConfig.DAYS_RECENT_ENGAGEMENT),
+                        RecommendationConfig.SS_CO_WATCHERS);
                 if (userId != null) watchers.remove(userId);
                 if (!watchers.isEmpty()) {
                     profileMapper.findSearchQueriesByUserIds(watchers)
@@ -337,7 +365,7 @@ public class SearchSuggestionService {
                                     for (String sq : queries) {
                                         if (sq != null && sq.toLowerCase().contains(q)
                                                 && sq.length() >= 2) {
-                                            scored.merge(sq, 0.5, Double::max);
+                                            scored.merge(sq, RecommendationConfig.SS_CONTEXT_CO, Double::max);
                                         }
                                     }
                                 } catch (Exception ignored) {}
@@ -362,11 +390,12 @@ public class SearchSuggestionService {
                             .ge(UserContentProfile::getUpdateTime,
                                     LocalDateTime.now().minusDays(3))
                             .isNotNull(UserContentProfile::getRecentSearchQueries)
-                            .last("LIMIT 200"));
+                            .last("LIMIT " + RecommendationConfig.SS_FREQ_PROFILES));
             for (UserContentProfile p : recentProfiles) {
                 List<String> queries = parseJsonList(p.getRecentSearchQueries());
                 for (String sq : queries) {
-                    if (sq != null && sq.toLowerCase().contains(q) && sq.length() >= 2) {
+                    if (sq != null && sq.toLowerCase().contains(q)
+                            && sq.length() >= RecommendationConfig.SS_KW_MIN_LEN) {
                         globalFreq.merge(sq.toLowerCase(), 1, Integer::sum);
                     }
                 }
@@ -375,7 +404,8 @@ public class SearchSuggestionService {
 
         Map<String, Double> scored = new LinkedHashMap<>();
         globalFreq.forEach((k, cnt) -> {
-            scored.merge(k, clamp(0.2 + cnt * 0.04, 0, 0.6), Double::max);
+            scored.merge(k, clamp(RecommendationConfig.SS_FREQ_BASE + cnt * RecommendationConfig.SS_FREQ_PER,
+                    0, RecommendationConfig.SS_FREQ_MAX), Double::max);
         });
 
         return scored.entrySet().stream()
@@ -390,7 +420,8 @@ public class SearchSuggestionService {
     private List<Long> getSearchVideoIds(UserContentProfile profile) {
         if (profile == null) return List.of();
         try {
-            return likeMapper.findRecentLikedVideoIds(profile.getUserId(), 50);
+            return likeMapper.findRecentLikedVideoIds(profile.getUserId(),
+                    RecommendationConfig.CF_RECENT_LIKED_LIMIT);
         } catch (Exception e) {
             log.warn("获取用户赞过视频失败: userId={}", profile.getUserId(), e);
             return List.of();
@@ -418,10 +449,10 @@ public class SearchSuggestionService {
             profileMapper.selectList(new LambdaQueryWrapper<UserContentProfile>()
                     .ge(UserContentProfile::getUpdateTime, LocalDateTime.now().minusDays(3))
                     .isNotNull(UserContentProfile::getRecentSearchQueries)
-                    .last("LIMIT 50"))
+                    .last("LIMIT " + RecommendationConfig.SS_HOT_PROFILES))
                     .forEach(p -> {
                         parseJsonList(p.getRecentSearchQueries()).stream()
-                                .limit(2).forEach(hot::add);
+                                .limit(RecommendationConfig.SS_HOT_PER_USER).forEach(hot::add);
                     });
         } catch (Exception ignored) {}
 
@@ -455,7 +486,7 @@ public class SearchSuggestionService {
         for (int i = 0; i < hotQueries.size(); i++) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", hotQueries.get(i));
-            item.put("type", i < 3 ? 1 : -1); // 前3个标记为"新"
+            item.put("type", i < 3 ? 1 : -1);
             result.add(item);
         }
         return result;
@@ -469,11 +500,12 @@ public class SearchSuggestionService {
                     new LambdaQueryWrapper<UserContentProfile>()
                             .ge(UserContentProfile::getUpdateTime, LocalDateTime.now().minusDays(7))
                             .isNotNull(UserContentProfile::getRecentSearchQueries)
-                            .last("LIMIT 500"));
+                            .last("LIMIT " + RecommendationConfig.SS_HOT_RANK_PROFILES));
             for (UserContentProfile p : profiles) {
                 List<String> queries = parseJsonList(p.getRecentSearchQueries());
                 for (String q : queries) {
-                    if (q != null && q.length() >= 2 && q.length() <= 40) {
+                    if (q != null && q.length() >= RecommendationConfig.SS_KW_MIN_LEN
+                            && q.length() <= RecommendationConfig.SS_KW_MAX_LEN) {
                         freq.merge(q.trim(), 1, Integer::sum);
                     }
                 }
@@ -486,12 +518,14 @@ public class SearchSuggestionService {
                     new LambdaQueryWrapper<Video>()
                             .eq(Video::getStatus, "APPROVED")
                             .orderByDesc(Video::getLikeCount)
-                            .last("LIMIT 100"));
+                            .last("LIMIT " + RecommendationConfig.SS_HOT_RANK_VIDEOS));
             for (Video v : hotVideos) {
                 if (v.getDesc() == null) continue;
                 String desc = v.getDesc().trim();
-                if (desc.length() >= 2 && desc.length() <= 30) {
-                    freq.merge(desc, freq.getOrDefault(desc, 0) + 3, Integer::sum);
+                if (desc.length() >= RecommendationConfig.SS_DESC_MIN_LEN
+                        && desc.length() <= RecommendationConfig.SS_DESC_MAX_LEN) {
+                    freq.merge(desc, freq.getOrDefault(desc, 0) + RecommendationConfig.LIMIT_MULTI_LABEL,
+                            Integer::sum);
                 }
             }
         } catch (Exception ignored) {}
@@ -548,45 +582,67 @@ public class SearchSuggestionService {
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put("keyword", keyword);
 
-        // 视频结果
         try {
-            List<Video> videos = searchService.search(keyword, 15);
+            List<Video> videos = searchService.search(keyword, RecommendationConfig.SS_SEARCH_BATCH_SIZE);
             List<Map<String, Object>> videoList = new ArrayList<>();
             Map<String, Integer> catCount = new LinkedHashMap<>();
+            Map<String, Integer> typeCount = new LinkedHashMap<>();
+            long totalLikes = 0, totalPlays = 0, totalComments = 0;
+            double totalDuration = 0;
 
-            for (int i = 0; i < Math.min(videos.size(), 15); i++) {
+            for (int i = 0; i < Math.min(videos.size(), RecommendationConfig.SS_SEARCH_BATCH_SIZE); i++) {
                 Video v = videos.get(i);
                 Map<String, Object> vi = new LinkedHashMap<>();
                 vi.put("title", v.getDesc() != null ? v.getDesc() : "");
                 vi.put("type", v.getType() != null ? v.getType() : "video");
                 vi.put("likes", v.getLikeCount() != null ? v.getLikeCount() : 0);
+                vi.put("plays", v.getPlayCount() != null ? v.getPlayCount() : 0);
+                vi.put("comments", v.getCommentCount() != null ? v.getCommentCount() : 0);
+                totalLikes += v.getLikeCount() != null ? v.getLikeCount() : 0;
+                totalPlays += v.getPlayCount() != null ? v.getPlayCount() : 0;
+                totalComments += v.getCommentCount() != null ? v.getCommentCount() : 0;
+                if (v.getDuration() != null) totalDuration += v.getDuration();
 
-                // 尝试获取特征标签
+                String vtype = v.getType() != null ? v.getType() : "video";
+                typeCount.merge(vtype, 1, Integer::sum);
+
                 VideoContent vc = contentMapper.selectById(v.getId());
                 if (vc != null) {
                     vi.put("category", vc.getTextCategory() != null ? vc.getTextCategory() : "");
+                    vi.put("qualityScore", vc.getQualityScore() != null ? vc.getQualityScore() : 0);
                     List<String> kws = parseJsonList(vc.getKeywords());
-                    vi.put("keywords", kws.size() > 5 ? kws.subList(0, 5) : kws);
+                    vi.put("keywords", kws.size() > RecommendationConfig.SS_KW_TRUNCATE
+                            ? kws.subList(0, RecommendationConfig.SS_KW_TRUNCATE) : kws);
                     String cat = vc.getTextCategory();
                     if (cat != null && !cat.isEmpty()) {
                         catCount.merge(cat, 1, Integer::sum);
                     }
                 } else {
                     vi.put("category", "");
+                    vi.put("qualityScore", 0);
                     vi.put("keywords", List.of());
                 }
                 videoList.add(vi);
             }
             ctx.put("videos", videoList);
             ctx.put("totalVideos", videos.size());
+            ctx.put("totalLikes", totalLikes);
+            ctx.put("totalPlays", totalPlays);
+            ctx.put("totalComments", totalComments);
+            ctx.put("avgDuration", videos.isEmpty() ? 0 : (int)(totalDuration / videos.size()));
 
-            // 前 3 品类
             String topCat = catCount.entrySet().stream()
                     .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-                    .limit(3)
+                    .limit(RecommendationConfig.SS_CATEGORY_TOP)
                     .map(Map.Entry::getKey)
                     .collect(Collectors.joining("、"));
             ctx.put("topCategories", topCat.isEmpty() ? "综合" : topCat);
+
+            String typeSummary = typeCount.entrySet().stream()
+                    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                    .map(e -> e.getKey() + "(" + e.getValue() + "个)")
+                    .collect(Collectors.joining("、"));
+            ctx.put("typeDistribution", typeSummary);
         } catch (Exception e) {
             log.warn("查询视频上下文失败: {}", e.getMessage());
             ctx.put("videos", List.of());
@@ -594,19 +650,21 @@ public class SearchSuggestionService {
             ctx.put("topCategories", "");
         }
 
-        // 用户结果
         try {
             List<User> users = userMapper.searchByKeyword(keyword);
             List<Map<String, Object>> userList = new ArrayList<>();
-            for (int i = 0; i < Math.min(users.size(), 5); i++) {
+            long totalFollowers = 0;
+            for (int i = 0; i < Math.min(users.size(), RecommendationConfig.SS_USER_CAP); i++) {
                 User u = users.get(i);
                 Map<String, Object> ui = new LinkedHashMap<>();
                 ui.put("name", u.getNickname() != null ? u.getNickname() : "");
                 ui.put("followerCount", u.getFollowerCount() != null ? u.getFollowerCount() : 0);
+                totalFollowers += u.getFollowerCount() != null ? u.getFollowerCount() : 0;
                 userList.add(ui);
             }
             ctx.put("users", userList);
             ctx.put("totalUsers", users.size());
+            ctx.put("totalFollowers", totalFollowers);
         } catch (Exception e) {
             log.warn("查询用户上下文失败: {}", e.getMessage());
             ctx.put("users", List.of());
@@ -682,6 +740,7 @@ public class SearchSuggestionService {
             pb.directory(new java.io.File(pythonDir));
             pb.redirectErrorStream(false);
             pb.environment().put("PYTHONIOENCODING", "utf-8");
+            pb.environment().put("HF_HUB_OFFLINE", "1");
 
             summaryDaemon = pb.start();
             daemonStdin = new BufferedWriter(
@@ -711,6 +770,7 @@ public class SearchSuggestionService {
         pb.directory(new java.io.File(pythonDir));
         pb.redirectErrorStream(false);
         pb.environment().put("PYTHONIOENCODING", "utf-8");
+        pb.environment().put("HF_HUB_OFFLINE", "1");
 
         summaryDaemon = pb.start();
         daemonStdin = new BufferedWriter(
@@ -791,26 +851,26 @@ public class SearchSuggestionService {
 
     private String fallbackSummary(String kw) {
         StringBuilder sb = new StringBuilder();
-        sb.append("关于「").append(kw).append("」的相关搜索结果如下：\n\n");
+        sb.append("## 搜索概况\n\n");
+        sb.append("关于「").append(kw).append("」，系统从SeekFlow平台中匹配了相关内容。");
+        sb.append("以下是为你整理的多维度信息摘要：\n\n");
 
-        sb.append("根据你的搜索关键词，系统从SeekFlow平台中匹配了相关内容。");
-        sb.append("以下是为你整理的信息摘要：\n\n");
+        sb.append("## 数据洞察\n\n");
+        sb.append("- 关键词「").append(kw).append("」在全站内容中有较高的相关度\n");
+        sb.append("- 已匹配到视频、图文、用户等多个维度的结果\n");
+        sb.append("- 根据综合热度与相关度排序，为你呈现最优质的内容\n\n");
 
-        sb.append("搜索分析：\n");
-        sb.append("  关键词「").append(kw).append("」在全站内容中的相关度较高\n");
-        sb.append("  已匹配到视频、图文、用户等多个维度的结果\n");
-        sb.append("  根据热度排序为你呈现最优质的内容\n\n");
+        sb.append("## 智能解答\n\n");
+        sb.append("「").append(kw).append("」是一个值得关注的话题。");
+        sb.append("平台上有许多创作者围绕这一主题发布了高质量的内容，");
+        sb.append("涵盖了不同的视角和风格。");
+        sb.append("你可以通过浏览搜索结果，获取多元化的信息和灵感。\n\n");
 
-        sb.append("推荐建议：\n");
-        sb.append("  你可以通过顶部Tab切换不同内容类型\n");
-        sb.append("  「综合」标签展示所有类型的搜索结果\n");
-        sb.append("  「视频」和「图文」标签仅展示对应格式内容\n");
-        sb.append("  「用户」标签可查找相关创作者\n\n");
-
-        sb.append("数据来源：\n");
-        sb.append("  搜索范围覆盖全站已审核通过的公开内容\n");
-        sb.append("  结果按相关度和热度综合排序\n");
-        sb.append("  你可以通过关注创作者获取更多相关内容");
+        sb.append("## 浏览建议\n\n");
+        sb.append("- 使用顶部分类标签（综合/视频/图文/用户）快速筛选内容类型\n");
+        sb.append("- 关注高互动量的视频，通常代表内容质量较高\n");
+        sb.append("- 通过关注创作者，持续获取「").append(kw).append("」相关的新内容\n");
+        sb.append("- 搜索词越具体，结果越精准");
 
         return sb.toString();
     }
