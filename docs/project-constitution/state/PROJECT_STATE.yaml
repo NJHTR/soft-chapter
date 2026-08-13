@@ -1,0 +1,126 @@
+schema_version: 1
+project:
+  name: douyin-realtime-media
+  repository: D:/Ivscode/douyin
+  constitution: docs/project-constitution/PROJECT_CONSTITUTION.md
+  state_owner: /root
+baseline:
+  observed_at: "2026-08-13"
+  branch: dev/full
+  head_commit: f361a12
+  remote_tracking: origin/dev/full
+  worktree_dirty: true
+  dirty_worktree_policy: preserve_and_avoid
+  known_user_changes:
+    - src/pages/live/LiveCreate.vue
+    - src/pages/live/LiveWatch.vue
+    - src/utils/streaming/
+    - server/src/main/java/com/douyin/engine/
+    - server/src/main/java/com/douyin/controller/StreamController.java
+    - server/src/main/java/com/douyin/websocket/DashboardWebSocketHandler.java
+    - streaming-engine/
+    - docker-compose.streaming.yml
+    - docs/runtime/
+    - docs/verification/
+architecture_decisions:
+  rtc_provider: livekit_sfu
+  live_provider: srs_for_broadcast_with_whep_and_hls_fallback
+  turn_provider: coturn
+  control_plane: spring_boot
+  media_rule: control_plane_never_forwards_media_bytes
+  group_topology: sfu_default
+  p2p_policy: one_to_one_experiment_or_explicit_fallback_only
+  browser_codec_baseline: h264_or_vp8_video_plus_opus_audio
+  legacy_policy: websocket_media_and_mesh_are_migration_only
+current_task:
+  id: RTC-001
+  status: in_progress
+  owner: /root
+  started_at: "2026-08-13"
+  branch: dev/full
+  scope: constitution_architecture_inventory_and_first_wave_plan
+  dependencies: []
+  expected_artifacts:
+    - docs/project-constitution/
+    - docs/architecture/
+    - docs/adr/
+    - docs/contracts/
+    - docs/testing/
+tasks:
+  - id: RTC-001
+    title: 建立实时媒体宪法、基线和架构契约
+    status: in_progress
+    depends_on: []
+  - id: RTC-002
+    title: 选择并部署 LiveKit、coturn、SRS 的 provider bootstrap 环境
+    status: planned
+    depends_on: [RTC-001]
+  - id: RTC-003
+    title: 实现 RTC 房间、通话状态机、token、ACL 和事件账本
+    status: planned
+    depends_on: [RTC-001]
+  - id: RTC-004
+    title: 接入 1 对 1 LiveKit 媒体适配器和客户端
+    status: planned
+    depends_on: [RTC-002, RTC-003]
+  - id: RTC-005
+    title: 迁移群聊音视频到 SFU
+    status: planned
+    depends_on: [RTC-004]
+  - id: RTC-006
+    title: 迁移直播到 WHIP/WHEP 与 HLS/HTTP-FLV fallback
+    status: planned
+    depends_on: [RTC-002, RTC-003]
+  - id: RTC-007
+    title: 建立媒体质量、QoE、自适应和弱网恢复
+    status: planned
+    depends_on: [RTC-004, RTC-005, RTC-006]
+  - id: RTC-008
+    title: 录制、转码、对象存储和审核链路
+    status: planned
+    depends_on: [RTC-005, RTC-006]
+  - id: RTC-009
+    title: 退役 legacy WebSocket 媒体、mesh 和 C++ WebRTC stub
+    status: planned
+    depends_on: [RTC-007, RTC-008]
+  - id: RTC-010
+    title: 安全、负载、故障演练和发布门禁
+    status: planned
+    depends_on: [RTC-007, RTC-008, RTC-009]
+known_blockers:
+  - id: B-001
+    description: 后端 WebRTC offer 当前为 SDP echo，不是真实协商
+    owner_task: RTC-003
+  - id: B-002
+    description: C++ WebRTCStreamer 无实际库链接，send_packet/connect 为 stub
+    owner_task: RTC-009
+  - id: B-003
+    description: 直播 TextWebSocketHandler 与前端二进制媒体协议不匹配
+    owner_task: RTC-006
+  - id: B-004
+    description: WebCodecs payload copy、getVideoTracks 和 capability await 存在硬错误
+    owner_task: RTC-006
+  - id: B-005
+    description: Call.vue 仅公共 STUN、mesh，且远端视频绑定不完整
+    owner_task: RTC-004
+  - id: B-006
+    description: JNI native availability 恒 true，DLL 缺失可能崩溃
+    owner_task: RTC-002
+  - id: B-007
+    description: WebSocketConfig 生产 Origin 当前为 *，聊天/直播/看板缺少 allowlist 验收
+    owner_task: RTC-010
+verification:
+  completed:
+    - command: pnpm exec vue-tsc --noEmit --pretty false
+      result: passed_by_readonly_audit
+    - command: pnpm run build-only
+      result: passed_by_readonly_audit
+    - command: native streaming-engine smoke tests
+      result: passed_by_existing_runtime_report
+  unavailable:
+    - maven_backend_tests
+    - browser_webrtc_e2e
+    - turn_nat_matrix
+    - deployed_srs_or_livekit_e2e
+last_verified_commit: null
+last_doc_commit: null

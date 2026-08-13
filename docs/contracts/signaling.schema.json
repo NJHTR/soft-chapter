@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://douyin.local/contracts/douyin.realtime.v1.signaling.json",
+  "title": "Douyin realtime signaling envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "event_id", "kind", "occurred_at", "payload", "seq"],
+  "properties": {
+    "schema": { "const": "douyin.realtime.v1" },
+    "event_id": { "type": "string", "minLength": 8, "maxLength": 128 },
+    "client_request_id": { "type": "string", "minLength": 8, "maxLength": 128 },
+    "trace_id": { "type": "string", "maxLength": 128 },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "call.request", "call.accept", "call.reject", "call.cancel",
+        "call.join", "call.leave", "call.hangup", "call.participant.update",
+        "rtc.offer", "rtc.answer", "rtc.ice", "rtc.ice_complete", "rtc.renegotiate",
+        "media.mute", "media.camera", "media.screen_share",
+        "live.control", "live.presence"
+      ]
+    },
+    "call_id": { "type": "string", "maxLength": 128 },
+    "room_id": { "type": "string", "maxLength": 128 },
+    "conversation_id": { "type": "string", "maxLength": 128 },
+    "from_user_id": { "type": "string", "maxLength": 128 },
+    "to_user_id": { "type": "string", "maxLength": 128 },
+    "to_user_ids": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 128 },
+      "uniqueItems": true,
+      "maxItems": 32
+    },
+    "seq": { "type": "integer", "minimum": 0 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["audio", "video"] },
+        "scope": { "enum": ["direct", "group", "live-interactive"] },
+        "sdp": { "type": "string", "maxLength": 200000 },
+        "sdp_type": { "enum": ["offer", "answer", "pranswer", "rollback"] },
+        "candidate": { "type": ["string", "null"], "maxLength": 10000 },
+        "sdp_mid": { "type": ["string", "null"], "maxLength": 128 },
+        "sdp_m_line_index": { "type": ["integer", "null"], "minimum": 0 },
+        "end_of_candidates": { "type": "boolean" },
+        "reason": { "type": "string", "maxLength": 256 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["kind"], "properties": { "kind": { "pattern": "^(call|rtc|media)\\." } } },
+      "then": { "required": ["call_id", "from_user_id", "client_request_id"] }
+    },
+    {
+      "if": { "required": ["kind"], "properties": { "kind": { "pattern": "^live\\." } } },
+      "then": { "required": ["room_id"] }
+    }
+  ]
+}
