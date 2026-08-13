@@ -58,3 +58,7 @@ server/python/training_data_cleaned_*.jsonl
 
 # VSCode counter artifacts
 .VSCodeCounter/
+
+# RTC-002 provider secrets
+deploy/streaming/.env
+

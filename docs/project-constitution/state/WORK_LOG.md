@@ -1,5 +1,34 @@
 # 工作日志
 
+## 2026-08-13：RTC-002 provider bootstrap 全绿
+
+### 工作区快照
+
+- 分支：`dev/full`；用户业务改动（admin/、server/、src/、streaming-engine/、docs/runtime/、docs/verification/、migration_033）原样保留，未纳入提交。
+- 本任务新增/修改：`deploy/rtc/`、`deploy/streaming/`、`docker-compose.streaming.yml`、`.gitignore`（`deploy/streaming/.env`）、任务/状态/日志文档。
+
+### 交付物
+
+- `deploy/streaming/`：srs.conf、livekit.yaml、mediamtx.yml、prometheus.yml、.env.example、README.md、smoke.ps1（UTF-8 BOM，兼容 PS 5.1）。
+- `deploy/rtc/turnserver.conf`：use-auth-secret，TLS 5349 注释推迟到 RTC-003（缺证书）。
+- `docker-compose.streaming.yml`：修正原版虚假声明（srs.conf 路径错、无 coturn、密钥硬编码），profiles = srs 默认 / webrtc(livekit+coturn) / alternative(mediamtx) / monitoring(prometheus+grafana)，healthcheck 与端口映射补齐，密钥全部 `${VAR:?}` 环境注入。
+- smoke 6/6 ALL PASS：compose config、srs API、livekit 7889/metrics、coturn 3478/tcp、srs HTTP-FLV 8080、livekit-cli `--publish-demo`（真实发布 h264 publication，非 SDP echo）。
+
+### 踩坑记录（供 RTC-003+ 复用）
+
+1. SRS 6 镜像 `./objs` 是二进制目录，挂 volume 会覆盖二进制导致 exec 失败；且无 curl/wget，健康检查用 bash `/dev/tcp`。
+2. LiveKit `LIVEKIT_KEYS` 格式是 `"key: secret"`（冒号后必须空格），否则启动即退。
+3. LiveKit `/rtc/validate` 需 JWT（401 即存活）；`/metrics` 只在独立 metrics 端口（本部署 7889）提供。
+4. coturn `--no-cli` 在 4.17.2 已废弃（ERROR 但继续跑），已移除。
+5. PowerShell 5.1：`docker` 原生命令退出码不会抛错，smoke `Check` 必须显式检查 `$LASTEXITCODE`；`$results` 跨函数须用 `$script:` 作用域。
+6. docker compose 不自动读取子目录 `.env`，必须显式 `--env-file deploy/streaming/.env`。
+
+### 遗留（诚实声明）
+
+- TURN TLS 5349 未验证（证书缺位，RTC-003 补）。
+- 浏览器端真实通话未做（属 RTC-004/005/006）。
+- B-006 修复在用户工作区，验证随 RTC-003。
+
 ## 2026-08-13：RTC-001 文档基线落地
 
 - 独立智能体完成只读评估（架构、WebRTC、契约、宪法审查），结论一致：当前主要问题是媒体链路与职责边界未成立，而非码率参数。

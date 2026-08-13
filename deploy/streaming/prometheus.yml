@@ -1,0 +1,13 @@
+# Prometheus 抓取配置(RTC-002 bootstrap,monitoring profile)
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: srs
+    static_configs:
+      - targets: ["srs:1985"]
+  - job_name: livekit
+    static_configs:
+      - targets: ["livekit:7889"]
+  - job_name: coturn
+    static_configs:
+      - targets: ["coturn:9641"]

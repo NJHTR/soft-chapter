@@ -1,0 +1,13 @@
+# LiveKit 通话 SFU 配置(RTC-002 bootstrap)
+# 职责:1 对 1 / 群聊/连麦的 WebRTC 媒体面
+# 密钥不写入本文件:由 compose 通过 LIVEKIT_KEYS 环境注入
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50050
+  use_external_ip: false
+prometheus:
+  port: 7889
+logging:
+  level: info

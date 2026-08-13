@@ -1,0 +1,131 @@
+# Streaming Infrastructure (RTC-002 provider bootstrap)
+# 职责边界(宪法 §3):
+#   - srs       直播 ingest + 分发(WHIP/WHEP、RTMP、SRT、HTTP-FLV、HLS),默认 profile
+#   - livekit   通话/连麦 SFU,webrtc profile
+#   - coturn    WebRTC TURN 穿透边缘,webrtc profile
+#   - mediamtx  替代直播栈,alternative profile(与 srs 互斥,禁止同开)
+#   - prometheus/grafana 观测,monitoring profile
+# 密钥均来自 .env(见 deploy/streaming/.env.example),严禁硬编码进本文件。
+#
+# 用法:
+#   docker compose -f docker-compose.streaming.yml up -d srs
+#   docker compose -f docker-compose.streaming.yml --profile webrtc up -d
+#   powershell -File deploy/streaming/smoke.ps1   # 健康检查 + CLI smoke
+
+services:
+  srs:
+    image: registry.cn-hangzhou.aliyuncs.com/ossrs/srs:6
+    container_name: douyin-srs
+    restart: unless-stopped
+    ports:
+      - "1935:1935/tcp"    # RTMP
+      - "1985:1985/tcp"    # HTTP API(healthcheck / WHIP/WHEP 信令)
+      - "8080:8080/tcp"    # HTTP Server(FLV/HLS 出口)
+      - "9000:9000/tcp"    # SRT
+      - "8000:8000/udp"    # WebRTC RTP
+    volumes:
+      - ./deploy/streaming/srs.conf:/usr/local/srs/conf/srs.conf
+    environment:
+      # 官方 docker 约定:conf 内 candidate $CANDIDATE,由 env 注入宿主机可达 IP
+      CANDIDATE: ${SRS_RTC_CANDIDATE:?请在 .env 中设置 SRS_RTC_CANDIDATE}
+      SRS_RTC_SERVER_CANDIDATE: ${SRS_RTC_CANDIDATE}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/1985'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - streaming-net
+
+  # 通话/连麦 SFU(与直播栈职责分离,不共用端口)
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: douyin-livekit
+    restart: unless-stopped
+    profiles: ["webrtc"]
+    ports:
+      - "7880:7880/tcp"    # HTTP/WS 信令
+      - "7881:7881/tcp"    # WebRTC over TCP
+      - "7889:7889/tcp"    # Prometheus metrics
+      - "50000-50050:50000-50050/udp" # WebRTC RTP
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./deploy/streaming/livekit.yaml:/etc/livekit.yaml
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:?请在 .env 中设置 LIVEKIT_API_SECRET}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7889/metrics >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - streaming-net
+
+  # WebRTC TURN 穿透边缘(REST 临时凭据,TLS 5349 待证书落地见 deploy/rtc/turnserver.conf)
+  coturn:
+    image: coturn/coturn
+    container_name: douyin-coturn
+    restart: unless-stopped
+    profiles: ["webrtc"]
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49160-49180:49160-49180/udp" # relay 范围
+    volumes:
+      - ./deploy/rtc/turnserver.conf:/etc/coturn/turnserver.conf
+    command: >
+      -n --log-file=stdout
+      --static-auth-secret=${TURN_SHARED_SECRET:?请在 .env 中设置 TURN_SHARED_SECRET}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/3478'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - streaming-net
+
+  # 替代直播栈(仅 alternative profile;与 srs 二选一,避免端口职责冲突)
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: douyin-mediamtx
+    restart: unless-stopped
+    profiles: ["alternative"]
+    ports:
+      - "8888:8888/tcp"    # WebRTC / API
+      - "8889:8889/tcp"    # RTMP
+      - "8889:8889/udp"    # WebRTC RTP
+    volumes:
+      - ./deploy/streaming/mediamtx.yml:/mediamtx.yml
+    networks:
+      - streaming-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: douyin-stream-monitor
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./deploy/streaming/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - streaming-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: douyin-stream-grafana
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    ports:
+      - "3003:3000"        # 避开 admin 前端 dev 端口 3001
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-}
+    networks:
+      - streaming-net
+
+networks:
+  streaming-net:
+    driver: bridge

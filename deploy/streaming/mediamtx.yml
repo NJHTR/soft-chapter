@@ -1,0 +1,11 @@
+# MediaMTX 替代 profile(与 SRS 互斥,禁止同 profile 同时启用)
+# bootstrap 最小配置:RTMP/RTSP/WebRTC 开启,SRT 关闭
+logLevel: error
+rtmp: true
+rtsp: true
+srt: false
+webrtc: true
+hls: false
+webrtcLocalUDPPort: 8888
+rtmpAddress: :8889
+rtspAddress: :8888
