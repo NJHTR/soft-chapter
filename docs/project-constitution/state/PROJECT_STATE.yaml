@@ -33,18 +33,17 @@ architecture_decisions:
   browser_codec_baseline: h264_or_vp8_video_plus_opus_audio
   legacy_policy: websocket_media_and_mesh_are_migration_only
 current_task:
-  id: RTC-002
-  status: completed
+  id: RTC-004
+  status: planned
   owner: null
-  started_at: "2026-08-13"
+  started_at: null
   branch: dev/full
-  scope: livekit_coturn_srs_provider_bootstrap
-  dependencies: [RTC-001]
+  scope: one_to_one_livekit_adapter
+  dependencies: [RTC-002, RTC-003]
   expected_artifacts:
-    - docker-compose.streaming.yml (provider profile)
-    - deploy/rtc/
-    - provider health checks
-    - provider CLI smoke test
+    - 前端 RTC 状态 store + provider adapter
+    - Call UI 设备管理/接通/重连/通话记录
+    - 联调验证(后端 + LiveKit + 浏览器)
 tasks:
 - id: RTC-001
     title: 建立实时媒体宪法、基线和架构契约
@@ -54,9 +53,9 @@ tasks:
     title: 选择并部署 LiveKit、coturn、SRS 的 provider bootstrap 环境
     status: completed
     depends_on: [RTC-001]
-  - id: RTC-003
+- id: RTC-003
     title: 实现 RTC 房间、通话状态机、token、ACL 和事件账本
-    status: planned
+    status: completed
     depends_on: [RTC-001]
   - id: RTC-004
     title: 接入 1 对 1 LiveKit 媒体适配器和客户端
@@ -118,11 +117,13 @@ verification:
       result: passed_by_existing_runtime_report
     - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc
       result: passed_8_of_8 (compose config / containers healthy / srs api / livekit metrics / coturn 3478 / srs flv 8080 / TURN UDP allocate via REST creds / livekit-cli publish-demo real media)
+    - command: mvn -f server/pom.xml test -Dtest=com.douyin.rtc.**
+      result: passed_88_of_88 (transition table / idempotency / out-of-order / participant / ttl worker / token claims / webhook signature + vector / dedup)
   unavailable:
-    - maven_backend_tests
+    - maven_backend_tests_other_modules
     - browser_webrtc_e2e
     - turn_nat_matrix
     - turn_tls_5349 (no cert until RTC-003)
-    - deployed_srs_or_livekit_e2e
-last_verified_commit: 20d88f7
+    - rtc-e2e_backend_livekit_webhook (needs migration_034/035 + backend up, RTC-004)
+last_verified_commit: 05858d0
 last_doc_commit: 85262e2

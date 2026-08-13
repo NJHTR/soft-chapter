@@ -1,5 +1,25 @@
 # 工作日志
 
+## 2026-08-13：RTC-003 完成（控制面与通话领域，5 提交）
+
+- 波次 A（只读）：architecture-agent + contract-agent 勘察——现状事实、旧 msg_type=10/11 契约、signaling schema 缺口、鉴权/ACL 数据支撑、可复用设施（雪花 ID/Redis 幂等/PaymentStateMachine 模式）。用户未提交改动全部记录并避开（TOP10 重叠清单）。
+- 波次 B：domain-agent（`9a9d374`：CallSession/Participant/CallEvent 状态机 + ACL + 事件账本 + migration_034 + 48 契约单测）→ token-agent（`32060db`：LiveKit token API + webhook ledger + migration_035 + SessionFilter 白名单 1 行 + 签名向量测试，77 测试）。
+- 主智能体：`940b5d2` docs（signaling schema v1 向后兼容扩展：error/ack/call.expired 等 + token/ttl/replayed 可选字段；livekit-webhook.md 契约；rtc-error-codes.md；API 指南补 10/11；livekit.yaml webhook 段指向 host.docker.internal:9191）。
+- 波次 F：integration-review-agent APPROVE_WITH_NOTES（无阻断；2 重要 + 6 建议）→ fix-agent `27cf661`（detail 鉴权、sys:/ttl: event_id 保留前缀隔离 TTL 抢占、并发 create 幂等、ttl_seconds 解析、CONNECTED hangup 投影）→ 主智能体修复 compat callState 语义漂移 `05858d0`（对齐旧前端 0=拒接/1=已接通/2=未接通）。
+- 最终验证：`mvn test -Dtest=com.douyin.rtc.**` 88/88 通过，BUILD SUCCESS。
+- 交付：com.douyin.rtc 包（domain/repository/service/provider/webhook/controller）、migration_034/035、docs/contracts 三件套、SessionFilter 白名单 1 行。用户未提交改动零接触。
+- 已知未验证：端到端 webhook 推送与迁移执行（依赖用户跑 034/035 + 起后端，验收归 RTC-004）。
+- 下一任务：RTC-004（1 对 1 LiveKit 适配器，依赖 RTC-002+RTC-003 已满足）——注意其前端改动区域与用户直播改动相邻，开工前需再次确认边界。
+
+## 2026-08-13：RTC-003 认领（控制面与通话领域）
+
+- 推送 RTC-001/RTC-002 全部提交到远程：`f361a12..3acd3e0 dev/full -> origin/dev/full`。
+- 按提示词流程选取下一个任务：RTC-003（依赖 RTC-001 已完成；与 RTC-002 可并行，RTC-002 已完结）。
+- RTC-003 状态 `planned -> in_progress`，owner=main-dev-agent。
+- 边界：负责 `server/.../rtc/`、`server/sql/`、`server/.../websocket/` 的 RTC adapter、`docs/contracts/`；禁止修改媒体服务实现、LiveKit 内部信令、C++ stub。
+- 风险记录：用户未提交改动密集覆盖 `server/`（LiveController、LiveRoom、engine/、websocket/DashboardWebSocketHandler、StreamController、migration_033 等），RTC-003 方案将以新增文件为主，与用户改动重叠的文件先协商或绕过；不做 reset/checkout/覆盖。
+- 波次 A 启动：architecture-agent + contract-agent 只读勘察（现状、可复用接口、双读契 约、token/webhook 安全面）。
+
 ## 2026-08-13：RTC-002 独立审查与修复（smoke 8/8）
 
 - 独立审查智能体结论：APPROVE_WITH_NOTES。核对清单：密钥安全 ✓、边界遵守 ✓、无 stub 宣称 ✓、回滚可执行 ✓、测试证据真实（有瑕疵）。
