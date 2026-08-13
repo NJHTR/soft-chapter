@@ -1,6 +1,8 @@
 # LiveKit 通话 SFU 配置(RTC-002 bootstrap)
 # 职责:1 对 1 / 群聊/连麦的 WebRTC 媒体面
 # 密钥不写入本文件:由 compose 通过 LIVEKIT_KEYS 环境注入
+# webhook(RTC-003):api_key 必须与 LIVEKIT_KEYS 的 key 一致;签名 secret 即该 key 的
+# secret(与后端 RTC_LIVEKIT_WEBHOOK_SECRET 相同);url 指向宿主机后端 9191
 port: 7880
 rtc:
   tcp_port: 7881
@@ -9,5 +11,9 @@ rtc:
   use_external_ip: false
 prometheus:
   port: 7889
+webhook:
+  api_key: devkey
+  urls:
+    - http://host.docker.internal:9191/api/rtc/webhook/livekit
 logging:
   level: info

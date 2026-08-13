@@ -69,3 +69,5 @@ docker compose -f docker-compose.streaming.yml down -v       # 连卷一起清�
 - coturn TLS 5349:需证书(PEM),归属证书签发/部署阶段,与 RTC-003 控制面 token 一起落地;bootstrap 只验证 UDP/TCP 3478。
 - LiveKit 与浏览器 WebRTC E2E:livekit-cli `--publish-demo` 已覆盖真实 SDP/ICE/DTLS;浏览器双端通话是 RTC-004 的验收。
 - SRS WHIP ingest 媒体实测:无 stub/echo,由 RTC-006 迁移任务验收真实推拉流。
+- LiveKit webhook → 后端(`host.docker.internal:9191/api/rtc/webhook/livekit`):签名契约见 `docs/contracts/livekit-webhook.md`;端到端推送验证依赖后端起来 + migration_034/035 执行,归属 RTC-004 联调(RTC-003 已用签名向量/幂等单测覆盖,不宣称端到端已验证)。
+- 后端环境变量注入:`RTC_LIVEKIT_API_KEY`、`RTC_LIVEKIT_API_SECRET`、`RTC_LIVEKIT_WEBHOOK_SECRET`(= LIVEKIT_API_SECRET)、`RTC_TOKEN_TTL_SECONDS`(60-900,默认 300);未配置则 token 签发/webhook 校验 fail-closed。

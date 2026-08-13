@@ -180,6 +180,8 @@ ws://<host>/ws/chat?token=<jwt_token>
 | 4 | 视频消息 | `douyin_video`（旧格式） |
 | 5 | 红包 | `red_packet` |
 | 9 | 抖音视频卡片 | `douyin_video`（分享卡片） |
+| 10 | 音频通话记录 | 兼容投影（见 5.6 / RTC-003） |
+| 11 | 视频通话记录 | 兼容投影（见 5.6 / RTC-003） |
 
 ### 3.4 通知类型
 
@@ -401,7 +403,17 @@ SlideVerticalInfinite (垂直滑动)
 - `CALL_STATE.REJECT` → "对方已拒绝"
 - `CALL_STATE.NONE` → "对方未接通"
 
-> ⚠️ 实际通话功能（WebRTC信令）尚未实现完整后端
+**RTC-003 控制面（新）**：通话真相源迁移到 `com.douyin.rtc` 领域（`rtc_call_session/rtc_call_participant/rtc_call_event` + `rtc_webhook_ledger`），提供：
+
+- `POST /api/rtc/call`（创建；mode=audio|video，scope=direct|group）
+- `POST /api/rtc/call/{callId}/accept|reject|cancel|hangup|join|leave`
+- `GET /api/rtc/call/{callId}`（详情 + 参与者 + 事件）
+- `POST /api/rtc/token`（LiveKit 短期 token，TTL 60-900s，发布/订阅权限服务端决定）
+- `POST /api/rtc/webhook/livekit`（签名校验 `LiveKit-Signature: v0=HMAC-SHA256(secret, body)`，event id 幂等）
+
+旧记录 `msg_type=10/11` + `extra.callState`（0=拒接/1=已接通/2=未接通）保留为兼容投影，`extra` 新增 `call_id`（向后兼容 JSON）。完整契约见 `docs/contracts/`。
+
+> ⚠️ 旧 WebRTC 信令（SDP echo）仍在 `StreamController`，属 legacy-bridge，下线见 ADR-003 / RTC-009；通话主路径迁移到 LiveKit 见 RTC-004。
 
 ---
 
@@ -415,8 +427,8 @@ SlideVerticalInfinite (垂直滑动)
 | from_user_id | BIGINT | 发送者 |
 | to_user_id | BIGINT | 接收者 |
 | content | TEXT | 消息内容（JSON字符串或文本） |
-| msg_type | INT | 消息类型（1-9） |
-| extra | VARCHAR(255) | 附加信息（如语音时长） |
+| msg_type | INT | 消息类型（1-9，另 10=音频通话记录、11=视频通话记录） |
+| extra | VARCHAR(255) | 附加信息（如语音时长；通话记录含 `callState`/`duration`/`call_id`） |
 | is_read | TINYINT | 0=未读, 1=已读 |
 | create_time | DATETIME | 发送时间 |
 

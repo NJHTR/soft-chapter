@@ -10,14 +10,17 @@
     "event_id": { "type": "string", "minLength": 8, "maxLength": 128 },
     "client_request_id": { "type": "string", "minLength": 8, "maxLength": 128 },
     "trace_id": { "type": "string", "maxLength": 128 },
-    "kind": {
+"kind": {
       "type": "string",
       "enum": [
         "call.request", "call.accept", "call.reject", "call.cancel",
         "call.join", "call.leave", "call.hangup", "call.participant.update",
+        "call.expired", "call.failed", "call.ended",
+        "participant.joined", "participant.left",
         "rtc.offer", "rtc.answer", "rtc.ice", "rtc.ice_complete", "rtc.renegotiate",
         "media.mute", "media.camera", "media.screen_share",
-        "live.control", "live.presence"
+        "live.control", "live.presence",
+        "error", "ack"
       ]
     },
     "call_id": { "type": "string", "maxLength": 128 },
@@ -44,8 +47,14 @@
         "candidate": { "type": ["string", "null"], "maxLength": 10000 },
         "sdp_mid": { "type": ["string", "null"], "maxLength": 128 },
         "sdp_m_line_index": { "type": ["integer", "null"], "minimum": 0 },
-        "end_of_candidates": { "type": "boolean" },
-        "reason": { "type": "string", "maxLength": 256 }
+"end_of_candidates": { "type": "boolean" },
+        "reason": { "type": "string", "maxLength": 256 },
+        "error_code": { "type": "string", "maxLength": 64 },
+        "error_message": { "type": "string", "maxLength": 512 },
+        "replayed": { "type": "boolean" },
+        "token": { "type": "string", "maxLength": 4096 },
+        "expires_at": { "type": "string", "format": "date-time" },
+        "ttl_seconds": { "type": "integer", "minimum": 60, "maximum": 900 }
       }
     }
   },
@@ -57,6 +66,10 @@
     {
       "if": { "required": ["kind"], "properties": { "kind": { "pattern": "^live\\." } } },
       "then": { "required": ["room_id"] }
+    },
+    {
+      "if": { "required": ["kind"], "properties": { "kind": { "enum": ["error", "ack"] } } },
+      "then": { "required": ["event_id", "occurred_at", "seq"] }
     }
   ]
 }
