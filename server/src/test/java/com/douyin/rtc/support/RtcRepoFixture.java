@@ -10,6 +10,7 @@ import com.douyin.rtc.repository.RtcCallParticipantMapper;
 import com.douyin.rtc.repository.RtcCallSessionMapper;
 import com.douyin.rtc.repository.RtcMessageProjectionMapper;
 import com.douyin.service.RedisCacheService;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -61,6 +62,10 @@ public final class RtcRepoFixture {
         // ===== 会话 =====
         when(sessions.insert(any(CallSession.class))).thenAnswer(inv -> {
             CallSession s = inv.getArgument(0);
+            // uk_client_request_id 唯一语义: 冲突时 INSERT 抛 DuplicateKeyException(并发竞态路径)
+            if (s.getClientRequestId() != null && sessionsByClientRequest.containsKey(s.getClientRequestId())) {
+                throw new DuplicateKeyException("client_request_id 唯一冲突: " + s.getClientRequestId());
+            }
             sessionsByCall.put(s.getCallId(), s);
             sessionsByClientRequest.put(s.getClientRequestId(), s);
             return 1;

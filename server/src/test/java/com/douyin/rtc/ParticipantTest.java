@@ -2,6 +2,7 @@ package com.douyin.rtc;
 
 import com.douyin.rtc.domain.CallDomainException;
 import com.douyin.rtc.domain.CallErrorCode;
+import com.douyin.rtc.domain.CallJson;
 import com.douyin.rtc.domain.CallParticipant;
 import com.douyin.rtc.domain.CallSession;
 import com.douyin.rtc.domain.CallState;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static com.douyin.rtc.support.CallTestSupport.CALLEE;
 import static com.douyin.rtc.support.CallTestSupport.GROUP_ID;
@@ -87,6 +89,12 @@ class ParticipantTest {
         assertThat(fx.participant(call.getCallId(), INITIATOR).getState()).isEqualTo("LEFT");
         assertThat(fx.participant(call.getCallId(), CALLEE).getState()).isEqualTo("LEFT");
         assertThat(fx.participant(call.getCallId(), CALLEE).getLeftAt()).isNotNull();
+        // CONNECTED 挂断立即落 compat 投影(callState=2 已结束),不依赖 webhook confirmEnded
+        assertThat(fx.projections).hasSize(4); // create(0) + accept(1) + connected(1) + hangup(2)
+        Map<String, Object> extra = CallJson.read(fx.projections.get(fx.projections.size() - 1).getExtra());
+        assertThat(CallJson.intField(extra, "callState", -1)).isEqualTo(2);
+        assertThat(CallJson.longField(extra, "duration", -1)).isGreaterThanOrEqualTo(0);
+        assertThat(CallJson.stringField(extra, "call_id")).isEqualTo(call.getCallId());
     }
 
     @Test

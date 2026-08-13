@@ -38,4 +38,12 @@ public class RtcExceptionHandler {
         return Result.fail(HTTP_CODES.getOrDefault(e.getCode(), 400),
                 e.getCode().name() + ": " + e.getMessage());
     }
+
+    /** 数字解析兜底(controller 已就地转换,此处防御其他路径泄漏为 500)。 */
+    @ExceptionHandler(NumberFormatException.class)
+    public Result<?> handleNumberFormat(NumberFormatException e) {
+        log.warn("[RTC-API] invalid number: {}", e.getMessage());
+        return Result.fail(HTTP_CODES.getOrDefault(CallErrorCode.INVALID_ARGUMENT, 400),
+                CallErrorCode.INVALID_ARGUMENT.name() + ": 参数必须是数字");
+    }
 }

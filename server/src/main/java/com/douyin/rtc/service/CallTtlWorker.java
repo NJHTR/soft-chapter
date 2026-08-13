@@ -37,14 +37,14 @@ public class CallTtlWorker {
         int expired = 0;
         int failed = 0;
         for (CallSession session : sessionMapper.findExpiredBefore(CallState.RINGING.name(), now)) {
-            String eventId = "ttl:" + session.getCallId() + ":" + now.toEpochSecond(ZoneOffset.UTC);
+            String eventId = "sys:ttl:" + session.getCallId() + ":" + now.toEpochSecond(ZoneOffset.UTC);
             CallSession after = callService.expireCall(session.getCallId(), eventId, TRACE_TTL);
             if (after != null && CallState.EXPIRED == CallState.valueOf(after.getState())) {
                 expired++;
             }
         }
         for (CallSession session : sessionMapper.findExpiredBefore(CallState.NEGOTIATING.name(), now)) {
-            String eventId = "ttl:" + session.getCallId() + ":" + now.toEpochSecond(ZoneOffset.UTC) + ":" + UUID.randomUUID();
+            String eventId = "sys:ttl:" + session.getCallId() + ":" + now.toEpochSecond(ZoneOffset.UTC) + ":" + UUID.randomUUID();
             CallSession after = callService.expireCall(session.getCallId(), eventId, TRACE_TTL);
             if (after != null && CallState.FAILED == CallState.valueOf(after.getState())) {
                 failed++;

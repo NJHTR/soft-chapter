@@ -1,6 +1,7 @@
 package com.douyin.rtc;
 
 import com.douyin.rtc.domain.CallEndReason;
+import com.douyin.rtc.domain.CallEvent;
 import com.douyin.rtc.domain.CallSession;
 import com.douyin.rtc.domain.CallState;
 import com.douyin.rtc.service.CallService;
@@ -44,6 +45,13 @@ class CallTtlWorkerTest {
         assertThat(after.getState()).isEqualTo(CallState.EXPIRED.name());
         assertThat(after.getEndReason()).isEqualTo(CallEndReason.EXPIRED.name());
         assertThat(fx.eventCount(call.getCallId(), "call.expired")).isEqualTo(1);
+        // event_id 落在服务端保留前缀 sys:ttl:,客户端无法预占
+        CallEvent expired = fx.eventsOf(call.getCallId()).stream()
+                .filter(e -> "call.expired".equals(e.getKind()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(expired.getEventId()).startsWith("sys:ttl:");
+        assertThat(expired.getEventId()).contains(call.getCallId());
     }
 
     @Test

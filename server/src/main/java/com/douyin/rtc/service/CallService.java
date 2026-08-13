@@ -19,6 +19,7 @@ import com.douyin.rtc.repository.RtcCallSessionMapper;
 import com.douyin.service.RedisCacheService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -44,6 +45,7 @@ public class CallService {
 
     private static final long SYSTEM_PARTICIPANT = 0L;
     private static final String SYSTEM_EVENT_PREFIX = "sys:";
+    private static final String TTL_EVENT_PREFIX = "ttl:";
     private static final String RATE_LIMIT_CREATE = "call:create";
     private static final String RATE_LIMIT_ACCEPT = "call:accept";
     private static final int RATE_LIMIT_CREATE_MAX = 20;
@@ -111,6 +113,7 @@ public class CallService {
         if (cmd.clientRequestId() == null || cmd.clientRequestId().length() < 8) {
             throw new CallDomainException(CallErrorCode.INVALID_ARGUMENT, "client_request_id 至少 8 位");
         }
+        assertClientEventId(cmd.eventId());
         if (!rateLimitAllowed(RATE_LIMIT_CREATE, initiator)) {
             throw new CallDomainException(CallErrorCode.RATE_LIMITED, "发起通话过于频繁,请稍后再试");
         }
@@ -136,7 +139,21 @@ public class CallService {
         session.setState(CallState.CREATED.name());
         session.setClientRequestId(cmd.clientRequestId());
         session.setTraceId(cmd.traceId());
-        sessionMapper.insert(session);
+        try {
+            sessionMapper.insert(session);
+        } catch (DuplicateKeyException e) {
+            // 并发下预查后插入竞态: uk_client_request_id 唯一冲突,回查返回原结果(幂等)
+            CallSession raced = sessionMapper.findByClientRequestId(cmd.clientRequestId());
+            if (raced == null) {
+                throw e;
+            }
+            if (!raced.getInitiatorId().equals(initiator)) {
+                throw new CallDomainException(CallErrorCode.SESSION_ALREADY_EXISTS,
+                        "client_request_id 已被其他用户占用");
+            }
+            log.info("[CALL] create 唯一冲突回查: callId={} clientRequestId={}", raced.getCallId(), cmd.clientRequestId());
+            return raced;
+        }
 
         // CREATED -> RINGING (转移表第一行),RINGING TTL 开始计时
         String eventId = cmd.eventId() != null ? cmd.eventId() : systemEventId();
@@ -159,6 +176,7 @@ public class CallService {
 
     /** 被叫方接听: RINGING -> ACCEPTED,参与者 RINGING -> JOINING */
     public CallSession acceptCall(String callId, Long actorId, String eventId, String traceId) {
+        assertClientEventId(eventId);
         CallSession session = requireSession(callId);
         aclService.assertAuthenticated(actorId);
         requireTargetParticipant(session, actorId);
@@ -184,6 +202,7 @@ public class CallService {
 
     /** 被叫方拒绝: RINGING -> REJECTED(终态) */
     public CallSession rejectCall(String callId, Long actorId, String eventId, String traceId) {
+        assertClientEventId(eventId);
         CallSession session = requireSession(callId);
         aclService.assertAuthenticated(actorId);
         requireTargetParticipant(session, actorId);
@@ -207,6 +226,7 @@ public class CallService {
 
     /** 发起者取消: RINGING -> CANCELLED(终态)。被叫方调用被拒。 */
     public CallSession cancelCall(String callId, Long actorId, String eventId, String traceId) {
+        assertClientEventId(eventId);
         CallSession session = requireSession(callId);
         aclService.assertAuthenticated(actorId);
         if (!session.getInitiatorId().equals(actorId)) {
@@ -239,6 +259,7 @@ public class CallService {
      * NEGOTIATING -> ENDED(终态);CONNECTED -> ENDING(由 confirmEnded 收敛)。
      */
     public CallSession hangupCall(String callId, Long actorId, String eventId, String traceId) {
+        assertClientEventId(eventId);
         CallSession session = requireSession(callId);
         aclService.assertAuthenticated(actorId);
         requireAnyParticipant(session, actorId);
@@ -262,7 +283,7 @@ public class CallService {
             return session;
         }
         if (state == CallState.CONNECTED) {
-            if (!applySessionTransition(session, CallCommand.HANGUP, CallEndReason.HANGUP.name(), null, null, null)) {
+            if (!applySessionTransition(session, CallCommand.HANGUP, CallEndReason.HANGUP.name(), null, null, now)) {
                 return reload(session);
             }
             for (CallParticipant p : participantMapper.listByCall(callId)) {
@@ -272,6 +293,7 @@ public class CallService {
                         ParticipantCommand.LEAVE, CallEndReason.HANGUP.name(), null, now);
             }
             append(eventId, session, actorId, CallEventKind.CALL_HANGUP, Map.of("mode", session.getMode()), traceId);
+            project(session, 2, ledgerService.durationSeconds(session));
             return session;
         }
         // 其他状态(如 RINGING)hangup 未在转移表中 → 乱序,安全返回当前状态
@@ -280,6 +302,7 @@ public class CallService {
 
     /** 参与者加入(RINGING -> JOINING)。initiator 在被叫方接听后调用。 */
     public CallSession joinCall(String callId, Long actorId, String eventId, String traceId) {
+        assertClientEventId(eventId);
         CallSession session = requireSession(callId);
         aclService.assertAuthenticated(actorId);
         requireAnyParticipant(session, actorId);
@@ -299,6 +322,7 @@ public class CallService {
 
     /** 参与者离开(通话中退出,不终止会话)。 */
     public CallSession leaveCall(String callId, Long actorId, String eventId, String traceId) {
+        assertClientEventId(eventId);
         CallSession session = requireSession(callId);
         aclService.assertAuthenticated(actorId);
         requireAnyParticipant(session, actorId);
@@ -491,6 +515,15 @@ public class CallService {
     }
 
     // ==================== 内部工具 ====================
+
+    /** 客户端 event_id 前缀校验: sys:/ttl: 归服务端(worker/token/webhook),禁止客户端预占 */
+    private void assertClientEventId(String eventId) {
+        if (eventId != null
+                && (eventId.startsWith(SYSTEM_EVENT_PREFIX) || eventId.startsWith(TTL_EVENT_PREFIX))) {
+            throw new CallDomainException(CallErrorCode.INVALID_ARGUMENT,
+                    "event_id 保留前缀 sys:/ttl:,禁止客户端使用");
+        }
+    }
 
     private CallSession requireSession(String callId) {
         CallSession session = sessionMapper.findByCallId(callId);

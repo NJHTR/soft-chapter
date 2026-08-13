@@ -15,6 +15,7 @@ import static com.douyin.rtc.support.CallTestSupport.CALLEE;
 import static com.douyin.rtc.support.CallTestSupport.INITIATOR;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
 
 /**
  * 幂等契约: client_request_id 重复创建返回原结果;
@@ -52,6 +53,64 @@ class IdempotencyTest {
                 .satisfies(t -> assertThat(((CallDomainException) t).getCode())
                         .isEqualTo(CallErrorCode.SESSION_ALREADY_EXISTS));
         assertThat(fx.sessionsByCall).hasSize(1);
+    }
+
+    @Test
+    void createConcurrentSameClientRequestIdReturnsOriginalAfterInsertConflict() {
+        CallSession first = CallTestSupport.createDirect(svc, fx, "creq-race-00001", "evt-create-0001");
+        // 模拟并发窗口: 预查未命中(返回 null),INSERT 唯一冲突后回查命中原会话
+        when(fx.sessions.findByClientRequestId("creq-race-00001"))
+                .thenReturn(null)
+                .thenReturn(first);
+
+        CallSession second = CallTestSupport.createDirect(svc, fx, "creq-race-00001", "evt-create-0002");
+
+        assertThat(second.getCallId()).isEqualTo(first.getCallId());
+        assertThat(second).isSameAs(first);
+        assertThat(fx.sessionsByCall).hasSize(1);
+        assertThat(fx.eventCount(first.getCallId(), "call.request")).isEqualTo(1);
+    }
+
+    @Test
+    void createRejectsReservedSystemEventId() {
+        fx.setMutualFriend(INITIATOR, CALLEE);
+        assertThatThrownBy(() -> svc.createCall(new CreateCallCommand(
+                INITIATOR, "direct", CALLEE, null, "audio", "livekit",
+                "creq-sys-00001", "sys:forged", "trace")))
+                .isInstanceOf(CallDomainException.class)
+                .satisfies(t -> assertThat(((CallDomainException) t).getCode())
+                        .isEqualTo(CallErrorCode.INVALID_ARGUMENT));
+        assertThat(fx.sessionsByCall).isEmpty();
+    }
+
+    @Test
+    void createRejectsReservedTtlEventId() {
+        fx.setMutualFriend(INITIATOR, CALLEE);
+        assertThatThrownBy(() -> svc.createCall(new CreateCallCommand(
+                INITIATOR, "direct", CALLEE, null, "audio", "livekit",
+                "creq-ttl-00001", "ttl:call-x:123456", "trace")))
+                .isInstanceOf(CallDomainException.class)
+                .satisfies(t -> assertThat(((CallDomainException) t).getCode())
+                        .isEqualTo(CallErrorCode.INVALID_ARGUMENT));
+        assertThat(fx.sessionsByCall).isEmpty();
+    }
+
+    @Test
+    void commandRejectsReservedEventIdPrefix() {
+        CallSession call = CallTestSupport.createDirect(svc, fx);
+
+        assertThatThrownBy(() -> svc.acceptCall(call.getCallId(), CALLEE, "sys:accept", "trace"))
+                .isInstanceOf(CallDomainException.class)
+                .satisfies(t -> assertThat(((CallDomainException) t).getCode())
+                        .isEqualTo(CallErrorCode.INVALID_ARGUMENT));
+        assertThatThrownBy(() -> svc.hangupCall(call.getCallId(), INITIATOR, "ttl:hangup:1", "trace"))
+                .isInstanceOf(CallDomainException.class)
+                .satisfies(t -> assertThat(((CallDomainException) t).getCode())
+                        .isEqualTo(CallErrorCode.INVALID_ARGUMENT));
+
+        assertThat(fx.session(call.getCallId()).getState()).isEqualTo(CallState.RINGING.name());
+        assertThat(fx.eventCount(call.getCallId(), "call.accept")).isEqualTo(0);
+        assertThat(fx.eventCount(call.getCallId(), "call.hangup")).isEqualTo(0);
     }
 
     @Test

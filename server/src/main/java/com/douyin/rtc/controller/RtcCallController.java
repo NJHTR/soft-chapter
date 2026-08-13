@@ -170,12 +170,16 @@ public class RtcCallController {
         return Result.ok(callService.leaveCall(callId, loginUserId(req), eventId(body), traceId(body)));
     }
 
-    /** 通话详情: 会话 + 参与者 + 事件账本(宪法 §2.8 可观测性)。 */
+    /** 通话详情: 会话 + 参与者 + 事件账本(宪法 §2.8 可观测性),仅限登录的参与者。 */
     @GetMapping("/call/{callId}")
-    public Result<Map<String, Object>> detail(@PathVariable String callId) {
+    public Result<Map<String, Object>> detail(@PathVariable String callId, HttpServletRequest req) {
+        Long userId = loginUserId(req);
         CallSession session = callService.getCall(callId);
         if (session == null) {
             throw new CallDomainException(CallErrorCode.SESSION_NOT_FOUND, "通话不存在: " + callId);
+        }
+        if (callService.getParticipant(callId, userId) == null) {
+            throw new CallDomainException(CallErrorCode.NOT_AUTHORIZED, "不是通话参与者");
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("call", session);
@@ -225,14 +229,28 @@ public class RtcCallController {
         if (v instanceof Number n) {
             return n.intValue();
         }
-        return v != null ? Integer.valueOf(String.valueOf(v)) : null;
+        if (v == null) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(String.valueOf(v));
+        } catch (NumberFormatException e) {
+            throw new CallDomainException(CallErrorCode.INVALID_ARGUMENT, "参数 " + key + " 必须是数字");
+        }
     }
 
     private static Long longValue(Object v) {
         if (v instanceof Number n) {
             return n.longValue();
         }
-        return v != null ? Long.valueOf(String.valueOf(v)) : null;
+        if (v == null) {
+            return null;
+        }
+        try {
+            return Long.valueOf(String.valueOf(v));
+        } catch (NumberFormatException e) {
+            throw new CallDomainException(CallErrorCode.INVALID_ARGUMENT, "参数必须是数字");
+        }
     }
 
     private static String eventId(Map<String, Object> body) {
