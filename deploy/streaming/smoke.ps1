@@ -35,6 +35,13 @@ if ($ProfileName -eq "none") {
 Start-Sleep -Seconds 12
 
 Write-Host "==> 3/6 健康状态" -ForegroundColor Cyan
+Check "containers healthy(docker inspect)" {
+    $names = if ($ProfileName -eq "none") { @("douyin-srs") } else { @("douyin-srs", "douyin-livekit", "douyin-coturn") }
+    foreach ($n in $names) {
+        $h = docker inspect --format "{{.State.Health.Status}}" $n 2>&1
+        if ($LASTEXITCODE -ne 0 -or $h -ne "healthy") { throw "$n health=[$h]" }
+    }
+}
 Check "srs healthy(1985 /api/v1/versions)" {
     $r = Invoke-RestMethod http://localhost:1985/api/v1/versions -TimeoutSec 5
     if ($r.code -ne 0) { throw "srs api code=$($r.code)" }
@@ -52,8 +59,25 @@ Check "srs HTTP-FLV 端口 8080" {
     if (-not $t.TcpTestSucceeded) { throw "8080 不可达" }
 }
 
-Write-Host "==> 4/6 TURN 运行日志(relay 初始化)" -ForegroundColor Cyan
-docker logs douyin-coturn 2>&1 | Select-Object -First 8
+Write-Host "==> 4/6 TURN 真实 allocate(use-auth-secret REST 凭据)" -ForegroundColor Cyan
+docker logs douyin-coturn 2>&1 | Select-Object -First 6
+Check "TURN UDP allocate(REST 临时凭据)" {
+    $secret = ""
+    if (Test-Path $envFile) {
+        $secret = ((Get-Content $envFile | Where-Object { $_ -match '^TURN_SHARED_SECRET=' } | Select-Object -First 1) -replace '^TURN_SHARED_SECRET=', '').Trim()
+    }
+    if (-not $secret) { throw "未配置 TURN_SHARED_SECRET" }
+    $exp = [DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()
+    $user = "$exp`:$PID"
+    $hmac = New-Object System.Security.Cryptography.HMACSHA1
+    $hmac.Key = [Text.Encoding]::ASCII.GetBytes($secret)
+    $pass = [Convert]::ToBase64String($hmac.ComputeHash([Text.Encoding]::ASCII.GetBytes($user)))
+    $out = docker exec douyin-coturn turnutils_uclient -y -u $user -w $pass -z 3 -n 1 127.0.0.1 2>&1 | Out-String
+    $tail = ($out -split "`n" | Where-Object { $_.Trim() } | Select-Object -Last 3) -join " | "
+    if ($out -match '(?i)403|forbidden|error|refused|auth.*fail') { throw "allocate 认证/连接失败: $tail" }
+    if ($out -match '(?i)start_mclient|new allocation|Total success') { return }
+    throw "allocate 未成功: $tail"
+}
 
 Write-Host "==> 5/6 LiveKit 真实媒体打通(livekit-cli --publish-demo)" -ForegroundColor Cyan
 $key = "devkey"

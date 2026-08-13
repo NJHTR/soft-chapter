@@ -117,7 +117,7 @@ verification:
     - command: native streaming-engine smoke tests
       result: passed_by_existing_runtime_report
     - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc
-      result: passed_6_of_6 (compose config / srs api / livekit metrics / coturn 3478 / srs flv 8080 / livekit-cli publish-demo real media)
+      result: passed_8_of_8 (compose config / containers healthy / srs api / livekit metrics / coturn 3478 / srs flv 8080 / TURN UDP allocate via REST creds / livekit-cli publish-demo real media)
   unavailable:
     - maven_backend_tests
     - browser_webrtc_e2e

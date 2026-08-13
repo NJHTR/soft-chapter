@@ -40,7 +40,7 @@ services:
 
   # 通话/连麦 SFU(与直播栈职责分离,不共用端口)
   livekit:
-    image: livekit/livekit-server:latest
+    image: livekit/livekit-server:v1.13.5
     container_name: douyin-livekit
     restart: unless-stopped
     profiles: ["webrtc"]
@@ -65,7 +65,7 @@ services:
 
   # WebRTC TURN 穿透边缘(REST 临时凭据,TLS 5349 待证书落地见 deploy/rtc/turnserver.conf)
   coturn:
-    image: coturn/coturn
+    image: coturn/coturn:4.17.2
     container_name: douyin-coturn
     restart: unless-stopped
     profiles: ["webrtc"]
@@ -76,8 +76,9 @@ services:
     volumes:
       - ./deploy/rtc/turnserver.conf:/etc/coturn/turnserver.conf
     command: >
-      -n --log-file=stdout
+      --log-file=stdout
       --static-auth-secret=${TURN_SHARED_SECRET:?请在 .env 中设置 TURN_SHARED_SECRET}
+      --external-ip=${SRS_RTC_CANDIDATE:?请在 .env 中设置 SRS_RTC_CANDIDATE(浏览器可达 IP)}
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/3478'"]
       interval: 15s
@@ -94,9 +95,9 @@ services:
     restart: unless-stopped
     profiles: ["alternative"]
     ports:
-      - "8888:8888/tcp"    # WebRTC / API
-      - "8889:8889/tcp"    # RTMP
-      - "8889:8889/udp"    # WebRTC RTP
+      - "8888:8888/tcp"    # RTSP(rtspAddress)
+      - "8888:8888/udp"    # WebRTC RTP(webrtcLocalUDPPort)
+      - "8889:8889/tcp"    # RTMP(rtmpAddress)
     volumes:
       - ./deploy/streaming/mediamtx.yml:/mediamtx.yml
     networks:
@@ -122,7 +123,7 @@ services:
     ports:
       - "3003:3000"        # 避开 admin 前端 dev 端口 3001
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-change-me-grafana}
     networks:
       - streaming-net
 

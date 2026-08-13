@@ -1,5 +1,18 @@
 # 工作日志
 
+## 2026-08-13：RTC-002 独立审查与修复（smoke 8/8）
+
+- 独立审查智能体结论：APPROVE_WITH_NOTES。核对清单：密钥安全 ✓、边界遵守 ✓、无 stub 宣称 ✓、回滚可执行 ✓、测试证据真实（有瑕疵）。
+- 审查发现与修复：
+  1. coturn `-n` 为非法参数（镜像无此选项，日志 ERROR "Unknown argument"），且 command 覆盖镜像默认 `--external-ip=$(detect-external-ip)` → 已删 `-n`、显式注入 `--external-ip=${SRS_RTC_CANDIDATE}`。
+  2. 真实 TURN allocate 实测暴露：`use-auth-secret` 缺 `lt-cred-mech` 导致 digest 认证 403（首次 uclient 测试失败即铁证）→ conf 补 `lt-cred-mech`，allocate 通过。
+  3. smoke 3/6 缺容器 health 断言 → 新增 `docker inspect .State.Health.Status` 检查。
+  4. smoke 4/6 仅查日志 → 升级为真实 UDP allocate（turnutils_uclient + REST HMAC 凭据，从 .env 读 secret，不落日志）。
+  5. mediamtx UDP 端口映射错（8888/udp 未发布）→ 修正为 8888/udp(WebRTC) + 8888/tcp(RTSP) + 8889/tcp(RTMP)。
+  6. 镜像固定 tag：livekit v1.13.5、coturn 4.17.2（monitoring/alternative 未实测镜像版本，README 注明首次启动时固定）。
+  7. `GF_ADMIN_PASSWORD` 空值回退 admin/admin → 默认占位值。
+- smoke 最终 8/8 ALL PASS：compose config、containers healthy、srs API、livekit 7889/metrics、coturn 3478、srs HTTP-FLV 8080、TURN UDP allocate（REST 凭据）、livekit-cli publish-demo。
+
 ## 2026-08-13：RTC-002 provider bootstrap 全绿
 
 ### 工作区快照
