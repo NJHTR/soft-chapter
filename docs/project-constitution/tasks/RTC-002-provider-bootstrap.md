@@ -2,7 +2,7 @@
 
 ## 状态与边界
 
-- 状态：`review`
+- 状态：`completed`（独立审查通过：审查结论 APPROVE_WITH_NOTES，阻断项已修复并复测 8/8）
 - 依赖：RTC-001
 - 负责目录：`deploy/rtc/`、`deploy/streaming/`、`docker-compose.streaming.yml` 及本任务测试文档
 - 禁止修改：`src/`、`server/` 业务控制面、`Call.vue`、WebCodecs 和 native engine

@@ -34,7 +34,7 @@ architecture_decisions:
   legacy_policy: websocket_media_and_mesh_are_migration_only
 current_task:
   id: RTC-002
-  status: review
+  status: completed
   owner: null
   started_at: "2026-08-13"
   branch: dev/full
@@ -52,7 +52,7 @@ tasks:
     depends_on: []
   - id: RTC-002
     title: 选择并部署 LiveKit、coturn、SRS 的 provider bootstrap 环境
-    status: review
+    status: completed
     depends_on: [RTC-001]
   - id: RTC-003
     title: 实现 RTC 房间、通话状态机、token、ACL 和事件账本
@@ -124,5 +124,5 @@ verification:
     - turn_nat_matrix
     - turn_tls_5349 (no cert until RTC-003)
     - deployed_srs_or_livekit_e2e
-last_verified_commit: null
+last_verified_commit: 20d88f7
 last_doc_commit: 85262e2
