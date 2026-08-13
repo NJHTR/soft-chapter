@@ -279,7 +279,7 @@ public class CallService {
                         ParticipantCommand.LEAVE, CallEndReason.HANGUP.name(), null, now);
             }
             append(eventId, session, actorId, CallEventKind.CALL_HANGUP, Map.of("mode", session.getMode()), traceId);
-            project(session, 2, ledgerService.durationSeconds(session));
+            project(session, session.getConnectedAt() != null ? 1 : 2, ledgerService.durationSeconds(session));
             return session;
         }
         if (state == CallState.CONNECTED) {
@@ -293,7 +293,7 @@ public class CallService {
                         ParticipantCommand.LEAVE, CallEndReason.HANGUP.name(), null, now);
             }
             append(eventId, session, actorId, CallEventKind.CALL_HANGUP, Map.of("mode", session.getMode()), traceId);
-            project(session, 2, ledgerService.durationSeconds(session));
+            project(session, 1, ledgerService.durationSeconds(session));
             return session;
         }
         // 其他状态(如 RINGING)hangup 未在转移表中 → 乱序,安全返回当前状态
@@ -400,7 +400,7 @@ public class CallService {
         long duration = ledgerService.durationSeconds(session);
         append(eventId, session, SYSTEM_PARTICIPANT, CallEventKind.CALL_ENDED,
                 Map.of("end_reason", endReason, "duration", duration), traceId);
-        project(session, 2, duration);
+        project(session, session.getConnectedAt() != null ? 1 : 2, duration);
         return session;
     }
 
@@ -435,7 +435,7 @@ public class CallService {
         }
         append(eventId, session, SYSTEM_PARTICIPANT, CallEventKind.CALL_FAILED,
                 Map.of("end_reason", endReason), traceId);
-        project(session, session.getConnectedAt() != null ? 2 : 0, ledgerService.durationSeconds(session));
+        project(session, session.getConnectedAt() != null ? 1 : 0, ledgerService.durationSeconds(session));
         return session;
     }
 
@@ -465,7 +465,7 @@ public class CallService {
             }
             append(eventId, session, SYSTEM_PARTICIPANT, CallEventKind.CALL_EXPIRED,
                     Map.of("end_reason", CallEndReason.EXPIRED.name(), "source", "ttl-worker"), traceId);
-            project(session, 0, 0);
+            project(session, 2, 0);
             return session;
         }
         if (state == CallState.NEGOTIATING) {

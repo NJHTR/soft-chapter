@@ -89,10 +89,10 @@ class ParticipantTest {
         assertThat(fx.participant(call.getCallId(), INITIATOR).getState()).isEqualTo("LEFT");
         assertThat(fx.participant(call.getCallId(), CALLEE).getState()).isEqualTo("LEFT");
         assertThat(fx.participant(call.getCallId(), CALLEE).getLeftAt()).isNotNull();
-        // CONNECTED 挂断立即落 compat 投影(callState=2 已结束),不依赖 webhook confirmEnded
-        assertThat(fx.projections).hasSize(4); // create(0) + accept(1) + connected(1) + hangup(2)
+        // CONNECTED 挂断立即落 compat 投影(callState=1 已接通,对齐旧前端语义 0/1/2),不依赖 webhook confirmEnded
+        assertThat(fx.projections).hasSize(4); // create(0) + accept(1) + connected(1) + hangup(1)
         Map<String, Object> extra = CallJson.read(fx.projections.get(fx.projections.size() - 1).getExtra());
-        assertThat(CallJson.intField(extra, "callState", -1)).isEqualTo(2);
+        assertThat(CallJson.intField(extra, "callState", -1)).isEqualTo(1);
         assertThat(CallJson.longField(extra, "duration", -1)).isGreaterThanOrEqualTo(0);
         assertThat(CallJson.stringField(extra, "call_id")).isEqualTo(call.getCallId());
     }

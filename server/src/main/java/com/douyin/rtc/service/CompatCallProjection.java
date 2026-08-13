@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * 旧消息兼容投影(t_message msg_type=10/11)的查询视图。
- * callState: 0=未接通 1=已接通 2=已结束; duration 单位为秒。
+ * callState 兼容旧前端语义: 0=拒接/取消 1=已接通 2=未接通; duration 单位为秒。
  * call_id 从 extra JSON 中读取;若历史数据缺失则回填(查询投影兜底)。
  */
 public record CompatCallProjection(
