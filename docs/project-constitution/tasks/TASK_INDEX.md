@@ -4,7 +4,7 @@
 
 | ID | 任务 | 状态 | 依赖 | 主要交付物 |
 |---|---|---|---|---|
-| RTC-001 | 宪法、现状基线、模块边界、契约和路线图 | `in_progress` | 无 | `docs/project-constitution`、架构文档、ADR、schema、测试计划 |
+| RTC-001 | 宪法、现状基线、模块边界、契约和路线图 | `completed` | 无 | `docs/project-constitution`、架构文档、ADR、schema、测试计划 |
 | RTC-002 | LiveKit/coturn/SRS provider bootstrap 环境 | `planned` | RTC-001 | 配置、端口、健康检查、provider CLI smoke test；不依赖业务 token API |
 | RTC-003 | RTC 控制面和通话领域 | `planned` | RTC-001 | CallSession、Participant、ACL、幂等事件、token API、webhook |
 | RTC-004 | 1 对 1 LiveKit 适配器 | `planned` | RTC-003 | 设备管理、音频优先、接通/重连、通话记录 |

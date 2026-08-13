@@ -33,23 +33,22 @@ architecture_decisions:
   browser_codec_baseline: h264_or_vp8_video_plus_opus_audio
   legacy_policy: websocket_media_and_mesh_are_migration_only
 current_task:
-  id: RTC-001
-  status: in_progress
-  owner: /root
-  started_at: "2026-08-13"
+  id: RTC-002
+  status: planned
+  owner: null
+  started_at: null
   branch: dev/full
-  scope: constitution_architecture_inventory_and_first_wave_plan
-  dependencies: []
+  scope: livekit_coturn_srs_provider_bootstrap
+  dependencies: [RTC-001]
   expected_artifacts:
-    - docs/project-constitution/
-    - docs/architecture/
-    - docs/adr/
-    - docs/contracts/
-    - docs/testing/
+    - docker-compose.streaming.yml (provider profile)
+    - deploy/rtc/
+    - provider health checks
+    - provider CLI smoke test
 tasks:
-  - id: RTC-001
+- id: RTC-001
     title: 建立实时媒体宪法、基线和架构契约
-    status: in_progress
+    status: completed
     depends_on: []
   - id: RTC-002
     title: 选择并部署 LiveKit、coturn、SRS 的 provider bootstrap 环境
@@ -123,4 +122,4 @@ verification:
     - turn_nat_matrix
     - deployed_srs_or_livekit_e2e
 last_verified_commit: null
-last_doc_commit: null
+last_doc_commit: 85262e2

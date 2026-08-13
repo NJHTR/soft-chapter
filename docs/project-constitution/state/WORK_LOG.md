@@ -1,5 +1,14 @@
 # 工作日志
 
+## 2026-08-13：RTC-001 文档基线落地
+
+- 独立智能体完成只读评估（架构、WebRTC、契约、宪法审查），结论一致：当前主要问题是媒体链路与职责边界未成立，而非码率参数。
+- 审查修正已合入工作区：宪法 v1.1（§2.4 LiveKit 原生信令与应用控制事件边界、§3 新增 `rtc-persistence` 统一 call ledger 所有权、§7 治理/版本/弃用与 legacy 退役里程碑）、RTC-002~010 任务文件、状态文件与开发计划更新。
+- 提交 `85262e2 docs(RTC-001): 实时媒体宪法与架构基线`（34 文件，纯治理/架构文档；`.ai`、`.ai-company` 项目记录一并入库）。
+- 修复了会话间遗留的 `admin/design.md` index 空文件问题：用户的 staged 内容（99 行）已恢复，不在本次提交内。
+- 用户业务改动（直播、streaming-engine、WebSocket、后台、`docs/runtime/`、`docs/verification/`）原样保留，未纳入提交。
+- RTC-001 DoD 全部满足，标记 `completed`；下一任务 RTC-002（provider bootstrap）。
+
 ## 2026-08-13：RTC-001 基线勘察
 
 ### 工作区快照

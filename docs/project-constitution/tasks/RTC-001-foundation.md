@@ -2,9 +2,10 @@
 
 ## 状态
 
-- 状态：`in_progress`
+- 状态：`completed`
 - 负责人：`/root`
 - 分支：`dev/full`
+- 提交：`85262e2 docs(RTC-001): 实时媒体宪法与架构基线`
 - 依赖：无
 - 允许修改：`docs/project-constitution/`、`docs/architecture/`、`docs/adr/`、`docs/contracts/`、`docs/testing/`、`docs/roadmap/`
 - 禁止修改：已有 `src/`、`server/`、`streaming-engine/` 业务代码以及用户未提交改动
@@ -28,10 +29,10 @@
 
 ## Definition of Done
 
-- [ ] 宪法、任务协议、AgentGit 协议和状态文件存在并可读。
-- [ ] 模块所有权、依赖关系和禁止越界规则明确。
-- [ ] LiveKit/SRS/coturn 的选型和职责有 ADR。
-- [ ] Call 状态机、参与者状态、信令 envelope 和兼容迁移方案有文档/schema。
-- [ ] 质量目标、QoE 指标、弱网策略和测试矩阵有文档。
-- [ ] 已知硬阻断、未验证项和工作区风险写入日志。
-- [ ] 文档变更独立提交，状态文件记录真实提交哈希。
+- [x] 宪法、任务协议、AgentGit 协议和状态文件存在并可读。
+- [x] 模块所有权、依赖关系和禁止越界规则明确。
+- [x] LiveKit/SRS/coturn 的选型和职责有 ADR。
+- [x] Call 状态机、参与者状态、信令 envelope 和兼容迁移方案有文档/schema。
+- [x] 质量目标、QoE 指标、弱网策略和测试矩阵有文档。
+- [x] 已知硬阻断、未验证项和工作区风险写入日志。
+- [x] 文档变更独立提交，状态文件记录真实提交哈希。
