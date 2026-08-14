@@ -1,0 +1,740 @@
+openapi: 3.0.3
+info:
+  title: Douyin RTC control-plane API
+  version: 1.0.0
+  license:
+    name: GNU General Public License v3.0
+    url: https://www.gnu.org/licenses/gpl-3.0.html
+  description: |
+    RTC 控制面契约。Spring Boot 只负责身份、通话生命周期、ACL、短期
+    LiveKit token、provider webhook 和审计账本；SDP、ICE、RTP 以及媒体帧
+    不经过这些 HTTP 接口或普通聊天 WebSocket。客户端的 provider SDK 在
+    获得 token 后直接连接 LiveKit。
+servers:
+  - url: /api
+    description: 当前 Spring Boot API 前缀
+tags:
+  - name: calls
+    description: 通话生命周期和账本查询
+  - name: provider
+    description: LiveKit token 与 webhook
+paths:
+  /rtc/call:
+    post:
+      tags: [calls]
+      summary: 创建通话
+      description: |
+        创建 direct 或 group 通话。`client_request_id` 是幂等键；同一发起者
+        使用相同幂等键重试时返回原会话。服务端从好友关系或群成员快照生成
+        参与者列表，不信任客户端传入的 roster。
+      operationId: createRtcCall
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCallRequest'
+            examples:
+              directVideo:
+                summary: 1 对 1 视频通话
+                value:
+                  scope: direct
+                  mode: video
+                  target_user_id: '42'
+                  client_request_id: call-create-20260813-01
+                  trace_id: trace-20260813-01
+      responses:
+        '200':
+          description: 已创建并进入 RINGING
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallSessionResult'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '403':
+          $ref: '#/components/responses/NotAuthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /rtc/call/{callId}/accept:
+    post:
+      tags: [calls]
+      summary: 接受通话
+      operationId: acceptRtcCall
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CallId'
+      requestBody:
+        $ref: '#/components/requestBodies/ActionRequest'
+      responses:
+        '200':
+          description: 已接受并进入 ACCEPTED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallSessionResult'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '403':
+          $ref: '#/components/responses/NotAuthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Expired'
+  /rtc/call/{callId}/reject:
+    post:
+      tags: [calls]
+      summary: 拒绝通话
+      operationId: rejectRtcCall
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CallId'
+      requestBody:
+        $ref: '#/components/requestBodies/ActionRequest'
+      responses:
+        '200':
+          description: 已拒绝并进入 REJECTED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallSessionResult'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '403':
+          $ref: '#/components/responses/NotAuthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Expired'
+  /rtc/call/{callId}/cancel:
+    post:
+      tags: [calls]
+      summary: 取消尚未接通的通话
+      operationId: cancelRtcCall
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CallId'
+      requestBody:
+        $ref: '#/components/requestBodies/ActionRequest'
+      responses:
+        '200':
+          description: 已取消并进入 CANCELLED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallSessionResult'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '403':
+          $ref: '#/components/responses/NotAuthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /rtc/call/{callId}/hangup:
+    post:
+      tags: [calls]
+      summary: 挂断通话
+      operationId: hangupRtcCall
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CallId'
+      requestBody:
+        $ref: '#/components/requestBodies/ActionRequest'
+      responses:
+        '200':
+          description: 已记录挂断并收敛生命周期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallSessionResult'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '403':
+          $ref: '#/components/responses/NotAuthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /rtc/call/{callId}/join:
+    post:
+      tags: [calls]
+      summary: 加入已接受的通话
+      description: 发起者或其他已授权参与者在 ACCEPTED/NEGOTIATING 阶段调用；LiveKit SDK 随后负责媒体连接。
+      operationId: joinRtcCall
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CallId'
+      requestBody:
+        $ref: '#/components/requestBodies/ActionRequest'
+      responses:
+        '200':
+          description: 已记录加入事件
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallSessionResult'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '403':
+          $ref: '#/components/responses/NotAuthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /rtc/call/{callId}/leave:
+    post:
+      tags: [calls]
+      summary: 离开通话但不主动结束会话
+      operationId: leaveRtcCall
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CallId'
+      requestBody:
+        $ref: '#/components/requestBodies/ActionRequest'
+      responses:
+        '200':
+          description: 已记录参与者离开事件
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallSessionResult'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '403':
+          $ref: '#/components/responses/NotAuthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /rtc/call/{callId}:
+    get:
+      tags: [calls]
+      summary: 查询通话详情、参与者和事件
+      description: 仅通话参与者可读；事件账本是控制面真相源，聊天表中的音视频消息只是兼容投影。
+      operationId: getRtcCall
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CallId'
+      responses:
+        '200':
+          description: 通话详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallDetailResult'
+        '403':
+          $ref: '#/components/responses/NotAuthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /rtc/token:
+    post:
+      tags: [provider]
+      summary: 签发短期 LiveKit token
+      description: |
+        服务端根据 call ledger、参与者权限和当前状态决定 room、identity、发布/订阅权限。
+        RINGING/CREATED 或终态不能签发；ACCEPTED 首次签发会推进到 NEGOTIATING。
+        token 只用于 LiveKit SDK 连接，不得写入日志或交给其他用户。
+      operationId: issueRtcToken
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '200':
+          description: 已签发短期 token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResult'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '403':
+          $ref: '#/components/responses/NotAuthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/ProviderError'
+  /rtc/webhook/livekit:
+    post:
+      tags: [provider]
+      summary: 接收 LiveKit webhook
+      description: |
+        该端点不使用登录态。生产主路径使用 LiveKit 官方
+        `Authorization: Bearer <JWT>`：JWT 的 iss 必须是 API key，sha256
+        claim 必须匹配原始请求体的 SHA-256 Base64 摘要。迁移期兼容
+        `LiveKit-Signature: v0=<hex>` HMAC header，但 Authorization 存在且无效时不得回退。
+        服务端先按 event id 写入唯一 ledger，再按事件类型幂等收敛 call 状态。
+        SDP/ICE 和媒体帧不会通过 webhook 转发。
+      operationId: receiveLiveKitWebhook
+      security: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: false
+          description: LiveKit 官方 webhook JWT；生产主路径必填
+          schema:
+            type: string
+            pattern: '^Bearer\\s+.+$'
+        - name: LiveKit-Signature
+          in: header
+          required: false
+          description: 迁移期兼容 header；Authorization 缺失时才使用
+          schema:
+            type: string
+            pattern: '^v0=[0-9a-fA-F]{64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveKitWebhook'
+      responses:
+        '200':
+          description: 已落账；重复 event id 也返回成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResult'
+        '400':
+          description: JSON 无法解析或缺少 event/id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '401':
+          description: 签名缺失或校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResult'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    CallId:
+      name: callId
+      in: path
+      required: true
+      description: 服务端生成的不可变通话 ID
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+  requestBodies:
+    ActionRequest:
+      required: false
+      description: 可选幂等事件和追踪信息。未提供 event_id 时服务端生成系统事件。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ActionRequest'
+  schemas:
+    UserId:
+      oneOf:
+        - type: string
+        - type: integer
+          format: int64
+    CreateCallRequest:
+      type: object
+      required: [scope, client_request_id]
+      additionalProperties: false
+      properties:
+        scope:
+          type: string
+          enum: [direct, group]
+          description: direct 需要 target_user_id；group 需要 group_id。
+        mode:
+          type: string
+          enum: [audio, video]
+          default: audio
+        target_user_id:
+          allOf:
+            - $ref: '#/components/schemas/UserId'
+          description: direct 通话目标用户。服务端仍会校验好友/ACL。
+        target_user_ids:
+          type: array
+          minItems: 1
+          deprecated: true
+          description: 旧客户端别名；direct 只取第一个元素，新的客户端使用 target_user_id。
+          items:
+            $ref: '#/components/schemas/UserId'
+        group_id:
+          allOf:
+            - $ref: '#/components/schemas/UserId'
+          description: group 通话目标群组，成员由服务端快照决定。
+        provider:
+          type: string
+          enum: [livekit, p2p-fallback, legacy]
+          default: livekit
+          description: 迁移兼容字段。生产默认路径由服务端策略决定，客户端不应主动选择 legacy。
+        client_request_id:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: 发起幂等键。
+        event_id:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: "可选客户端事件幂等键；sys: 和 ttl: 前缀保留给服务端。"
+        trace_id:
+          type: string
+          maxLength: 128
+    ActionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        event_id:
+          type: string
+          minLength: 8
+          maxLength: 128
+        trace_id:
+          type: string
+          maxLength: 128
+    TokenRequest:
+      type: object
+      required: [call_id]
+      additionalProperties: false
+      properties:
+        call_id:
+          type: string
+          minLength: 8
+          maxLength: 128
+        ttl_seconds:
+          type: integer
+          minimum: 60
+          maximum: 900
+          default: 300
+        trace_id:
+          type: string
+          maxLength: 128
+    CallSession:
+      type: object
+      required: [call_id, scope, mode, initiator_id, provider, state]
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        call_id:
+          type: string
+          minLength: 8
+          maxLength: 128
+        room_id:
+          type: string
+          nullable: true
+          description: 服务端 provider 房间 ID；为空时 token endpoint 使用 call_id 作为房间名。
+        scope:
+          type: string
+          enum: [direct, group, live-interactive]
+        mode:
+          type: string
+          enum: [audio, video]
+        initiator_id:
+          type: integer
+          format: int64
+        provider:
+          type: string
+          enum: [livekit, p2p-fallback, legacy]
+        state:
+          type: string
+          enum: [CREATED, RINGING, ACCEPTED, NEGOTIATING, CONNECTED, ENDING, REJECTED, CANCELLED, EXPIRED, FAILED, ENDED]
+        client_request_id:
+          type: string
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        connected_at:
+          type: string
+          format: date-time
+          nullable: true
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        end_reason:
+          type: string
+          enum: [HANGUP, REJECTED, EXPIRED, FAILED, PERMISSION, PROVIDER]
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        create_time:
+          type: string
+          format: date-time
+          nullable: true
+        update_time:
+          type: string
+          format: date-time
+          nullable: true
+    CallParticipant:
+      type: object
+      required: [call_id, user_id, role, state]
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        call_id:
+          type: string
+        user_id:
+          type: integer
+          format: int64
+        role:
+          type: string
+          enum: [initiator, member]
+        state:
+          type: string
+          enum: [INVITED, RINGING, JOINING, CONNECTED, RECONNECTING, LEFT, REJECTED, CANCELLED, FAILED]
+        joined_at:
+          type: string
+          format: date-time
+          nullable: true
+        left_at:
+          type: string
+          format: date-time
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        profile_snapshot:
+          type: string
+          nullable: true
+        create_time:
+          type: string
+          format: date-time
+          nullable: true
+        update_time:
+          type: string
+          format: date-time
+          nullable: true
+    CallEvent:
+      type: object
+      required: [event_id, call_id, participant_id, kind, seq, occurred_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        event_id:
+          type: string
+        call_id:
+          type: string
+        participant_id:
+          type: integer
+          format: int64
+          description: 0 表示系统事件。
+        kind:
+          type: string
+          enum: [call.request, call.accept, call.reject, call.cancel, call.join, call.leave, call.hangup, call.participant.update, call.state, call.connected, call.ended, call.expired, call.failed]
+        seq:
+          type: integer
+          format: int64
+          minimum: 1
+        occurred_at:
+          type: string
+          format: date-time
+        payload:
+          type: string
+          nullable: true
+          description: JSON 字符串；客户端应按对应 kind 解析并视为不可信输入。
+        trace_id:
+          type: string
+          nullable: true
+    CallDetail:
+      type: object
+      required: [call, participants, events]
+      properties:
+        call:
+          $ref: '#/components/schemas/CallSession'
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/CallParticipant'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/CallEvent'
+    TokenResultData:
+      type: object
+      required: [token, room_name, call_id, identity, ttl_seconds, expires_at]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          writeOnly: true
+        room_name:
+          type: string
+        call_id:
+          type: string
+        identity:
+          type: string
+        ttl_seconds:
+          type: integer
+          minimum: 60
+          maximum: 900
+        expires_at:
+          type: integer
+          format: int64
+          description: Unix epoch seconds。
+    LiveKitWebhook:
+      type: object
+      required: [id, event]
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+          minLength: 1
+        event:
+          type: string
+          enum: [room_created, room_started, room_finished, participant_joined, participant_left]
+          description: 未列出的 LiveKit 事件仍会落审计账本但不推进状态。
+        room:
+          type: object
+          additionalProperties: true
+          properties:
+            name:
+              type: string
+        participant:
+          type: object
+          additionalProperties: true
+          properties:
+            identity:
+              type: string
+    CallSessionResult:
+      allOf:
+        - $ref: '#/components/schemas/ResultEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/CallSession'
+    CallDetailResult:
+      allOf:
+        - $ref: '#/components/schemas/ResultEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/CallDetail'
+    TokenResult:
+      allOf:
+        - $ref: '#/components/schemas/ResultEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/TokenResultData'
+    WebhookResult:
+      allOf:
+        - $ref: '#/components/schemas/ResultEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/WebhookResultData'
+    WebhookResultData:
+      type: object
+      required: [handled, duplicate]
+      properties:
+        handled:
+          type: boolean
+        duplicate:
+          type: boolean
+        reason:
+          type: string
+          nullable: true
+    ErrorResult:
+      allOf:
+        - $ref: '#/components/schemas/ResultEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              nullable: true
+    ResultEnvelope:
+      type: object
+      required: [code, msg, data]
+      properties:
+        code:
+          type: integer
+          description: HTTP 风格业务状态码；成功为 200。
+        msg:
+          type: string
+        data:
+          type: object
+          nullable: true
+  responses:
+    InvalidArgument:
+      description: 参数非法
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResult'
+    NotAuthorized:
+      description: 未登录、非成员或无权操作
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResult'
+    NotFound:
+      description: 通话不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResult'
+    Conflict:
+      description: 状态冲突、重复键或顺序冲突
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResult'
+    Expired:
+      description: 通话或协商窗口已过期
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResult'
+    RateLimited:
+      description: 请求频率超限
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResult'
+    ProviderError:
+      description: LiveKit 或其他 provider 依赖失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResult'
+    InternalError:
+      description: 服务端内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResult'

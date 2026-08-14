@@ -7,7 +7,7 @@
 | RTC-001 | 宪法、现状基线、模块边界、契约和路线图 | `completed` | 无 | `docs/project-constitution`、架构文档、ADR、schema、测试计划 |
 | RTC-002 | LiveKit/coturn/SRS provider bootstrap 环境 | `completed` | RTC-001 | 配置、端口、健康检查、provider CLI smoke test；不依赖业务 token API |
 | RTC-003 | RTC 控制面和通话领域 | `completed` | RTC-001 | CallSession、Participant、ACL、幂等事件、token API、webhook |
-| RTC-004 | 1 对 1 LiveKit 适配器 | `planned` | RTC-003 | 设备管理、音频优先、接通/重连、通话记录 |
+| RTC-004 | 1 对 1 LiveKit 适配器 | `in_progress` | RTC-002、RTC-003 | 设备管理、音频优先、接通/重连、通话记录 |
 | RTC-005 | 群聊音视频 SFU 迁移 | `planned` | RTC-004 | 8 人基线、订阅策略、simulcast、active speaker |
 | RTC-006 | 直播 WHIP/WHEP 迁移 | `planned` | RTC-002、RTC-003 | 主播 ingest、观众播放、HLS/HTTP-FLV fallback、单一 presence |
 | RTC-007 | QoE、ABR、弱网和恢复 | `planned` | RTC-004、RTC-005、RTC-006 | stats、质量策略、ICE restart、降级/恢复 |
@@ -32,3 +32,11 @@ RTC-004、RTC-005、RTC-006 按依赖分别联调；通话和直播不共用媒�
 ### D：运营与收口
 
 RTC-007 到 RTC-010 必须在真实浏览器、TURN、弱网、重连和故障环境中验证，最后才允许删除 legacy 路径。
+
+## 当前执行指针（2026-08-14）
+
+- 当前任务：`RTC-004`。
+- 当前波次：C（LiveKit 媒体适配）与 D（客户端状态/设备基础）。
+- 已完成的契约：控制面 OpenAPI、LiveKit webhook 事件账本、错误码和 `douyin.realtime.v1` 信令 schema。
+- 尚未满足的发布门禁：真实双浏览器接通、TURN relay、官方 webhook 端到端回调和 QoE 报告。
+- 下一任务只能在 RTC-004 的浏览器与 webhook 验证补齐后选择；不得因为前端能编译而跳到 RTC-005。

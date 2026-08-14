@@ -1,61 +1,60 @@
-# LiveKit Webhook 契约(RTC-003)
+# LiveKit Webhook 契约（RTC-004）
 
 ## 1. 端点
 
-- 路径：`POST /api/rtc/webhook/livekit`（新端点）
-- 鉴权：不走登录态；走签名校验（见 §2）。`SessionFilter` 白名单已放行该前缀。
-- 非 200 响应：校验失败返回 `401`；内部错误返回 `500`（LiveKit 会按退避重试）。
+- 路径：`POST /api/rtc/webhook/livekit`。
+- 不使用用户登录态；`SessionFilter` 仅对白名单放行，控制器必须完成 provider 签名校验。
+- 签名失败返回 `401`；JSON 无法解析返回 `400`；首次处理和重复投递都返回 `200`，便于 LiveKit 重试。
 
-## 2. 签名
+## 2. 官方签名（生产主路径）
 
-LiveKit 对每个 webhook 请求计算签名并放入请求头：
-
-```text
-LiveKit-Signature: v0=<hex>
-```
-
-算法（与 LiveKit 官方实现一致）：
+LiveKit Server 发送：
 
 ```text
-v0 = hex( HMAC-SHA256( secret, rawRequestBodyBytes ) )
+Authorization: Bearer <LiveKit AccessToken JWT>
 ```
 
-- `secret` = `LIVEKIT_API_SECRET`（LiveKit 侧签名密钥与其 API key 的 secret 相同；后端通过 `RTC_LIVEKIT_WEBHOOK_SECRET` 注入，必须一致）。
-- body 使用**原始字节**，不得先解析 JSON 再签名。
-- 比较使用常量时间（`MessageDigest.isEqual`），防时序攻击。
-- 若 `RTC_LIVEKIT_WEBHOOK_SECRET` 未配置，端点 `fail-closed`：一律拒绝（不提供弱默认值）。
+JWT 使用 LiveKit API secret 签名，`iss` 必须等于 LiveKit API key，`exp` 必须有效，`sha256` claim 是原始请求体 SHA-256 的 Base64 摘要。服务端必须：
 
-算法漂移防护：`server/src/test/java/com/douyin/rtc/WebhookSignatureVectorTest.java` 硬编码一条固定向量（secret + body → 期望 hex），任何算法/编码变化都会导致测试失败。
+1. 使用 `RTC_LIVEKIT_WEBHOOK_SECRET` 验证 JWT（该值必须与 LiveKit API secret 相同）。
+2. 使用 `RTC_LIVEKIT_API_KEY` 校验 `iss`。
+3. 对未经 JSON 解析的原始 body 计算 SHA-256，并用常量时间比较 `sha256`。
 
-## 3. 幂等与账本
+## 3. 迁移兼容签名（有关闭日期）
 
-- 每次收到的 webhook 事件先写 `rtc_webhook_ledger`（`event_id` 唯一索引，`INSERT IGNORE`）。
-- 已存在（0 行受影响）→ 判定为重放，直接返回 200 幂等响应，不重复执行状态动作。
-- 落账本与状态动作非原子：账本先于动作；崩溃窗口内状态由 `CallTtlWorker` 兜底收敛（已登记为已知边界，见任务文件）。
+历史测试和旧 bridge 可发送：
 
-## 4. 事件 → CallState 映射
+```text
+LiveKit-Signature: v0=<lowercase-hex>
+```
 
-| LiveKit 事件 | 服务端动作 | 依据 |
-|---|---|---|
-| `room_created`/`room_started` | `CallService.confirmConnected` | §2 NEGOTIATING→connected→CONNECTED |
-| `participant_joined` | `CallService.joinCall` | roster 守卫在服务端 |
-| `participant_left` | `CallService.leaveCall` | §3 →LEFT |
-| `room_finished` | `hangupCall` + `confirmEnded`(收敛) | §2 CONNECTED→ENDING→ENDED |
+其中 `hex = HMAC-SHA256(RTC_LIVEKIT_WEBHOOK_SECRET, rawRequestBodyBytes)`。当 `Authorization` header 存在时，服务端不得回退到该兼容 header；这样可以避免无效官方 token 借兼容路径绕过校验。HMAC 入口必须单独监控，并在 legacy 退役任务中关闭。
 
-- 事件 `identity` 不信任：非成员 join 仅记录，不授予权限。
-- `room_finished` 在 CONNECTED 前到达时按媒体面空收敛（可能先于客户端 hangup 命令落账本），语义已注释在实现中。
+## 4. 幂等与账本
 
-## 5. 配置注入
+- 事件 `id` 是 `rtc_webhook_ledger.event_id` 的唯一键。
+- 首次请求先落账，再执行状态收敛；重复投递直接返回 `duplicate=true`，不重复推进状态。
+- 落账和状态动作不是同一事务；异常窗口由 TTL worker 与后续 reconciliation 任务兜底，不能把 `200` 当成状态已完成的证明。
+
+## 5. 事件映射
+
+| LiveKit 事件 | 服务端动作 |
+|---|---|
+| `room_started` / `room_created` | `CallService.confirmConnected` |
+| `participant_joined` | `CallService.joinCall`（只允许服务端 roster 成员） |
+| `participant_left` | `CallService.leaveCall` |
+| `room_finished` | `hangupCall` + `confirmEnded` 收敛 |
+| `track_*`、`egress_*`、其他事件 | 只落账审计，不隐式修改通话状态 |
+
+事件中的 participant identity 只是关联线索，不授予权限。房间名由服务端 token 决定，未知房间只记录审计。
+
+## 6. 配置
 
 ```text
 RTC_LIVEKIT_API_KEY=devkey
-RTC_LIVEKIT_API_SECRET=<同 LIVEKIT_API_SECRET>
-RTC_LIVEKIT_WEBHOOK_SECRET=<同 LIVEKIT_API_SECRET>
-RTC_TOKEN_TTL_SECONDS=300   # [60,900]
+RTC_LIVEKIT_API_SECRET=<至少 32 字节>
+RTC_LIVEKIT_WEBHOOK_SECRET=<与 API secret 相同>
+RTC_TOKEN_TTL_SECONDS=300
 ```
 
-LiveKit 侧 webhook 目标地址：`deploy/streaming/livekit.yaml` 的 `webhook.urls`（当前指向 `http://host.docker.internal:9191/api/rtc/webhook/livekit`）。
-
-## 6. 已知未验证
-
-- 端到端 webhook 推送（LiveKit 容器 → 后端）依赖后端起来且 migration_034/035 执行，属联调阶段（RTC-004）验收，不宣称已在 RTC-003 完成。
+LiveKit 目标地址由 `deploy/streaming/livekit.yaml` 的 `webhook.urls` 配置。官方 JWT header 的真实容器到后端回调、事件顺序和数据库迁移必须在 RTC-004 联调中验证；单元签名向量不能替代端到端验收。

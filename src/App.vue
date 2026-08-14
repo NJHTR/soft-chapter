@@ -7,6 +7,7 @@
     </transition>
   </router-view>
   <Call />
+  <CallPanel />
 </template>
 <script setup lang="ts">
 /*
@@ -15,6 +16,7 @@ try {navigator.control.longpressMenu(false);} catch (e) {} //关闭长按弹出�
 * */
 import routes from './router/routes'
 import Call from './components/Call.vue'
+import CallPanel from '@/modules/rtc/components/CallPanel.vue'
 import { useBaseStore } from '@/store/pinia.js'
 import { onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'

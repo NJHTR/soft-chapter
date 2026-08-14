@@ -81,11 +81,12 @@ public class RtcCallController {
         return Result.ok(out);
     }
 
-    /** LiveKit webhook 接收(白名单 + HMAC 签名鉴权,不走登录)。 */
+    /** LiveKit webhook 接收(白名单 + 官方 JWT/迁移 HMAC 签名鉴权,不走登录)。 */
     @PostMapping("/webhook/livekit")
     public ResponseEntity<Result<?>> webhook(@RequestBody byte[] raw,
-                                             @RequestHeader(value = "LiveKit-Signature", required = false) String signature) {
-        if (!signatureVerifier.verify(signature, raw)) {
+                                             @RequestHeader(value = "Authorization", required = false) String authorization,
+                                             @RequestHeader(value = "LiveKit-Signature", required = false) String legacySignature) {
+        if (!signatureVerifier.verify(authorization, legacySignature, raw)) {
             log.warn("[RTC-WEBHOOK] signature verification failed");
             return ResponseEntity.status(401).body(Result.fail(401, "LiveKit webhook 签名校验失败"));
         }

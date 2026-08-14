@@ -1,12 +1,19 @@
 # 工作日志
 
+## 2026-08-14：RTC-004 重新勘察与契约收敛（进行中）
+
+- 实际基线：分支 `dev/full`，HEAD `4c813c4`；工作区仍包含用户的直播、后台、原生引擎和管理端改动，按宪法“preserve_and_avoid”保留，未执行 reset/checkout/清理。
+- 已启用独立审查：`contract_audit`（OpenAPI 与状态文件）、`frontend_rtc_audit`（LiveKit adapter 与旧 Call 隔离）、`backend_rtc_audit`（token、状态机、webhook 生命周期）。审查结论已写入本任务：OpenAPI 缺失、任务 YAML 列表缩进错误、旧 Call 与新面板双主路径、本地轨道聚合和 `srcObject` 绑定不稳定、官方 LiveKit webhook 使用 Authorization JWT。
+- 本轮拥有边界：`docs/contracts/`、`docs/project-constitution/`、`src/modules/rtc/`、`src/api/rtc.ts`、RTC 迁移壳以及 `server/.../rtc/webhook/`；不接触用户直播和后台目录。
+- 验证约束：类型检查和构建只能证明编译，不得替代双浏览器 SDP/ICE/媒体轨道、TURN relay 和 webhook 端到端验收；RTC-004 在这些验证完成前保持 `in_progress`。
+
 ## 2026-08-13：RTC-003 完成（控制面与通话领域，5 提交）
 
 - 波次 A（只读）：architecture-agent + contract-agent 勘察——现状事实、旧 msg_type=10/11 契约、signaling schema 缺口、鉴权/ACL 数据支撑、可复用设施（雪花 ID/Redis 幂等/PaymentStateMachine 模式）。用户未提交改动全部记录并避开（TOP10 重叠清单）。
 - 波次 B：domain-agent（`9a9d374`：CallSession/Participant/CallEvent 状态机 + ACL + 事件账本 + migration_034 + 48 契约单测）→ token-agent（`32060db`：LiveKit token API + webhook ledger + migration_035 + SessionFilter 白名单 1 行 + 签名向量测试，77 测试）。
 - 主智能体：`940b5d2` docs（signaling schema v1 向后兼容扩展：error/ack/call.expired 等 + token/ttl/replayed 可选字段；livekit-webhook.md 契约；rtc-error-codes.md；API 指南补 10/11；livekit.yaml webhook 段指向 host.docker.internal:9191）。
 - 波次 F：integration-review-agent APPROVE_WITH_NOTES（无阻断；2 重要 + 6 建议）→ fix-agent `27cf661`（detail 鉴权、sys:/ttl: event_id 保留前缀隔离 TTL 抢占、并发 create 幂等、ttl_seconds 解析、CONNECTED hangup 投影）→ 主智能体修复 compat callState 语义漂移 `05858d0`（对齐旧前端 0=拒接/1=已接通/2=未接通）。
-- 最终验证：`mvn test -Dtest=com.douyin.rtc.**` 88/88 通过，BUILD SUCCESS。
+- 最终验证：`mvn -f server/pom.xml test -Dtest=com.douyin.rtc.**` 91/91 通过，BUILD SUCCESS；`npx --yes @redocly/cli lint docs/contracts/rtc-control.openapi.yaml` 通过且 0 warning；`pnpm exec vue-tsc --noEmit --pretty false` 与 `pnpm run build-only` 通过。
 - 交付：com.douyin.rtc 包（domain/repository/service/provider/webhook/controller）、migration_034/035、docs/contracts 三件套、SessionFilter 白名单 1 行。用户未提交改动零接触。
 - 已知未验证：端到端 webhook 推送与迁移执行（依赖用户跑 034/035 + 起后端，验收归 RTC-004）。
 - 下一任务：RTC-004（1 对 1 LiveKit 适配器，依赖 RTC-002+RTC-003 已满足）——注意其前端改动区域与用户直播改动相邻，开工前需再次确认边界。

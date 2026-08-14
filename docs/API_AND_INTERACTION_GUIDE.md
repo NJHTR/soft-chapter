@@ -409,7 +409,7 @@ SlideVerticalInfinite (垂直滑动)
 - `POST /api/rtc/call/{callId}/accept|reject|cancel|hangup|join|leave`
 - `GET /api/rtc/call/{callId}`（详情 + 参与者 + 事件）
 - `POST /api/rtc/token`（LiveKit 短期 token，TTL 60-900s，发布/订阅权限服务端决定）
-- `POST /api/rtc/webhook/livekit`（签名校验 `LiveKit-Signature: v0=HMAC-SHA256(secret, body)`，event id 幂等）
+- `POST /api/rtc/webhook/livekit`（生产使用 LiveKit `Authorization: Bearer <JWT>` + body sha256 校验；迁移期兼容 `LiveKit-Signature: v0=...`，event id 幂等）
 
 旧记录 `msg_type=10/11` + `extra.callState`（0=拒接/1=已接通/2=未接通）保留为兼容投影，`extra` 新增 `call_id`（向后兼容 JSON）。完整契约见 `docs/contracts/`。
 

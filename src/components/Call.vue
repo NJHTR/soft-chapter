@@ -305,6 +305,8 @@ import bus, { EVENT_KEY } from '@/utils/bus'
 import { onSocketMsg, sendCallSignal, sendCallSignalToGroup } from '@/utils/socket'
 import { useBaseStore } from '@/store/pinia'
 import { _checkImgUrl } from '@/utils'
+import { useRtcStore } from '@/modules/rtc/store/useRtcStore'
+import { setupRtcSignaling } from '@/modules/rtc/signaling/wsBridge'
 import defaultAvatar from '@/assets/img/icon/people-gray.png'
 import cameraOnIcon from '@/assets/img/icon/message/chat/able-camera.png'
 import cameraOffIcon from '@/assets/img/icon/message/chat/disabled-camera.png'
@@ -314,6 +316,10 @@ import speakerOffIcon from '@/assets/img/icon/message/chat/disabled-volume.png'
 defineOptions({ name: 'Call' })
 
 const store = useBaseStore()
+
+// RTC-004 新通话链路开关(默认开启,env 设 VITE_RTC_004=off 可回退 legacy)
+const RTC004 = import.meta.env.VITE_RTC_004 !== 'off'
+const rtcStore = useRtcStore()
 const localVideo = ref<HTMLVideoElement>()
 const remoteVideoRefs = new Map<string, HTMLVideoElement>()
 
@@ -339,7 +345,8 @@ const state = reactive({
   isSpeaker: true,
   roomName: '',
   callId: '' as string,
-  isInitiator: false
+  isInitiator: false,
+  isGroup: false
 })
 
 const participants = reactive<Participant[]>([])
@@ -509,6 +516,7 @@ let localStream: MediaStream | null = null
 let mixingAudioCtx: AudioContext | null = null
 let mixingDestination: MediaStreamAudioDestinationNode | null = null
 let unsubSignal: (() => void) | null = null
+let rtcSignalingCleanup: (() => void) | null = null
 
 // ── 说话检测 ──
 let speechAudioCtx: AudioContext | null = null
@@ -677,6 +685,7 @@ async function startCall(
   state.isMuted = false
   state.isSpeaker = true
   state.isInitiator = true
+  state.isGroup = targets.length > 1
   state.callId = 'call_' + Date.now() + '_' + myUid
   state.roomName = roomName || targets[0]?.userName || '通话'
 
@@ -719,6 +728,7 @@ async function handleAccept() {
   state.isMuted = false
   state.isSpeaker = true
   state.isInitiator = false
+  state.isGroup = incoming.isGroup
   state.callId = incoming.callId
   state.roomName = incoming.name
   state.roomName = incoming.name
@@ -822,6 +832,7 @@ function cleanup() {
   participants.length = 0
   state.isActive = false
   state.isMinimized = false
+  state.isGroup = false
   incoming.show = false
   state.callId = ''
   bus.emit(EVENT_KEY.CALL_ENDED)
@@ -904,6 +915,10 @@ function handleSignal(msg: any) {
   const data = msg.data
   const fromUserId = msg.from_user_id
   const callId = data?.call_id || msg.call_id
+
+  // RTC-004 新链路:1 对 1 的旧 offer/answer/ICE 全部交给 LiveKit;
+  // 旧组件只继续承载群聊和明确的 legacy bridge。
+  if (RTC004 && !state.isGroup && !data?.isGroup) return
 
   // 过滤不相关的通话
   if (state.isActive && callId && state.callId && callId !== state.callId) return
@@ -1011,10 +1026,21 @@ function handleSignal(msg: any) {
 // ==================== 生命周期 ====================
 onMounted(() => {
   unsubSignal = onSocketMsg('call_signal', handleSignal)
+  rtcSignalingCleanup = setupRtcSignaling()
 
   // 1对1 兼容：单人通话通过 bus 触发
   bus.on(EVENT_KEY.SHOW_AUDIO_CALL, (payload: any) => {
     if (payload?.toUserId) {
+      // RTC-004 新链路:直接走 rtc store,执行 legacy
+      if (RTC004 && !payload.isGroup) {
+        rtcStore.openDial({
+          toUserId: String(payload.toUserId),
+          name: payload.name || '',
+          avatar: payload.avatar || '',
+          isVideo: !!payload.isVideo
+        })
+        return
+      }
       startCall(
         [
           {
@@ -1049,6 +1075,10 @@ onUnmounted(() => {
   if (unsubSignal) {
     unsubSignal()
     unsubSignal = null
+  }
+  if (rtcSignalingCleanup) {
+    rtcSignalingCleanup()
+    rtcSignalingCleanup = null
   }
   cleanup()
   bus.off(EVENT_KEY.SHOW_AUDIO_CALL)
