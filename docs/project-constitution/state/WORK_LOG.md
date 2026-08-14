@@ -7,6 +7,14 @@
 - 本轮拥有边界：`docs/contracts/`、`docs/project-constitution/`、`src/modules/rtc/`、`src/api/rtc.ts`、RTC 迁移壳以及 `server/.../rtc/webhook/`；不接触用户直播和后台目录。
 - 验证约束：类型检查和构建只能证明编译，不得替代双浏览器 SDP/ICE/媒体轨道、TURN relay 和 webhook 端到端验收；RTC-004 在这些验证完成前保持 `in_progress`。
 
+## 2026-08-14：RTC-004 媒体适配器与契约提交
+
+- 提交：`0e2787e feat(RTC-004): add one-to-one LiveKit media path`。
+- 交付：LiveKit provider-neutral media port、1 对 1 CallPanel/store、设备切换和轨道聚合、旧 1 对 1 SDP/ICE 隔离、控制面 OpenAPI、官方 LiveKit JWT webhook 校验与迁移期 HMAC 兼容、JWT 单测。
+- 验证：`pnpm exec vue-tsc --noEmit --pretty false`、`pnpm run build-only`、`npx --yes @redocly/cli lint docs/contracts/rtc-control.openapi.yaml` 均通过；Maven RTC 专项测试 91/91 通过（BUILD SUCCESS）；`git diff --cached --check` 通过。
+- 范围审查：提交只包含 RTC-004 所有权文件；`admin/`、直播页面、streaming-engine、原生引擎、运行产物和其他后台改动仍按 `preserve_and_avoid` 留在工作区。
+- 任务仍为 `in_progress`：尚未完成 Chrome/Firefox/Safari/移动端双浏览器通话、TURN relay/NAT 矩阵、LiveKit 容器到 Spring Boot webhook 端到端和 720p30/500 kbps QoE 报告。
+
 ## 2026-08-13：RTC-003 完成（控制面与通话领域，5 提交）
 
 - 波次 A（只读）：architecture-agent + contract-agent 勘察——现状事实、旧 msg_type=10/11 契约、signaling schema 缺口、鉴权/ACL 数据支撑、可复用设施（雪花 ID/Redis 幂等/PaymentStateMachine 模式）。用户未提交改动全部记录并避开（TOP10 重叠清单）。

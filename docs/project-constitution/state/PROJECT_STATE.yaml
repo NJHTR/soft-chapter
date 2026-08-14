@@ -7,7 +7,7 @@ project:
 baseline:
   observed_at: "2026-08-14"
   branch: dev/full
-  head_commit: 4c813c4
+  head_commit: 0e2787e
   remote_tracking: origin/dev/full
   worktree_dirty: true
   dirty_worktree_policy: preserve_and_avoid
@@ -127,5 +127,5 @@ verification:
     - turn_nat_matrix
     - turn_tls_5349 (no cert until RTC-003)
     - rtc-e2e_backend_livekit_webhook (needs migration_034/035 + backend up, RTC-004)
-last_verified_commit: 05858d0
-last_doc_commit: 85262e2
+last_verified_commit: 0e2787e
+last_doc_commit: 0e2787e
