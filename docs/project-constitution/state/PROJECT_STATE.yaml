@@ -7,19 +7,14 @@ project:
 baseline:
   observed_at: "2026-08-17"
   branch: dev/full
-  head_commit: 4ca8942
+  head_commit: a1faba0
   remote_tracking: origin/dev/full
   worktree_dirty: true
   dirty_worktree_policy: preserve_and_avoid
   known_user_changes:
-    - src/pages/live/LiveCreate.vue
-    - src/pages/live/LiveWatch.vue
-    - src/utils/streaming/
-    - server/src/main/java/com/douyin/engine/
-    - server/src/main/java/com/douyin/controller/StreamController.java
-    - server/src/main/java/com/douyin/websocket/DashboardWebSocketHandler.java
     - streaming-engine/
-    - docker-compose.streaming.yml
+    - src/utils/streaming/webcodecs_sender.ts
+    - src/utils/streaming/webcodecs_player.ts
     - docs/runtime/
     - docs/verification/
 architecture_decisions:
@@ -42,7 +37,7 @@ current_task:
   dependencies: [RTC-002, RTC-003]
   expected_artifacts:
     - 前端 WHIP 推流 + WHEP 拉流适配器
-    - 后端 LiveKit WHIP/WHEP Ingress + Egress
+    - 后端 SRS 媒体地址、房间 ACL 和控制面边界
     - HLS/HTTP-FLV fallback 保留
     - LiveCreate/LiveWatch 迁移到新链路
 tasks:
@@ -68,7 +63,7 @@ tasks:
     depends_on: [RTC-004]
   - id: RTC-006
     title: 迁移直播到 WHIP/WHEP 与 HLS/HTTP-FLV fallback
-    status: planned
+    status: in_progress
     depends_on: [RTC-002, RTC-003]
   - id: RTC-007
     title: 建立媒体质量、QoE、自适应和弱网恢复
@@ -112,20 +107,20 @@ tasks:
     depends_on: [AI-005]
 known_blockers:
   - id: B-001
-    description: 后端 WebRTC offer 当前为 SDP echo，不是真实协商
-    owner_task: RTC-003
+    description: 旧 WebCodecs caller 仍保留 /api/live/webrtc/offer；新 /api/live/engine/webrtc/offer 已 410，旧入口需随 legacy 退役删除
+    owner_task: RTC-006
   - id: B-002
     description: C++ WebRTCStreamer 无实际库链接，send_packet/connect 为 stub
     owner_task: RTC-009
   - id: B-003
-    description: 直播 TextWebSocketHandler 与前端二进制媒体协议不匹配
+    description: 媒体帧已被控制 WS 丢弃；控制 envelope、限流、Origin allowlist、分布式 presence 和 provider callback 尚未完成
     owner_task: RTC-006
   - id: B-004
     description: WebCodecs payload copy、getVideoTracks 和 capability await 存在硬错误
     owner_task: RTC-006
   - id: B-005
-    description: Call.vue 仅公共 STUN、mesh，且远端视频绑定不完整
-    owner_task: RTC-004
+    description: legacy Call.vue mesh 仍可被旧开关唤起，必须保持迁移桥并按 RTC-009 退役
+    owner_task: RTC-009
   - id: B-006
     description: JNI native availability 恒 true，DLL 缺失可能崩溃
     owner_task: RTC-002
@@ -135,15 +130,17 @@ known_blockers:
 verification:
   completed:
     - command: pnpm exec vue-tsc --noEmit --pretty false
-      result: passed_by_readonly_audit
+      result: passed_in_current_worktree
     - command: pnpm run build-only
-      result: passed_by_readonly_audit
+      result: passed_in_current_worktree
+    - command: docker compose -f docker-compose.streaming.yml --env-file deploy/streaming/.env.example config --quiet
+      result: passed_in_current_worktree
     - command: native streaming-engine smoke tests
       result: passed_by_existing_runtime_report
     - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc
       result: passed_8_of_8 (compose config / containers healthy / srs api / livekit metrics / coturn 3478 / srs flv 8080 / TURN UDP allocate via REST creds / livekit-cli publish-demo real media)
     - command: mvn -f server/pom.xml test -Dtest=com.douyin.rtc.**
-      result: passed_91_of_91 (transition table / idempotency / out-of-order / participant / ttl worker / token claims / webhook signature + vector / official webhook JWT / dedup)
+      result: passed_98_of_98 (RTC-005 roster lifecycle, transition table, idempotency, out-of-order, participant, ttl worker, token claims, webhook signature + vector, official webhook JWT, dedup)
     - command: npx --yes @redocly/cli lint docs/contracts/rtc-control.openapi.yaml
       result: passed (OpenAPI valid, 0 warnings)
   unavailable:
@@ -152,5 +149,8 @@ verification:
     - turn_nat_matrix
     - turn_tls_5349 (no cert until RTC-003)
     - rtc-e2e_backend_livekit_webhook (needs migration_034/035 + backend up, RTC-004)
-last_verified_commit: 0e2787e
-last_doc_commit: 0e2787e
+    - srs_whip_whep_browser_media_smoke (Docker daemon unavailable in this session)
+    - maven_backend_tests_rtc006 (maven executable unavailable in this session)
+    - live_presence_idempotency_and_provider_acl (RTC-006 review gate)
+last_verified_commit: a1faba0
+last_doc_commit: pending

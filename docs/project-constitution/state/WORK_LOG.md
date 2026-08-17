@@ -1,5 +1,22 @@
 # 工作日志
 
+## 2026-08-17：RTC-006 媒体生命周期收口
+
+- WHEP/WHIP 适配器增加 generation 与 peer identity 检查；停止、卸载和异步协商竞态不会再把旧轨道写回新页面，协商完成后才会登记 SRS `Location` 并在取消时清理会话。
+- WHEP 连接断开/失败通过回调触发页面级有限指数退避；HLS.js、原生 HLS 和 HTTP-FLV 在超时或播放失败时都会销毁实例并重置 video，避免播放器泄漏。
+- LiveWatch 与首页入口补齐无 WHEP 时的 fallback、卸载守卫和旧弹幕定时器 key；LiveCreate 的结束请求采用 best-effort + finally，导航不会被控制面短暂故障卡死。
+- 验证：`pnpm exec vue-tsc --noEmit --pretty false`、目标文件 ESLint、`pnpm run build-only`、`docker compose -f docker-compose.streaming.yml --env-file deploy/streaming/.env.example config --quiet` 通过；Docker daemon 当前不可用，真实 SRS/浏览器媒体 smoke 仍未执行。
+
+## 2026-08-17：RTC-006 直播媒体迁移（工作区收口，待真实 provider 验收）
+
+- 直播主路径切换为浏览器直连 SRS WHIP/WHEP；HLS/HTTP-FLV 仅作播放器 fallback，Spring Boot 不转发媒体字节。
+- `SrsWhipPublisher` 增加 H.264/Opus 能力偏好、720p30 默认档位、设备不支持时的 ideal constraint 降档；`SrsWhepPlayer` 等待视频解码首帧并修正代理前缀下的 WHEP DELETE。
+- `LiveWatch`、首页直播入口使用 `<video>`，默认静音并提供开声控制；播放失败有重试状态；列表卡片和 feed 不再建立失效的媒体 WS。
+- `/ws/live` 限制为控制消息，拒绝媒体帧/二进制、限制消息大小和类型；关播会广播 `end` 并释放控制连接。
+- 后端只向登录用户返回媒体地址、房主才获得 WHIP；SRT auth 比较 stream key；viewer/like 更新改为 SQL 原子增量；移除以 `update_time` 为依据的 2 分钟误关播清理。
+- 验证：`pnpm exec vue-tsc --noEmit --pretty false`、目标文件 ESLint、`pnpm run build-only`；Maven/真实 SRS/浏览器媒体 smoke 当前环境不可用，不能宣称 RTC-006 完成。
+- 未完成 review gate：短期 ingest/play token 与 SRS callback ACL、Redis TTL presence、provider heartbeat/reconciliation、生产反代和 Origin allowlist。
+
 ## 2026-08-17：RTC-004 + RTC-005 完成，推进 RTC-006
 
 - RTC-004 标记 `completed`：1 对 1 LiveKit 媒体路径（store + adapter + CallPanel + OpenAPI）已在上轮提交 `0e2787e`。
