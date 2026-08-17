@@ -99,6 +99,37 @@ class TokenServiceTest {
     }
 
     @Test
+    void groupMemberMustAcceptBeforeTokenIssuance() {
+        CallSession session = session("call-group-1", CallState.ACCEPTED, null);
+        session.setScope("group");
+        when(callService.getCall("call-group-1")).thenReturn(session);
+        CallParticipant member = participant("call-group-1", MEMBER, "member");
+        member.setState("RINGING");
+        when(callService.getParticipant("call-group-1", MEMBER)).thenReturn(member);
+
+        assertThatThrownBy(() -> service.issue("call-group-1", MEMBER, null, "trace"))
+                .isInstanceOf(CallDomainException.class)
+                .satisfies(t -> assertThat(((CallDomainException) t).getCode())
+                        .isEqualTo(CallErrorCode.NOT_AUTHORIZED));
+        verify(callService, never()).startNegotiation(anyString(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void acceptedGroupMemberCanObtainToken() {
+        CallSession session = session("call-group-2", CallState.ACCEPTED, null);
+        session.setScope("group");
+        when(callService.getCall("call-group-2")).thenReturn(session);
+        CallParticipant member = participant("call-group-2", MEMBER, "member");
+        member.setState("JOINING");
+        when(callService.getParticipant("call-group-2", MEMBER)).thenReturn(member);
+
+        TokenResult result = service.issue("call-group-2", MEMBER, null, "trace");
+
+        assertThat(result.token()).isNotBlank();
+        verify(callService).startNegotiation(eq("call-group-2"), eq(MEMBER), anyString(), eq("trace"));
+    }
+
+    @Test
     void reissueInNegotiatingSkipsNegotiationStart() {
         CallSession session = session("call-1", CallState.NEGOTIATING, null);
         when(callService.getCall("call-1")).thenReturn(session);

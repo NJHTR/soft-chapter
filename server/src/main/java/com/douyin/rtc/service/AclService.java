@@ -64,4 +64,9 @@ public class AclService {
     public List<Long> groupMembers(Long groupId) {
         return aclMapper.listGroupMemberUserIds(groupId);
     }
+
+    /** 群成员展示快照；仅供创建通话时写入 profile_snapshot。 */
+    public List<GroupMemberProfile> groupMemberProfiles(Long groupId) {
+        return aclMapper.listGroupMemberProfiles(groupId);
+    }
 }

@@ -82,6 +82,10 @@ public class LiveKitTokenService {
         if (participant == null) {
             throw new CallDomainException(CallErrorCode.NOT_AUTHORIZED, "不是通话参与者,无权获取媒体 token");
         }
+        if ("group".equals(session.getScope()) && !groupParticipantMayJoin(participant)) {
+            throw new CallDomainException(CallErrorCode.NOT_AUTHORIZED,
+                    "群通话成员尚未接听,无权获取媒体 token");
+        }
         if (isExpired(session)) {
             throw new CallDomainException(CallErrorCode.CALL_EXPIRED, "协商窗口已过期,请重新发起通话");
         }
@@ -128,6 +132,21 @@ public class LiveKitTokenService {
                 || state == CallState.ACCEPTED
                 || state == CallState.NEGOTIATING
                 || state == CallState.CONNECTED;
+    }
+
+    /**
+     * 群通话中不能仅凭 roster 读取 token：被叫必须先 accept，使参与者进入
+     * JOINING/CONNECTED/RECONNECTING。发起者仍可在 session ACCEPTED 后取 token
+     * 完成自己的首次入房，因此保留 RINGING 例外。
+     */
+    private boolean groupParticipantMayJoin(CallParticipant participant) {
+        if ("initiator".equals(participant.getRole())) {
+            return true;
+        }
+        String state = participant.getState();
+        return "JOINING".equals(state)
+                || "CONNECTED".equals(state)
+                || "RECONNECTING".equals(state);
     }
 
     private long effectiveTtlSeconds(Integer requested) {

@@ -1,5 +1,6 @@
 package com.douyin.rtc.repository;
 
+import com.douyin.rtc.service.GroupMemberProfile;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -27,4 +28,15 @@ public interface RtcAclMapper {
     /** 群成员快照(不含客户端传入的 roster) */
     @Select("SELECT user_id FROM t_group_member WHERE group_id = #{groupId}")
     List<Long> listGroupMemberUserIds(@Param("groupId") Long groupId);
+
+    /**
+     * 群通话创建时读取展示快照。user_id 仍来自群成员表，昵称优先使用群内昵称，
+     * 头像来自用户表；这些值只写入 rtc_call_participant.profile_snapshot。
+     */
+    @Select("SELECT gm.user_id AS user_id, "
+            + "COALESCE(NULLIF(gm.nickname, ''), u.nickname) AS nickname, "
+            + "COALESCE(NULLIF(u.avatar_168_url, ''), u.avatar_300_url, '') AS avatar "
+            + "FROM t_group_member gm LEFT JOIN t_user u ON u.uid = gm.user_id "
+            + "WHERE gm.group_id = #{groupId} ORDER BY gm.id ASC")
+    List<GroupMemberProfile> listGroupMemberProfiles(@Param("groupId") Long groupId);
 }

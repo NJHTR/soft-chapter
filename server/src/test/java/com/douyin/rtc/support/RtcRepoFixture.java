@@ -9,6 +9,7 @@ import com.douyin.rtc.repository.RtcCallEventMapper;
 import com.douyin.rtc.repository.RtcCallParticipantMapper;
 import com.douyin.rtc.repository.RtcCallSessionMapper;
 import com.douyin.rtc.repository.RtcMessageProjectionMapper;
+import com.douyin.rtc.service.GroupMemberProfile;
 import com.douyin.service.RedisCacheService;
 import org.springframework.dao.DuplicateKeyException;
 
@@ -194,6 +195,14 @@ public final class RtcRepoFixture {
         when(acl.listGroupMemberUserIds(anyLong())).thenAnswer(inv -> {
             Set<Long> members = groupMembersByGroup.get((Long) inv.getArgument(0));
             return members == null ? List.of() : new ArrayList<>(members);
+        });
+        when(acl.listGroupMemberProfiles(anyLong())).thenAnswer(inv -> {
+            Set<Long> members = groupMembersByGroup.get((Long) inv.getArgument(0));
+            if (members == null) return List.of();
+            return members.stream()
+                    .sorted()
+                    .map(id -> new GroupMemberProfile(id, "user-" + id, "avatar-" + id))
+                    .toList();
         });
 
         // ===== 投影 =====

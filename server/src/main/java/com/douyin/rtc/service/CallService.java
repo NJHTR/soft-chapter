@@ -17,6 +17,8 @@ import com.douyin.rtc.repository.RtcCallEventMapper;
 import com.douyin.rtc.repository.RtcCallParticipantMapper;
 import com.douyin.rtc.repository.RtcCallSessionMapper;
 import com.douyin.service.RedisCacheService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
@@ -25,6 +27,7 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -50,7 +53,10 @@ public class CallService {
     private static final String RATE_LIMIT_ACCEPT = "call:accept";
     private static final int RATE_LIMIT_CREATE_MAX = 20;
     private static final int RATE_LIMIT_ACCEPT_MAX = 60;
+    /** RTC-005 首期房间上限(包含发起者)。 */
+    private static final int GROUP_MAX_PARTICIPANTS = 8;
     private static final Duration RATE_LIMIT_WINDOW = Duration.ofMinutes(1);
+    private static final ObjectMapper SNAPSHOT_MAPPER = new ObjectMapper();
 
     private final RtcCallSessionMapper sessionMapper;
     private final RtcCallParticipantMapper participantMapper;
@@ -96,12 +102,36 @@ public class CallService {
             throw new CallDomainException(CallErrorCode.INVALID_ARGUMENT, "scope 仅支持 direct/group");
         }
         List<Long> targets = new ArrayList<>();
+        Map<Long, GroupMemberProfile> groupProfiles = new LinkedHashMap<>();
         if (CallScopeCodes.DIRECT.equals(scope)) {
             aclService.assertDirectCallAllowed(initiator, cmd.targetUserId());
             targets.add(cmd.targetUserId());
         } else {
             aclService.assertGroupCallAllowed(initiator, cmd.groupId());
-            for (Long member : aclService.groupMembers(cmd.groupId())) {
+            List<GroupMemberProfile> profiles = aclService.groupMemberProfiles(cmd.groupId());
+            if (profiles != null) {
+                for (GroupMemberProfile profile : profiles) {
+                    if (profile != null && profile.getUserId() != null) {
+                        groupProfiles.putIfAbsent(profile.getUserId(), profile);
+                    }
+                }
+            }
+            // 兼容未升级的 ACL mapper；生产路径优先使用带展示快照的查询。
+            if (groupProfiles.isEmpty()) {
+                List<Long> members = aclService.groupMembers(cmd.groupId());
+                if (members != null) {
+                    for (Long member : members) {
+                        if (member != null) {
+                            groupProfiles.putIfAbsent(member, new GroupMemberProfile(member, null, null));
+                        }
+                    }
+                }
+            }
+            if (groupProfiles.size() > GROUP_MAX_PARTICIPANTS) {
+                throw new CallDomainException(CallErrorCode.INVALID_ARGUMENT,
+                        "群通话首期最多支持 " + GROUP_MAX_PARTICIPANTS + " 人");
+            }
+            for (Long member : groupProfiles.keySet()) {
                 if (!member.equals(initiator)) {
                     targets.add(member);
                 }
@@ -160,9 +190,10 @@ public class CallService {
         LocalDateTime now = LocalDateTime.now();
         if (applySessionTransition(session, CallCommand.CREATE, null, now.plus(ringingTtl), null, null)) {
             // 参与者: 发起者 + 目标,全部 INVITED -> RINGING
-            insertParticipant(callId, initiator, "initiator");
+            GroupMemberProfile initiatorProfile = groupProfiles.get(initiator);
+            insertParticipant(callId, initiator, "initiator", initiatorProfile);
             for (Long target : targets) {
-                insertParticipant(callId, target, "member");
+                insertParticipant(callId, target, "member", groupProfiles.get(target));
             }
             ringParticipants(session, initiator, targets);
             append(eventId, session, initiator, CallEventKind.CALL_REQUEST,
@@ -174,12 +205,21 @@ public class CallService {
 
     // ==================== 生命周期命令 ====================
 
-    /** 被叫方接听: RINGING -> ACCEPTED,参与者 RINGING -> JOINING */
+    /**
+     * 被叫方接听。
+     *
+     * <p>direct 保持原有 RINGING -> ACCEPTED 语义；group 的 session 状态只由
+     * 第一个接听者推进，之后每个成员独立执行 RINGING -> JOINING，不能因为
+     * 其他成员已经接听而被乱序短路。</p>
+     */
     public CallSession acceptCall(String callId, Long actorId, String eventId, String traceId) {
         assertClientEventId(eventId);
         CallSession session = requireSession(callId);
         aclService.assertAuthenticated(actorId);
-        requireTargetParticipant(session, actorId);
+        CallParticipant participant = requireTargetParticipant(session, actorId);
+        if (isGroup(session)) {
+            return acceptGroupCall(session, participant, actorId, eventId, traceId);
+        }
         CallSession shortCircuit = replayOrTerminalOrOutOfOrder(session, CallCommand.ACCEPT, eventId);
         if (shortCircuit != null) {
             return shortCircuit;
@@ -200,12 +240,18 @@ public class CallService {
         return session;
     }
 
-    /** 被叫方拒绝: RINGING -> REJECTED(终态) */
+    /**
+     * 被叫方拒绝。direct 拒绝会结束整场；group 只将当前成员置为 REJECTED，
+     * 其余成员和 LiveKit room 不受影响。
+     */
     public CallSession rejectCall(String callId, Long actorId, String eventId, String traceId) {
         assertClientEventId(eventId);
         CallSession session = requireSession(callId);
         aclService.assertAuthenticated(actorId);
-        requireTargetParticipant(session, actorId);
+        CallParticipant participant = requireTargetParticipant(session, actorId);
+        if (isGroup(session)) {
+            return rejectGroupCall(session, participant, actorId, eventId, traceId);
+        }
         CallSession shortCircuit = replayOrTerminalOrOutOfOrder(session, CallCommand.REJECT, eventId);
         if (shortCircuit != null) {
             return shortCircuit;
@@ -221,6 +267,85 @@ public class CallService {
                 CallEndReason.REJECTED.name(), null, now);
         append(eventId, session, actorId, CallEventKind.CALL_REJECT, Map.of("mode", session.getMode()), traceId);
         project(session, 0, 0);
+        return session;
+    }
+
+    private CallSession acceptGroupCall(CallSession session, CallParticipant participant,
+                                        Long actorId, String eventId, String traceId) {
+        CallState state = CallState.valueOf(session.getState());
+        if (ledgerService.isReplay(eventId) || CallStateMachine.isFinal(state)) {
+            return session;
+        }
+        // 同一成员重复接听、已拒绝或已离开均是幂等/乱序，不改变其他成员。
+        if (!ParticipantState.RINGING.name().equals(participant.getState())) {
+            return session;
+        }
+        if (isExpired(session)) {
+            throw new CallDomainException(CallErrorCode.CALL_EXPIRED, "通话已过期,无法接听");
+        }
+        if (!rateLimitAllowed(RATE_LIMIT_ACCEPT, actorId)) {
+            throw new CallDomainException(CallErrorCode.RATE_LIMITED, "操作过于频繁,请稍后再试");
+        }
+
+        boolean sessionAccepting = state == CallState.ACCEPTED || state == CallState.NEGOTIATING;
+        if (state == CallState.RINGING) {
+            // 并发接听时，第二个请求可能在首个请求推进后才到达；守卫失败后
+            // 重新加载，只要 session 已进入 ACCEPTED/NEGOTIATING 仍允许本成员加入。
+            if (applySessionTransition(session, CallCommand.ACCEPT, null, null, null, null)) {
+                sessionAccepting = true;
+            } else {
+                session = reload(session);
+                state = CallState.valueOf(session.getState());
+                sessionAccepting = state == CallState.ACCEPTED || state == CallState.NEGOTIATING;
+            }
+        }
+        if (!sessionAccepting) {
+            return session;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        applyParticipantTransition(session, actorId, ParticipantState.RINGING,
+                ParticipantCommand.JOIN, null, now, null);
+        CallParticipant joined = participantMapper.findByCallAndUser(session.getCallId(), actorId);
+        if (joined == null || !ParticipantState.JOINING.name().equals(joined.getState())) {
+            return session;
+        }
+        append(eventId, session, actorId, CallEventKind.CALL_ACCEPT,
+                Map.of("mode", session.getMode(), "scope", CallScopeCodes.GROUP), traceId);
+        return session;
+    }
+
+    private CallSession rejectGroupCall(CallSession session, CallParticipant participant,
+                                        Long actorId, String eventId, String traceId) {
+        CallState state = CallState.valueOf(session.getState());
+        if (ledgerService.isReplay(eventId) || CallStateMachine.isFinal(state)) {
+            return session;
+        }
+        if (!ParticipantState.RINGING.name().equals(participant.getState())) {
+            return session;
+        }
+        if (isExpired(session)) {
+            throw new CallDomainException(CallErrorCode.CALL_EXPIRED, "通话已过期,无法拒绝");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        applyParticipantTransition(session, actorId, ParticipantState.RINGING,
+                ParticipantCommand.REJECT, CallEndReason.REJECTED.name(), null, now);
+        CallParticipant rejected = participantMapper.findByCallAndUser(session.getCallId(), actorId);
+        if (rejected == null || !ParticipantState.REJECTED.name().equals(rejected.getState())) {
+            return session;
+        }
+        append(eventId, session, actorId, CallEventKind.CALL_REJECT,
+                Map.of("mode", session.getMode(), "scope", CallScopeCodes.GROUP), traceId);
+
+        // 所有被叫成员都已拒绝且 session 仍处于振铃时，收敛为 REJECTED；
+        // 单个成员拒绝绝不能影响仍在等待/通话中的其他成员。
+        if (state == CallState.RINGING && noPendingGroupTargets(session.getCallId())) {
+            if (applySessionTransition(session, CallCommand.REJECT, CallEndReason.REJECTED.name(),
+                    null, null, now)) {
+                applyParticipantTransition(session, session.getInitiatorId(), ParticipantState.RINGING,
+                        ParticipantCommand.CANCEL, CallEndReason.REJECTED.name(), null, now);
+            }
+        }
         return session;
     }
 
@@ -263,6 +388,10 @@ public class CallService {
         CallSession session = requireSession(callId);
         aclService.assertAuthenticated(actorId);
         requireAnyParticipant(session, actorId);
+        if (isGroup(session) && !session.getInitiatorId().equals(actorId)) {
+            return leaveGroupParticipant(session, actorId, eventId, traceId, CallEventKind.CALL_HANGUP,
+                    CallEndReason.HANGUP.name());
+        }
         CallState state = CallState.valueOf(session.getState());
         CallSession shortCircuit = replayOrTerminalOrOutOfOrder(session, CallCommand.HANGUP, eventId);
         if (shortCircuit != null) {
@@ -278,6 +407,9 @@ public class CallService {
                 applyParticipantTransition(session, p.getUserId(), ParticipantState.JOINING,
                         ParticipantCommand.LEAVE, CallEndReason.HANGUP.name(), null, now);
             }
+            if (isGroup(session)) {
+                releaseRemainingGroupParticipants(session, now, CallEndReason.HANGUP.name());
+            }
             append(eventId, session, actorId, CallEventKind.CALL_HANGUP, Map.of("mode", session.getMode()), traceId);
             project(session, session.getConnectedAt() != null ? 1 : 2, ledgerService.durationSeconds(session));
             return session;
@@ -291,6 +423,9 @@ public class CallService {
                         ParticipantCommand.LEAVE, CallEndReason.HANGUP.name(), null, now);
                 applyParticipantTransition(session, p.getUserId(), ParticipantState.RECONNECTING,
                         ParticipantCommand.LEAVE, CallEndReason.HANGUP.name(), null, now);
+            }
+            if (isGroup(session)) {
+                releaseRemainingGroupParticipants(session, now, CallEndReason.HANGUP.name());
             }
             append(eventId, session, actorId, CallEventKind.CALL_HANGUP, Map.of("mode", session.getMode()), traceId);
             project(session, 1, ledgerService.durationSeconds(session));
@@ -310,8 +445,13 @@ public class CallService {
         if (ledgerService.isReplay(eventId) || CallStateMachine.isFinal(state)) {
             return session;
         }
-        if (state != CallState.ACCEPTED && state != CallState.NEGOTIATING) {
+        boolean groupLateJoin = isGroup(session) && state == CallState.CONNECTED;
+        if (state != CallState.ACCEPTED && state != CallState.NEGOTIATING && !groupLateJoin) {
             return session; // 乱序: 会话状态不允许加入
+        }
+        CallParticipant participant = participantMapper.findByCallAndUser(callId, actorId);
+        if (participant == null || !ParticipantState.RINGING.name().equals(participant.getState())) {
+            return session;
         }
         LocalDateTime now = LocalDateTime.now();
         applyParticipantTransition(session, actorId, ParticipantState.RINGING,
@@ -326,6 +466,13 @@ public class CallService {
         CallSession session = requireSession(callId);
         aclService.assertAuthenticated(actorId);
         requireAnyParticipant(session, actorId);
+        if (isGroup(session)) {
+            if (session.getInitiatorId().equals(actorId)) {
+                // 发起者离开等价于结束整场，避免孤儿 room 和永不回收的 session。
+                return hangupCall(callId, actorId, eventId, traceId);
+            }
+            return leaveGroupParticipant(session, actorId, eventId, traceId, CallEventKind.CALL_LEAVE, null);
+        }
         CallState state = CallState.valueOf(session.getState());
         if (ledgerService.isReplay(eventId) || CallStateMachine.isFinal(state)) {
             return session;
@@ -338,6 +485,41 @@ public class CallService {
         applyParticipantTransition(session, actorId, ParticipantState.RECONNECTING,
                 ParticipantCommand.LEAVE, null, null, now);
         append(eventId, session, actorId, CallEventKind.CALL_LEAVE, Map.of("mode", session.getMode()), traceId);
+        return session;
+    }
+
+    /** 群成员退出只改变本人状态；最后一个活跃参与者退出后再收敛会话。 */
+    private CallSession leaveGroupParticipant(CallSession session, Long actorId, String eventId, String traceId,
+                                              CallEventKind eventKind, String reason) {
+        CallState state = CallState.valueOf(session.getState());
+        if (ledgerService.isReplay(eventId) || CallStateMachine.isFinal(state)) {
+            return session;
+        }
+        CallParticipant participant = participantMapper.findByCallAndUser(session.getCallId(), actorId);
+        if (participant == null || isParticipantTerminal(participant.getState())) {
+            return session;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        ParticipantState current = ParticipantState.valueOf(participant.getState());
+        if (current == ParticipantState.RINGING || current == ParticipantState.INVITED) {
+            applyParticipantTransition(session, actorId, current, ParticipantCommand.CANCEL,
+                    reason != null ? reason : CallEndReason.HANGUP.name(), null, now);
+        } else if (ParticipantStateMachine.canTransition(current, ParticipantCommand.LEAVE)) {
+            applyParticipantTransition(session, actorId, current, ParticipantCommand.LEAVE,
+                    reason, null, now);
+        } else {
+            return session;
+        }
+        CallParticipant left = participantMapper.findByCallAndUser(session.getCallId(), actorId);
+        if (left == null || !isParticipantTerminal(left.getState())) {
+            return session;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("mode", session.getMode());
+        payload.put("scope", CallScopeCodes.GROUP);
+        payload.put("participant_state", current.name());
+        append(eventId, session, actorId, eventKind, payload, traceId);
+        convergeGroupIfEmpty(session, now, actorId, traceId);
         return session;
     }
 
@@ -534,7 +716,7 @@ public class CallService {
     }
 
     /** 被叫方校验: 必须是通话参与者且不是发起者 */
-    private void requireTargetParticipant(CallSession session, Long actorId) {
+    private CallParticipant requireTargetParticipant(CallSession session, Long actorId) {
         CallParticipant participant = participantMapper.findByCallAndUser(session.getCallId(), actorId);
         if (participant == null) {
             throw new CallDomainException(CallErrorCode.NOT_AUTHORIZED, "不是通话参与者");
@@ -542,6 +724,7 @@ public class CallService {
         if ("initiator".equals(participant.getRole())) {
             throw new CallDomainException(CallErrorCode.NOT_TARGET, "发起者不能接受/拒绝自己的呼叫");
         }
+        return participant;
     }
 
     /** 任意参与者校验 */
@@ -602,13 +785,34 @@ public class CallService {
                 reason, joinedAt, leftAt);
     }
 
-    private void insertParticipant(String callId, Long userId, String role) {
+    private void insertParticipant(String callId, Long userId, String role, GroupMemberProfile profile) {
         CallParticipant participant = new CallParticipant();
         participant.setCallId(callId);
         participant.setUserId(userId);
         participant.setRole(role);
         participant.setState(ParticipantState.INVITED.name());
+        participant.setProfileSnapshot(profileSnapshot(userId, profile));
         participantMapper.insert(participant);
+    }
+
+    private String profileSnapshot(Long userId, GroupMemberProfile profile) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("user_id", userId);
+        if (profile != null) {
+            if (profile.getNickname() != null && !profile.getNickname().isBlank()) {
+                snapshot.put("nickname", profile.getNickname());
+            }
+            if (profile.getAvatar() != null && !profile.getAvatar().isBlank()) {
+                snapshot.put("avatar", profile.getAvatar());
+            }
+        }
+        try {
+            return SNAPSHOT_MAPPER.writeValueAsString(snapshot);
+        } catch (JsonProcessingException e) {
+            // ObjectMapper 序列化简单标量不应失败；若运行时配置异常也不能
+            // 让已建立的通话缺少 roster 快照，保留最小结构作为确定性兜底。
+            return "{\"user_id\":" + userId + "}";
+        }
     }
 
     /** 所有参与者 INVITED -> RINGING */
@@ -619,6 +823,99 @@ public class CallService {
         for (Long userId : users) {
             applyParticipantTransition(session, userId, ParticipantState.INVITED,
                     ParticipantCommand.RING, null, null, null);
+        }
+    }
+
+    private boolean isGroup(CallSession session) {
+        return session != null && CallScopeCodes.GROUP.equals(session.getScope());
+    }
+
+    private boolean isParticipantTerminal(String state) {
+        if (state == null) {
+            return true;
+        }
+        try {
+            return ParticipantStateMachine.isFinal(ParticipantState.valueOf(state));
+        } catch (IllegalArgumentException e) {
+            return true;
+        }
+    }
+
+    /** 被叫成员是否都已拒绝/取消/离开(发起者不计入待接听目标)。 */
+    private boolean noPendingGroupTargets(String callId) {
+        for (CallParticipant participant : participantMapper.listByCall(callId)) {
+            if (!"initiator".equals(participant.getRole())
+                    && isActiveParticipantState(participant.getState())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean hasActiveGroupParticipants(String callId) {
+        for (CallParticipant participant : participantMapper.listByCall(callId)) {
+            if (ParticipantState.JOINING.name().equals(participant.getState())
+                    || ParticipantState.CONNECTED.name().equals(participant.getState())
+                    || ParticipantState.RECONNECTING.name().equals(participant.getState())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isActiveParticipantState(String state) {
+        return ParticipantState.INVITED.name().equals(state)
+                || ParticipantState.RINGING.name().equals(state)
+                || ParticipantState.JOINING.name().equals(state)
+                || ParticipantState.CONNECTED.name().equals(state)
+                || ParticipantState.RECONNECTING.name().equals(state);
+    }
+
+    /** 发起者结束 group session 时释放尚未接听的成员，避免终态下残留 RINGING roster。 */
+    private void releaseRemainingGroupParticipants(CallSession session, LocalDateTime now, String reason) {
+        for (CallParticipant participant : participantMapper.listByCall(session.getCallId())) {
+            Long userId = participant.getUserId();
+            if (ParticipantState.RINGING.name().equals(participant.getState())) {
+                applyParticipantTransition(session, userId, ParticipantState.RINGING,
+                        ParticipantCommand.CANCEL, reason, null, now);
+            } else if (ParticipantState.INVITED.name().equals(participant.getState())) {
+                applyParticipantTransition(session, userId, ParticipantState.INVITED,
+                        ParticipantCommand.CANCEL, reason, null, now);
+            }
+        }
+    }
+
+    /** 无活跃成员时关闭 group session；CONNECTED 留给 room_finished 收敛。 */
+    private void convergeGroupIfEmpty(CallSession session, LocalDateTime now, Long actorId, String traceId) {
+        if (!isGroup(session)) {
+            return;
+        }
+        CallState state = CallState.valueOf(session.getState());
+        if (state == CallState.RINGING && noPendingGroupTargets(session.getCallId())) {
+            if (applySessionTransition(session, CallCommand.REJECT, CallEndReason.REJECTED.name(),
+                    null, null, now)) {
+                applyParticipantTransition(session, session.getInitiatorId(), ParticipantState.RINGING,
+                        ParticipantCommand.CANCEL, CallEndReason.REJECTED.name(), null, now);
+                append(systemEventId(), session, SYSTEM_PARTICIPANT, CallEventKind.CALL_STATE,
+                        Map.of("transition", "group-empty->rejected", "actor_id", actorId), traceId);
+            }
+            return;
+        }
+        if (hasActiveGroupParticipants(session.getCallId())) {
+            return;
+        }
+        if (state == CallState.NEGOTIATING) {
+            if (applySessionTransition(session, CallCommand.HANGUP, CallEndReason.HANGUP.name(),
+                    null, null, now)) {
+                append(systemEventId(), session, SYSTEM_PARTICIPANT, CallEventKind.CALL_STATE,
+                        Map.of("transition", "group-empty->ended", "actor_id", actorId), traceId);
+            }
+        } else if (state == CallState.CONNECTED) {
+            if (applySessionTransition(session, CallCommand.HANGUP, CallEndReason.HANGUP.name(),
+                    null, null, now)) {
+                append(systemEventId(), session, SYSTEM_PARTICIPANT, CallEventKind.CALL_STATE,
+                        Map.of("transition", "group-empty->ending", "actor_id", actorId), traceId);
+            }
         }
     }
 

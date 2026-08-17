@@ -179,6 +179,88 @@ class ParticipantTest {
         assertThat(roster).extracting(CallParticipant::getUserId)
                 .containsExactlyInAnyOrder(INITIATOR, CALLEE, GROUP_MEMBER_3);
         assertThat(roster).allSatisfy(p -> assertThat(p.getRole()).isIn("initiator", "member"));
+        assertThat(roster).allSatisfy(p -> assertThat(p.getProfileSnapshot()).isNotBlank());
+    }
+
+    @Test
+    void groupRosterRejectsMoreThanEightParticipants() {
+        for (long userId = 1001; userId <= 1009; userId++) {
+            fx.addGroupMember(GROUP_ID, userId);
+        }
+
+        assertThatThrownBy(() -> svc.createCall(new CreateCallCommand(
+                INITIATOR, "group", null, GROUP_ID, "video", "livekit",
+                "creq-group-over-0001", "evt-create-over-0001", "trace")))
+                .isInstanceOf(CallDomainException.class)
+                .satisfies(t -> assertThat(((CallDomainException) t).getCode())
+                        .isEqualTo(CallErrorCode.INVALID_ARGUMENT));
+        assertThat(fx.sessionsByCall).isEmpty();
+    }
+
+    @Test
+    void groupAcceptsMultipleMembersWithoutRepeatingSessionTransition() {
+        CallSession call = createGroupCall();
+
+        svc.acceptCall(call.getCallId(), CALLEE, "evt-group-accept-0001", "trace");
+        svc.acceptCall(call.getCallId(), GROUP_MEMBER_3, "evt-group-accept-0002", "trace");
+
+        assertThat(fx.session(call.getCallId()).getState()).isEqualTo(CallState.ACCEPTED.name());
+        assertThat(fx.participant(call.getCallId(), CALLEE).getState()).isEqualTo("JOINING");
+        assertThat(fx.participant(call.getCallId(), GROUP_MEMBER_3).getState()).isEqualTo("JOINING");
+        assertThat(fx.eventCount(call.getCallId(), "call.accept")).isEqualTo(2);
+    }
+
+    @Test
+    void groupRejectOnlyRemovesOneMember() {
+        CallSession call = createGroupCall();
+
+        svc.rejectCall(call.getCallId(), CALLEE, "evt-group-reject-0001", "trace");
+
+        assertThat(fx.session(call.getCallId()).getState()).isEqualTo(CallState.RINGING.name());
+        assertThat(fx.participant(call.getCallId(), CALLEE).getState()).isEqualTo("REJECTED");
+        assertThat(fx.participant(call.getCallId(), GROUP_MEMBER_3).getState()).isEqualTo("RINGING");
+
+        svc.rejectCall(call.getCallId(), GROUP_MEMBER_3, "evt-group-reject-0002", "trace");
+        assertThat(fx.session(call.getCallId()).getState()).isEqualTo(CallState.REJECTED.name());
+        assertThat(fx.participant(call.getCallId(), INITIATOR).getState()).isEqualTo("CANCELLED");
+    }
+
+    @Test
+    void groupConnectedDoesNotPromoteUnacceptedMembers() {
+        CallSession call = createGroupCall();
+        svc.acceptCall(call.getCallId(), CALLEE, "evt-group-accept-0011", "trace");
+        svc.joinCall(call.getCallId(), INITIATOR, "evt-group-join-0011", "trace");
+        svc.startNegotiation(call.getCallId(), INITIATOR, "evt-group-neg-0011", "trace");
+        svc.confirmConnected(call.getCallId(), INITIATOR, "evt-group-connected-0011", "trace");
+
+        assertThat(fx.participant(call.getCallId(), INITIATOR).getState()).isEqualTo("CONNECTED");
+        assertThat(fx.participant(call.getCallId(), CALLEE).getState()).isEqualTo("CONNECTED");
+        assertThat(fx.participant(call.getCallId(), GROUP_MEMBER_3).getState()).isEqualTo("RINGING");
+    }
+
+    @Test
+    void groupMemberHangupLeavesOnlyThatMember() {
+        CallSession call = createGroupCall();
+        svc.acceptCall(call.getCallId(), CALLEE, "evt-group-accept-0021", "trace");
+        svc.acceptCall(call.getCallId(), GROUP_MEMBER_3, "evt-group-accept-0022", "trace");
+        svc.joinCall(call.getCallId(), INITIATOR, "evt-group-join-0021", "trace");
+        svc.startNegotiation(call.getCallId(), INITIATOR, "evt-group-neg-0021", "trace");
+        svc.confirmConnected(call.getCallId(), INITIATOR, "evt-group-connected-0021", "trace");
+
+        svc.hangupCall(call.getCallId(), CALLEE, "evt-group-hangup-0021", "trace");
+
+        assertThat(fx.session(call.getCallId()).getState()).isEqualTo(CallState.CONNECTED.name());
+        assertThat(fx.participant(call.getCallId(), CALLEE).getState()).isEqualTo("LEFT");
+        assertThat(fx.participant(call.getCallId(), GROUP_MEMBER_3).getState()).isEqualTo("CONNECTED");
+    }
+
+    private CallSession createGroupCall() {
+        fx.addGroupMember(GROUP_ID, INITIATOR);
+        fx.addGroupMember(GROUP_ID, CALLEE);
+        fx.addGroupMember(GROUP_ID, GROUP_MEMBER_3);
+        return svc.createCall(new CreateCallCommand(
+                INITIATOR, "group", null, GROUP_ID, "video", "livekit",
+                "creq-group-helper-0001", "evt-group-create-0001", "trace"));
     }
 
     @Test
