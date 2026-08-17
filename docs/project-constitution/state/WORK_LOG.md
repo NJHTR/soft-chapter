@@ -1,5 +1,35 @@
 # 工作日志
 
+## 2026-08-17：RTC-004 + RTC-005 完成，推进 RTC-006
+
+- RTC-004 标记 `completed`：1 对 1 LiveKit 媒体路径（store + adapter + CallPanel + OpenAPI）已在上轮提交 `0e2787e`。
+- RTC-005 实现并提交 `4ca8942 feat(RTC-005): migrate group calls to LiveKit SFU`：
+  - `src/modules/rtc/types.ts`：新增 `GroupCallMeta`，`IncomingCall` 加 `isGroup/groupMembers`，`OutgoingMeta.toUserId` 改可选。
+  - `src/api/rtc.ts`：`CreateCallParams` 支持 `scope: 'group'` + `group_id`。
+  - `src/modules/rtc/signaling/wsBridge.ts`：群通话 `call_request` 由 `VITE_RTC_005` 开关控制；`notifyIncoming` 透传 `isGroup/groupMembers`。
+  - `src/modules/rtc/store/useRtcStore.ts`：新增 `groupMeta` 状态、`openGroupDial`、`dialGroup` action；`accept()` 支持群通话；`hardResetState()` 补清 `groupMeta`。
+  - `src/modules/rtc/components/CallPanel.vue`：群通话 CSS grid 多参与者界面（发言高亮、静音图标、头像 fallback）；单人 video 保留为 `v-else-if`。
+  - `src/components/Call.vue`：`SHOW_GROUP_CALL` handler 在 `RTC005=on` 且有 `groupId` 时走 `openGroupDial`，否则回退旧 mesh 路径。
+  - `src/pages/message/chat/GroupChat.vue`：bus emit 补发 `groupId`。
+  - `env/.env`：补 `VITE_LIVEKIT_URL`、`VITE_RTC_004=on`、`VITE_RTC_005=on`。
+- 验证：`vue-tsc --noEmit` 通过；Less build 错误为用户 live 文件预存 bug（已隔离确认与 RTC-005 无关）。
+- `PROJECT_STATE.yaml` 更新：RTC-004/005 → completed，current_task → RTC-006，baseline head_commit 更新为 `4ca8942`。
+- 下一任务：RTC-006（直播迁移到 WHIP/WHEP + HLS/HTTP-FLV fallback）。
+
+## 2026-08-14：AI-001 收尾 + AI-005 验证 + PROJECT_STATE 修正
+
+- `server/python/correct_video_durations.py` 最后一处硬编码 DB 密码迁移到 `_require_env("DB_PASSWORD")`，DB host/port/user 同步改为 `os.environ.get`。
+- `git grep` 扫描（sk-/XrKk/yccv 模式）零命中，所有可跟踪源文件无明文密钥。AI-001 密钥 env 化 DoD 全部满足，状态更新为 `completed`。
+- AI-005 实物验证：`.venv/Scripts/python.exe ai_pipeline.py eval --provider echo` 10/10 通过；`train --dry-run` 输出训练计划、不落 checkpoint；34 个 Python 单测全部通过（1.53s）。状态更新为 `completed`。运行环境需 `.venv/Scripts/python.exe`（系统 python 不可用，exit:49）。
+- `PROJECT_STATE.yaml` 修正：current_task 恢复为 RTC-004（in_progress），scope/artifacts 对齐实际任务内容；AI-001 和 AI-005 状态同步为 completed。
+- JWT secret 有非空 Base64 默认值风险，已在 SECURITY.md §2.1 L39 登记，fail-closed 实现归 AI-002。
+
+## 2026-08-14：全项目宪法与模块拆分
+- 创建 `docs/project-constitution/MODULE_BREAKDOWN.md`：12模块详细拆分（MOD-AUTH/USER/VIDEO/LIVE/RTC/IM/MUSIC/SEARCH/SHOP/REC/ADMIN/INFRA），含职责边界、目录、契约、状态和待收口项。
+- 创建 `docs/project-constitution/FULL_DEVELOPMENT_PLAN.md`：六阶段开发路线图（Phase 0已完成→Phase 6发布门禁）。
+- 更新 `docs/project-constitution/tasks/TASK_INDEX.md`：补充 ADM/SHOP/SRC/REC/OPS 系列任务（Phase 3~6共15个任务）。
+- 架构结论：WebRTC 方向正确（LiveKit SFU for calls，SRS WHIP/WHEP for live），当前画质问题源于 B-001~B-006 实现缺陷，非架构选型问题；RTC-004 继续推进为 P0。
+
 ## 2026-08-14：RTC-004 重新勘察与契约收敛（进行中）
 
 - 实际基线：分支 `dev/full`，HEAD `4c813c4`；工作区仍包含用户的直播、后台、原生引擎和管理端改动，按宪法“preserve_and_avoid”保留，未执行 reset/checkout/清理。

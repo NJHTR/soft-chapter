@@ -5,9 +5,9 @@ project:
   constitution: docs/project-constitution/PROJECT_CONSTITUTION.md
   state_owner: /root
 baseline:
-  observed_at: "2026-08-14"
+  observed_at: "2026-08-17"
   branch: dev/full
-  head_commit: 0e2787e
+  head_commit: 4ca8942
   remote_tracking: origin/dev/full
   worktree_dirty: true
   dirty_worktree_policy: preserve_and_avoid
@@ -33,17 +33,18 @@ architecture_decisions:
   browser_codec_baseline: h264_or_vp8_video_plus_opus_audio
   legacy_policy: websocket_media_and_mesh_are_migration_only
 current_task:
-  id: RTC-004
+  id: RTC-006
   status: in_progress
   owner: main-dev-agent
-  started_at: "2026-08-14"
+  started_at: "2026-08-17"
   branch: dev/full
-  scope: one_to_one_livekit_adapter
+  scope: migrate_live_streaming_to_whip_whep
   dependencies: [RTC-002, RTC-003]
   expected_artifacts:
-    - 前端 RTC 状态 store + provider adapter
-    - Call UI 设备管理/接通/重连/通话记录
-    - 联调验证(后端 + LiveKit + 浏览器)
+    - 前端 WHIP 推流 + WHEP 拉流适配器
+    - 后端 LiveKit WHIP/WHEP Ingress + Egress
+    - HLS/HTTP-FLV fallback 保留
+    - LiveCreate/LiveWatch 迁移到新链路
 tasks:
   - id: RTC-001
     title: 建立实时媒体宪法、基线和架构契约
@@ -59,11 +60,11 @@ tasks:
     depends_on: [RTC-001]
   - id: RTC-004
     title: 接入 1 对 1 LiveKit 媒体适配器和客户端
-    status: in_progress
+    status: completed
     depends_on: [RTC-002, RTC-003]
   - id: RTC-005
     title: 迁移群聊音视频到 SFU
-    status: planned
+    status: completed
     depends_on: [RTC-004]
   - id: RTC-006
     title: 迁移直播到 WHIP/WHEP 与 HLS/HTTP-FLV fallback
