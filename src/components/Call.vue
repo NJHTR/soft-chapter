@@ -319,6 +319,7 @@ const store = useBaseStore()
 
 // RTC-004 新通话链路开关(默认开启,env 设 VITE_RTC_004=off 可回退 legacy)
 const RTC004 = import.meta.env.VITE_RTC_004 !== 'off'
+const RTC005 = import.meta.env.VITE_RTC_005 !== 'off'
 const rtcStore = useRtcStore()
 const localVideo = ref<HTMLVideoElement>()
 const remoteVideoRefs = new Map<string, HTMLVideoElement>()
@@ -1056,19 +1057,34 @@ onMounted(() => {
   })
 
   // 群通话通过 bus 触发
-  bus.on('SHOW_GROUP_CALL', (payload: { targets: any[]; isVideo: boolean; roomName?: string }) => {
-    if (payload?.targets?.length) {
-      startCall(
-        payload.targets.map((t: any) => ({
-          userId: String(t.userId || t.uid || t.id),
-          userName: t.userName || t.name || t.nickname || '',
-          avatar: t.avatar || t.avatar_168x168?.url_list?.[0] || ''
-        })),
-        payload.isVideo || false,
-        payload.roomName || ''
-      )
+  bus.on(
+    'SHOW_GROUP_CALL',
+    (payload: { targets: any[]; isVideo: boolean; roomName?: string; groupId?: number }) => {
+      if (RTC005 && payload?.targets?.length && payload?.groupId) {
+        rtcStore.openGroupDial({
+          groupId: String(payload.groupId),
+          members: payload.targets.map((t: any) => ({
+            userId: String(t.userId || t.uid || t.id),
+            name: t.userName || t.name || t.nickname || '',
+            avatar: t.avatar || t.avatar_168x168?.url_list?.[0] || ''
+          })),
+          isVideo: payload.isVideo || false
+        })
+        return
+      }
+      if (payload?.targets?.length) {
+        startCall(
+          payload.targets.map((t: any) => ({
+            userId: String(t.userId || t.uid || t.id),
+            userName: t.userName || t.name || t.nickname || '',
+            avatar: t.avatar || t.avatar_168x168?.url_list?.[0] || ''
+          })),
+          payload.isVideo || false,
+          payload.roomName || ''
+        )
+      }
     }
-  })
+  )
 })
 
 onUnmounted(() => {

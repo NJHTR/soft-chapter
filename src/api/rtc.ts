@@ -6,9 +6,10 @@ export function genClientRequestId(): string {
 }
 
 export interface CreateCallParams {
-  scope: 'direct'
+  scope: 'direct' | 'group'
   mode: 'audio' | 'video'
-  target_user_id: string | number
+  target_user_id?: string | number
+  group_id?: string | number
   client_request_id: string
   event_id?: string
   trace_id?: string

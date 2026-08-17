@@ -538,7 +538,8 @@ function startGroupCall(isVideo: boolean) {
   bus.emit('SHOW_GROUP_CALL', {
     targets,
     isVideo,
-    roomName: data.groupName
+    roomName: data.groupName,
+    groupId: groupId.value
   })
 }
 

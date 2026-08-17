@@ -14,8 +14,8 @@
       <template v-else>
         <!-- ═══ 拨号中 ═══ -->
         <div v-if="store.phase === 'dialing'" class="rtc-center">
-          <img class="rtc-avatar big" :src="peerAvatar" alt="" />
-          <div class="rtc-name">{{ peerName }}</div>
+          <img class="rtc-avatar big" :src="isGroup ? defaultAvatar : peerAvatar" alt="" />
+          <div class="rtc-name">{{ isGroup ? groupDisplayName : peerName }}</div>
           <div class="rtc-status">正在呼叫…</div>
           <div v-if="store.error" class="rtc-error">{{ store.error }}</div>
           <div class="rtc-actions dialing-actions">
@@ -31,7 +31,13 @@
           <img class="rtc-avatar big" :src="store.incoming?.avatar || defaultAvatar" alt="" />
           <div class="rtc-name">{{ store.incoming?.name || '来电' }}</div>
           <div class="rtc-status">
-            {{ store.incoming?.mode === 'video' ? '视频通话来电' : '语音通话来电' }}
+            {{
+              store.incoming?.isGroup
+                ? '群通话来电'
+                : store.incoming?.mode === 'video'
+                  ? '视频通话来电'
+                  : '语音通话来电'
+            }}
           </div>
           <div class="rtc-actions incoming-actions">
             <div class="rtc-action-btn" @click="store.reject()">
@@ -47,8 +53,8 @@
 
         <!-- ═══ 连接中 ═══ -->
         <div v-else-if="store.phase === 'connecting'" class="rtc-center">
-          <img class="rtc-avatar big" :src="peerAvatar" alt="" />
-          <div class="rtc-name">{{ peerName }}</div>
+          <img class="rtc-avatar big" :src="isGroup ? defaultAvatar : peerAvatar" alt="" />
+          <div class="rtc-name">{{ isGroup ? groupDisplayName : peerName }}</div>
           <div class="rtc-status">正在连接…</div>
           <div v-if="store.error" class="rtc-error">{{ store.error }}</div>
           <div class="rtc-actions dialing-actions">
@@ -61,7 +67,84 @@
 
         <!-- ═══ 通话中 ═══ -->
         <div v-else-if="store.phase === 'connected'" class="rtc-connected">
-          <template v-if="store.mode === 'video'">
+          <!-- 群通话: 多参与者网格 -->
+          <template v-if="isGroup">
+            <div class="rtc-group-stage">
+              <div class="rtc-top-bar rtc-top-bar-group">
+                <span class="rtc-peer-name">{{ groupDisplayName }}</span>
+                <span class="rtc-timer">{{ store.durationText }}</span>
+              </div>
+              <div class="rtc-group-grid">
+                <div class="rtc-group-tile rtc-group-tile-me">
+                  <video
+                    v-if="store.mode === 'video' && localVideoEnable"
+                    ref="localVideoEl"
+                    class="rtc-group-tile-video"
+                    autoplay
+                    playsinline
+                    muted
+                  />
+                  <div v-else class="rtc-group-tile-off">
+                    <img :src="myAvatar || defaultAvatar" alt="" />
+                  </div>
+                  <span class="rtc-group-tile-name">我</span>
+                  <span v-if="store.devices.audioMuted" class="rtc-group-mute-icon">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      class="rtc-svg-icon-sm"
+                    >
+                      <path d="M1 1l22 22" />
+                      <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+                    </svg>
+                  </span>
+                </div>
+                <div
+                  v-for="entry in remoteParticipantEntries"
+                  :key="entry.identity"
+                  class="rtc-group-tile"
+                  :class="{ speaking: store.activeSpeaker === entry.identity }"
+                >
+                  <video
+                    v-if="store.mode === 'video' && !entry.muted.video && entry.stream"
+                    :ref="(el) => setGroupVideoEl(entry.identity, el as any)"
+                    class="rtc-group-tile-video"
+                    autoplay
+                    playsinline
+                  />
+                  <audio
+                    v-if="store.mode === 'audio' && entry.stream"
+                    :ref="(el) => setGroupVideoEl(`aud-${entry.identity}`, el as any)"
+                    autoplay
+                    playsinline
+                    class="rtc-hidden-audio"
+                  />
+                  <div
+                    v-if="store.mode === 'audio' || entry.muted.video || !entry.stream"
+                    class="rtc-group-tile-off"
+                  >
+                    <img :src="entry.avatar || defaultAvatar" alt="" />
+                  </div>
+                  <span class="rtc-group-tile-name">{{ entry.name }}</span>
+                  <span v-if="entry.muted.audio" class="rtc-group-mute-icon">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      class="rtc-svg-icon-sm"
+                    >
+                      <path d="M1 1l22 22" />
+                      <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+                    </svg>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </template>
+          <template v-else-if="store.mode === 'video'">
             <div class="rtc-video-stage">
               <!-- 远端 -->
               <video
@@ -222,8 +305,12 @@
 
         <!-- ═══ 已结束 ═══ -->
         <div v-else-if="store.phase === 'ended'" class="rtc-center">
-          <img class="rtc-avatar big grey" :src="peerAvatar || defaultAvatar" alt="" />
-          <div class="rtc-name">{{ peerName || '通话' }}</div>
+          <img
+            class="rtc-avatar big grey"
+            :src="isGroup ? defaultAvatar : peerAvatar || defaultAvatar"
+            alt=""
+          />
+          <div class="rtc-name">{{ isGroup ? groupDisplayName : peerName || '通话' }}</div>
           <div class="rtc-status">{{ endedText }}</div>
           <div v-if="store.error" class="rtc-error">{{ store.error }}</div>
         </div>
@@ -282,6 +369,49 @@ const endedText = computed(
   () => (store.endReason && END_REASON_TEXT[store.endReason]) || '通话已结束'
 )
 
+const isGroup = computed(() => !!store.groupMeta || store.session?.scope === 'group')
+const groupDisplayName = computed(() => {
+  const count = store.participants.length
+  return count > 1 ? `群通话(${count}人)` : '群通话'
+})
+const remoteParticipantEntries = computed(() =>
+  Object.entries(store.remoteStreams).map(([identity, stream]) => {
+    const member = store.groupMeta?.members.find((m) => m.userId === identity)
+    return {
+      identity,
+      stream,
+      name: member?.name || identity,
+      avatar: member?.avatar || '',
+      muted: store.remoteMuted[identity] || { audio: false, video: false }
+    }
+  })
+)
+const groupMediaEls = new Map<string, HTMLVideoElement | HTMLAudioElement>()
+function setGroupVideoEl(key: string, el: HTMLVideoElement | HTMLAudioElement | null) {
+  if (el) {
+    groupMediaEls.set(key, el)
+    const identity = key.startsWith('aud-') ? key.slice(4) : key
+    const stream = store.remoteStreams[identity]
+    if (stream) bindStream(el as HTMLMediaElement, stream)
+  } else {
+    groupMediaEls.delete(key)
+  }
+}
+watch(
+  () => store.remoteStreams,
+  async (streams) => {
+    if (!isGroup.value) return
+    await nextTick()
+    for (const [identity, stream] of Object.entries(streams)) {
+      const videoEl = groupMediaEls.get(identity)
+      if (videoEl) await bindStream(videoEl as HTMLMediaElement, stream)
+      const audioEl = groupMediaEls.get(`aud-${identity}`)
+      if (audioEl) await bindStream(audioEl as HTMLMediaElement, stream)
+    }
+  },
+  { deep: true }
+)
+
 function setRemoteVideoEl(el: any) {
   remoteVideoEl.value = el
   registerRtOutputEl('remote-video', el || null)
@@ -319,6 +449,7 @@ watch(
 onBeforeUnmount(() => {
   registerRtOutputEl('remote-video', null)
   registerRtOutputEl('remote-audio', null)
+  groupMediaEls.clear()
 })
 
 onMounted(() => {
@@ -631,5 +762,106 @@ onMounted(() => {
 .rtc-fade-enter-from,
 .rtc-fade-leave-to {
   opacity: 0;
+}
+
+.rtc-group-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rtc-top-bar-group {
+  position: relative;
+  padding: 14rem 16rem 10rem;
+  display: flex;
+  align-items: center;
+  gap: 10rem;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent);
+  z-index: 2;
+}
+
+.rtc-group-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 3rem;
+  padding: 3rem;
+  padding-bottom: 160rem;
+}
+
+.rtc-group-tile {
+  position: relative;
+  background: #1a1a1a;
+  border-radius: 8rem;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2rem solid transparent;
+  transition: border-color 0.2s;
+
+  &.speaking {
+    border-color: #14bf5f;
+  }
+}
+
+.rtc-group-tile-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.rtc-group-tile-off {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  img {
+    width: 52rem;
+    height: 52rem;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+}
+
+.rtc-group-tile-name {
+  position: absolute;
+  bottom: 4rem;
+  left: 6rem;
+  font-size: 11rem;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4rem;
+  padding: 1rem 4rem;
+  max-width: 80%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtc-group-mute-icon {
+  position: absolute;
+  top: 4rem;
+  right: 4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  width: 20rem;
+  height: 20rem;
+}
+
+.rtc-svg-icon-sm {
+  width: 12rem;
+  height: 12rem;
+  color: #ff6b81;
 }
 </style>

@@ -36,7 +36,7 @@ current_task:
   id: RTC-004
   status: in_progress
   owner: main-dev-agent
-  started_at: "2026-08-13"
+  started_at: "2026-08-14"
   branch: dev/full
   scope: one_to_one_livekit_adapter
   dependencies: [RTC-002, RTC-003]
@@ -85,6 +85,30 @@ tasks:
     title: 安全、负载、故障演练和发布门禁
     status: planned
     depends_on: [RTC-007, RTC-008, RTC-009]
+  - id: AI-001
+    title: AI 持续学习宪法、架构与安全基线(文档+密钥 env)
+    status: completed
+    depends_on: []
+  - id: AI-002
+    title: Agent Runtime 与 Model Gateway(本地 worker + DeepSeek fallback)
+    status: planned
+    depends_on: [AI-001]
+  - id: AI-003
+    title: 反馈与候选样本数据模型(ai_feedback 采集)
+    status: planned
+    depends_on: [AI-001]
+  - id: AI-004
+    title: 自动脱敏/去重/筛选/打分构造候选训练集
+    status: planned
+    depends_on: [AI-003]
+  - id: AI-005
+    title: 离线评测与 dry-run/受控训练编排
+    status: completed
+    depends_on: [AI-004]
+  - id: AI-006
+    title: Champion/Challenger 灰度发布与回滚
+    status: planned
+    depends_on: [AI-005]
 known_blockers:
   - id: B-001
     description: 后端 WebRTC offer 当前为 SDP echo，不是真实协商

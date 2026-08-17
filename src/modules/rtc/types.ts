@@ -66,12 +66,20 @@ export interface IncomingCall {
   name: string
   avatar: string
   mode: CallMode
+  isGroup?: boolean
+  groupMembers?: string[]
 }
 
 export interface OutgoingMeta {
-  toUserId: string
+  toUserId?: string
   name: string
   avatar: string
+  isVideo: boolean
+}
+
+export interface GroupCallMeta {
+  groupId: string
+  members: Array<{ userId: string; name: string; avatar: string }>
   isVideo: boolean
 }
 

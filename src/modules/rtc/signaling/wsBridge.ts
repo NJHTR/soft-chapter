@@ -2,16 +2,18 @@ import { onSocketMsg } from '@/utils/socket'
 import { useRtcStore } from '@/modules/rtc/store/useRtcStore'
 
 /**
- * RTC-004 旧 WS 信令桥:仅消费 1:1 的 call_request(拨号通知)。
- * accept/reject/hangup 等一律走后端 REST,不在此处处理(避免与 t_message 投影重复)。
- * 返回 cleanup。
+ * RTC-004/005 WS 信令桥:消费 call_request 拨号通知。
+ * RTC_005 开启时同时处理群通话 call_request。
+ * accept/reject/hangup 等一律走后端 REST。返回 cleanup。
  */
 export function setupRtcSignaling(): () => void {
+  const RTC005 = import.meta.env.VITE_RTC_005 !== 'off'
   return onSocketMsg('call_signal', (msg: any) => {
     const store = useRtcStore()
     if (msg?.signal_type !== 'call_request') return
     const data = msg.data || {}
-    if (data.isGroup || data.scope === 'group') return
+    const isGroup = !!(data.isGroup || data.scope === 'group')
+    if (isGroup && !RTC005) return
     if (!data.call_id) return
     if (!msg.from_user_id || String(msg.from_user_id) === String(store.myId)) return
     store.notifyIncoming({
@@ -19,7 +21,9 @@ export function setupRtcSignaling(): () => void {
       fromUserId: String(msg.from_user_id ?? ''),
       name: data.name || '用户',
       avatar: data.avatar || '',
-      mode: data.isVideo ? 'video' : 'audio'
+      mode: data.isVideo ? 'video' : 'audio',
+      isGroup,
+      groupMembers: Array.isArray(data.groupMembers) ? data.groupMembers : []
     })
   })
 }

@@ -21,6 +21,7 @@ import {
   type CallSession,
   type CallDetail,
   type DeviceStates,
+  type GroupCallMeta,
   type IncomingCall,
   type OutgoingMeta,
   type RtcParticipant
@@ -82,7 +83,8 @@ export const useRtcStore = defineStore('rtc', {
     joined: false,
     facing: 'user' as 'user' | 'environment',
     activeSpeaker: null as string | null,
-    traceId: null as string | null
+    traceId: null as string | null,
+    groupMeta: null as GroupCallMeta | null
   }),
   getters: {
     mode(state): CallMode {
@@ -156,6 +158,25 @@ export const useRtcStore = defineStore('rtc', {
       this.dial()
     },
 
+    /** 群通话发起方:入口,置 dialing 后自动 dialGroup */
+    openGroupDial(meta: GroupCallMeta) {
+      this.init()
+      if (this.phase !== 'idle' && this.phase !== 'ended') return
+      this.hardResetState()
+      this.groupMeta = {
+        groupId: String(meta.groupId),
+        members: meta.members.map((m) => ({
+          userId: String(m.userId),
+          name: m.name,
+          avatar: m.avatar
+        })),
+        isVideo: !!meta.isVideo
+      }
+      this.traceId = genTraceId()
+      this.phase = 'dialing'
+      this.dialGroup()
+    },
+
     /** 发起方:创建会话 → WS 通知被叫 → 轮询 ACCEPTED → join → 轮询 CONNECTED */
     async dial() {
       const meta = this.outgoingMeta
@@ -174,13 +195,46 @@ export const useRtcStore = defineStore('rtc', {
       }
       this.session = res.data
       const me = useBaseStore().userinfo
-      sendCallSignal(meta.toUserId, 'call_request', {
+      sendCallSignal(meta.toUserId!, 'call_request', {
         call_id: res.data.call_id,
         mode: res.data.mode,
         isVideo: meta.isVideo,
         name: me.nickname || '用户',
         avatar: me.avatar_168x168?.url_list?.[0] || ''
       })
+      this.startPolling()
+    },
+
+    /** 群通话发起方:创建 group 会话 → WS 通知所有成员 → 轮询 */
+    async dialGroup() {
+      const gm = this.groupMeta
+      if (!gm) return
+      const res = await createCall({
+        scope: 'group',
+        mode: gm.isVideo ? 'video' : 'audio',
+        group_id: gm.groupId,
+        client_request_id: genClientRequestId(),
+        trace_id: this.traceId || undefined
+      })
+      if (!res.success || !res.data?.call_id) {
+        this.error = extractErr(res)
+        this.finishEnded(null)
+        return
+      }
+      this.session = res.data
+      const me = useBaseStore().userinfo
+      for (const member of gm.members) {
+        sendCallSignal(member.userId, 'call_request', {
+          call_id: res.data.call_id,
+          mode: res.data.mode,
+          isVideo: gm.isVideo,
+          isGroup: true,
+          scope: 'group',
+          name: me.nickname || '用户',
+          avatar: me.avatar_168x168?.url_list?.[0] || '',
+          groupMembers: gm.members.map((m) => m.name)
+        })
+      }
       this.startPolling()
     },
 
@@ -228,11 +282,25 @@ export const useRtcStore = defineStore('rtc', {
         return
       }
       this.session = res.data
-      this.outgoingMeta = {
-        toUserId: String(this.incoming.fromUserId),
-        name: this.incoming.name,
-        avatar: this.incoming.avatar,
-        isVideo: this.incoming.mode === 'video'
+      if (this.incoming.isGroup) {
+        this.groupMeta = {
+          groupId: '',
+          members: [
+            {
+              userId: String(this.incoming.fromUserId),
+              name: this.incoming.name,
+              avatar: this.incoming.avatar
+            }
+          ],
+          isVideo: this.incoming.mode === 'video'
+        }
+      } else {
+        this.outgoingMeta = {
+          toUserId: String(this.incoming.fromUserId),
+          name: this.incoming.name,
+          avatar: this.incoming.avatar,
+          isVideo: this.incoming.mode === 'video'
+        }
       }
       this.incoming = null
       await this.connectFor()
@@ -460,6 +528,7 @@ export const useRtcStore = defineStore('rtc', {
       this.localStream = null
       this.incoming = null
       this.outgoingMeta = null
+      this.groupMeta = null
       this.error = null
       this.reconnectCount = 0
       this.endReason = null
