@@ -21,7 +21,7 @@ services:
       - "1935:1935/tcp"    # RTMP
       - "1985:1985/tcp"    # HTTP API(healthcheck / WHIP/WHEP 信令)
       - "8080:8080/tcp"    # HTTP Server(FLV/HLS 出口)
-      - "9000:9000/tcp"    # SRT
+      - "9000:9000/udp"    # SRT ingest
       - "8000:8000/udp"    # WebRTC RTP
     volumes:
       - ./deploy/streaming/srs.conf:/usr/local/srs/conf/srs.conf

@@ -184,6 +184,16 @@ export default defineConfig((): Promise<UserConfig> => {
               target: 'http://localhost:9191',
               changeOrigin: true,
               ws: true
+            },
+            '/media/srs-http': {
+              target: 'http://localhost:8080',
+              changeOrigin: true,
+              rewrite: (path) => path.replace(/^\/media\/srs-http/, '')
+            },
+            '/media/srs': {
+              target: 'http://localhost:1985',
+              changeOrigin: true,
+              rewrite: (path) => path.replace(/^\/media\/srs/, '')
             }
           },
           fs: {

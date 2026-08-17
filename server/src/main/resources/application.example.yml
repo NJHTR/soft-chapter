@@ -12,6 +12,17 @@
 server:
   port: 8080
 
+websocket:
+  allowed-origins: ${WEBSOCKET_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+
+live:
+  engine:
+    enabled: ${LIVE_ENGINE_ENABLED:false}
+  media:
+    srs-rtc-base: ${SRS_RTC_PUBLIC_BASE:}
+    srs-http-base: ${SRS_HTTP_PUBLIC_BASE:}
+    rtmp-base: ${SRS_RTMP_PUBLIC_BASE:rtmp://localhost:1935/live/}
+
 spring:
   application:
     name: douyin-server

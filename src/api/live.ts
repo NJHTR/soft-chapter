@@ -39,3 +39,25 @@ export function getFollowingLiveRooms() {
 export function likeLive(id: number) {
   return request({ url: '/live/' + id + '/like', method: 'post' })
 }
+
+// ===== Streaming Engine API (ABR / Stats) =====
+
+export function getABRLadder(roomId: number) {
+  return request({ url: `/live/engine/${roomId}/abr/ladder`, method: 'get' })
+}
+
+export function updateABRLadder(roomId: number, ladder: any[]) {
+  return request({ url: `/live/engine/${roomId}/abr/ladder`, method: 'put', data: ladder })
+}
+
+export function updateStreamBitrate(roomId: number, bitrate: number) {
+  return request({ url: `/live/${roomId}/bitrate`, method: 'put', data: { bitrate } })
+}
+
+export function getStreamStats(roomId: number) {
+  return request({ url: `/live/${roomId}/stats`, method: 'get' })
+}
+
+export function getEngineDashboard() {
+  return request({ url: '/live/engine/dashboard', method: 'get' })
+}

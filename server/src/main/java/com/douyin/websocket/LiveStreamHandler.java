@@ -1,6 +1,7 @@
 package com.douyin.websocket;
 
 import com.douyin.service.LiveService;
+import com.douyin.entity.LiveRoom;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
@@ -11,12 +12,11 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * 直播推流/拉流 WebSocket
+ * 直播控制 WebSocket（媒体不经过此通道）
  *   Broadcaster → ws://host/ws/live/{roomId}?role=host
  *   Viewer     → ws://host/ws/live/{roomId}?role=viewer
  *
- * 帧格式 (JSON):
- *   { "type": "frame", "data": "base64..." }
+ * 控制消息格式 (JSON):
  *   { "type": "chat", "userId": 123, "nickname": "...", "text": "..." }
  *   { "type": "like", "count": 1 }
  *   { "type": "end" }
@@ -56,7 +56,23 @@ public class LiveStreamHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) {
         Long roomId = extractRoomId(session);
         String role = extractRole(session);
+        Long userId = (Long) session.getAttributes().get("userId");
         if (roomId == null) {
+            closeSession(session);
+            return;
+        }
+        LiveRoom room = liveService.getById(roomId);
+        if (room == null || (!"LIVE".equals(room.getStatus()) && !"host".equals(role))) {
+            closeSession(session);
+            return;
+        }
+        if (!"host".equals(role) && !"viewer".equals(role)) {
+            closeSession(session);
+            return;
+        }
+        // The query role is only a hint. A viewer cannot impersonate the
+        // broadcaster, and a PREVIEW room cannot be used as a control bus.
+        if ("host".equals(role) && (userId == null || !userId.equals(room.getHostUserId()))) {
             closeSession(session);
             return;
         }
@@ -64,9 +80,8 @@ public class LiveStreamHandler extends TextWebSocketHandler {
         sessionRole.put(session.getId(), role != null ? role : "viewer");
 
         // 记录 host 的 userId，用于断线时自动关播
-        Object uid = session.getAttributes().get("userId");
-        if (uid != null) {
-            sessionUserId.put(session.getId(), (Long) uid);
+        if (userId != null) {
+            sessionUserId.put(session.getId(), userId);
         }
 
         rooms.computeIfAbsent(roomId, k -> ConcurrentHashMap.newKeySet()).add(session);
@@ -90,39 +105,71 @@ public class LiveStreamHandler extends TextWebSocketHandler {
         Long roomId = sessionRoom.get(session.getId());
         if (roomId == null) return;
 
+        if (message.getPayloadLength() > 8_192) {
+            log.warn("Rejected oversized live control payload: roomId={}, bytes={}", roomId,
+                    message.getPayloadLength());
+            return;
+        }
+
         String payload = message.getPayload();
         Set<WebSocketSession> set = rooms.get(roomId);
         if (set == null) return;
 
-        // 推流端: 广播帧和聊天给所有观众
         String role = sessionRole.get(session.getId());
-        if ("host".equals(role)) {
-            // 广播给所有 viewer
-            for (WebSocketSession s : set) {
-                if (s.isOpen() && !s.getId().equals(session.getId())) {
-                    try {
-                        s.sendMessage(new TextMessage(payload));
-                    } catch (IOException ignored) {}
+        try {
+            var obj = new com.fasterxml.jackson.databind.ObjectMapper().readTree(payload);
+            String type = obj.has("type") ? obj.get("type").asText() : "";
+            // Media is never transported over the control WebSocket. Clients
+            // must use SRS WHIP/WHEP; silently dropping legacy frame packets
+            // prevents accidental base64/binary media fan-out.
+            if ("frame".equals(type) || "media".equals(type)) return;
+            if ("host".equals(role) && !"chat".equals(type)) return;
+            if ("viewer".equals(role) && !"chat".equals(type) && !"like".equals(type)) return;
+            if ("chat".equals(type)) {
+                String text = obj.has("text") ? obj.get("text").asText("").trim() : "";
+                if (text.isEmpty() || text.length() > 500) return;
+            }
+            if ("like".equals(type)) {
+                int count = obj.has("count") ? obj.get("count").asInt(1) : 1;
+                if (count < 1 || count > 5) return;
+            }
+        } catch (Exception ignored) {
+            return;
+        }
+
+        // Chat/like are broadcast as control events only. The sender receives
+        // the same event so all clients share one display projection; media
+        // bytes never enter this loop.
+        for (WebSocketSession s : set) {
+            if (s.isOpen()) {
+                try {
+                    s.sendMessage(new TextMessage(payload));
+                } catch (IOException ignored) {
                 }
             }
         }
+    }
 
-        // 观众端: 聊天/点赞消息也广播给其他人
-        if ("viewer".equals(role)) {
+    /** Notify control clients that the provider room ended, then release sockets. */
+    public static void broadcastEnd(Long roomId) {
+        Set<WebSocketSession> set = rooms.get(roomId);
+        if (set == null) return;
+        for (WebSocketSession session : set.toArray(new WebSocketSession[0])) {
+            if (!session.isOpen()) continue;
             try {
-                var obj = new com.fasterxml.jackson.databind.ObjectMapper().readTree(payload);
-                String type = obj.has("type") ? obj.get("type").asText() : "";
-                if ("chat".equals(type) || "like".equals(type)) {
-                    for (WebSocketSession s : set) {
-                        if (s.isOpen()) {
-                            try {
-                                s.sendMessage(new TextMessage(payload));
-                            } catch (IOException ignored) {}
-                        }
-                    }
-                }
-            } catch (Exception ignored) {}
+                session.sendMessage(new TextMessage("{\"type\":\"end\"}"));
+                session.close(CloseStatus.NORMAL);
+            } catch (IOException ignored) {
+            }
         }
+    }
+
+    @Override
+    protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) {
+        // Deliberately no binary media path. Close only malformed/oversized
+        // control traffic; normal clients should never send binary here.
+        log.warn("Rejected binary live control payload: roomId={}, bytes={}",
+                sessionRoom.get(session.getId()), message.getPayloadLength());
     }
 
     @Override
@@ -144,8 +191,10 @@ public class LiveStreamHandler extends TextWebSocketHandler {
                     Set<WebSocketSession> sessions = rooms.get(roomId);
                     boolean hostOnline = sessions != null && sessions.stream()
                             .anyMatch(s -> s.isOpen() && "host".equals(sessionRole.get(s.getId())));
-                    if (!hostOnline) {
+                    LiveRoom current = liveService.getById(roomId);
+                    if (!hostOnline && current != null && "LIVE".equals(current.getStatus())) {
                         liveService.endLive(roomId, userId);
+                        broadcastEnd(roomId);
                         log.info("Auto-ended live room {} after {}s delay, userId={}", roomId, END_DELAY_SECONDS, userId);
                     }
                 } catch (Exception e) {

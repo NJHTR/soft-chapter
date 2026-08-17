@@ -1,16 +1,7 @@
 <template>
   <div class="live-feed-item">
-    <!-- 背景：直播画面或模糊头像 -->
-    <canvas v-if="isActive && wsConnected" ref="liveCanvas" class="live-canvas"></canvas>
-    <img
-      v-else
-      class="cover-bg"
-      :src="
-        _checkImgUrl(room.host?.avatar_168x168?.url_list?.[0]) ||
-        _checkImgUrl(room.host?.avatar) ||
-        defaultAvatarPng
-      "
-    />
+    <!-- Cards use a static cover; playback starts only after entering the room. -->
+    <img class="cover-bg" :src="coverImage" alt="" />
 
     <!-- 信息覆盖层 -->
     <div class="overlay">
@@ -41,16 +32,11 @@
         <span>点击进入直播间</span>
       </div>
     </div>
-
-    <!-- 加载中 -->
-    <div v-if="isActive && !wsConnected" class="connecting">
-      <span>连接中...</span>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeUnmount, watch, nextTick } from 'vue'
+import { computed } from 'vue'
 import { _checkImgUrl } from '@/utils'
 import defaultAvatarPng from '@/assets/img/icon/people-gray.png'
 
@@ -59,94 +45,19 @@ const props = defineProps<{
   isActive: boolean
 }>()
 
-const liveCanvas = ref<HTMLCanvasElement>()
-const wsConnected = ref(false)
-let liveWs: WebSocket | null = null
-let canvasCtx: CanvasRenderingContext2D | null = null
+const coverImage = computed(
+  () =>
+    _checkImgUrl(props.room?.coverUrl) ||
+    _checkImgUrl(props.room?.host?.avatar_168x168?.url_list?.[0]) ||
+    _checkImgUrl(props.room?.host?.avatar) ||
+    defaultAvatarPng
+)
 
 function formatCount(n: number): string {
   if (!n) return '0'
   if (n >= 10000) return (n / 10000).toFixed(1) + '万'
   return String(n)
 }
-
-function connectWs() {
-  if (!props.room?.id) return
-  if (liveWs) disconnectWs()
-
-  const token = localStorage.getItem('token') || ''
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  liveWs = new WebSocket(
-    `${protocol}//${location.host}/ws/live/${props.room.id}?role=viewer&token=${token}`
-  )
-
-  liveWs.onopen = () => {
-    wsConnected.value = true
-    if (liveCanvas.value) {
-      canvasCtx = liveCanvas.value.getContext('2d')
-      liveCanvas.value.width = liveCanvas.value.offsetWidth || window.innerWidth
-      liveCanvas.value.height = liveCanvas.value.offsetHeight || window.innerHeight
-    }
-  }
-
-  liveWs.onmessage = (e) => {
-    try {
-      const msg = JSON.parse(e.data)
-      if (msg.type === 'frame') {
-        renderFrame(msg.data)
-      }
-    } catch (_) {
-      /* ignore */
-    }
-  }
-
-  liveWs.onerror = () => {
-    wsConnected.value = false
-  }
-
-  liveWs.onclose = () => {
-    wsConnected.value = false
-  }
-}
-
-function renderFrame(dataUrl: string) {
-  if (!canvasCtx || !liveCanvas.value) return
-  const img = new Image()
-  img.onload = () => {
-    if (!canvasCtx || !liveCanvas.value) return
-    canvasCtx.drawImage(img, 0, 0, liveCanvas.value.width, liveCanvas.value.height)
-  }
-  img.src = dataUrl
-}
-
-function disconnectWs() {
-  if (liveWs) {
-    liveWs.onclose = null
-    try {
-      liveWs.close()
-    } catch (_) {
-      /* ignore */
-    }
-    liveWs = null
-  }
-  wsConnected.value = false
-  canvasCtx = null
-}
-
-watch(
-  () => props.isActive,
-  (active) => {
-    if (active) {
-      nextTick(() => connectWs())
-    } else {
-      disconnectWs()
-    }
-  }
-)
-
-onBeforeUnmount(() => {
-  disconnectWs()
-})
 </script>
 
 <style scoped lang="less">
@@ -158,19 +69,12 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.live-canvas {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: #111;
-}
-
 .cover-bg {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: blur(30px) brightness(0.4);
-  transform: scale(1.3);
+  filter: blur(8px) brightness(0.55);
+  transform: scale(1.04);
 }
 
 .overlay {
@@ -269,14 +173,5 @@ onBeforeUnmount(() => {
   border-radius: 20rem;
   color: rgba(255, 255, 255, 0.8);
   font-size: 12rem;
-}
-
-.connecting {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 13rem;
 }
 </style>

@@ -1,7 +1,7 @@
 <template>
   <div class="LivePage" ref="pageRef">
-    <!-- 视频画布 -->
-    <canvas ref="videoCanvas" class="video-canvas" @click="sendLike"></canvas>
+    <!-- 直播媒体由 SRS WHEP/HLS 提供；控制 WS 只承载弹幕和人数。 -->
+    <video ref="videoEl" class="video-canvas" autoplay muted playsinline @click="sendLike"></video>
 
     <!-- 浮动层 -->
     <div class="float">
@@ -34,7 +34,14 @@
           <div class="follower">
             <div class="round count">{{ viewerCount }}</div>
             <div class="round close" @click="$router.back()">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#fff"
+                stroke-width="3"
+              >
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
@@ -43,7 +50,14 @@
           <div class="more">
             <div class="wrapper">
               <span>更多直播</span>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3">
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#fff"
+                stroke-width="3"
+              >
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </div>
@@ -67,11 +81,7 @@
       <!-- 用户加入提示 -->
       <div class="join-layer">
         <transition-group name="join">
-          <div
-            v-for="j in joinNotifications"
-            :key="j._key"
-            class="user-joined"
-          >
+          <div v-for="j in joinNotifications" :key="j._key" class="user-joined">
             <span class="name">{{ j.nickname }}</span>
             <span class="text">加入了直播间</span>
           </div>
@@ -88,7 +98,7 @@
                   >欢迎来到直播间！SeekFlow严禁未成年人直播或打赏，直播间内严禁出现违法违规、低俗色情、吸烟酗酒等内容。请大家注意财产安全，谨防网络诈骗。</span
                 >
               </div>
-              <div class="comment" v-for="(m, j) in visibleMessages" :key="m._key">
+              <div class="comment" v-for="m in visibleMessages" :key="m._key">
                 <span class="name">{{ m.nickname }}</span>
                 <span class="text">{{ m.text }}</span>
               </div>
@@ -99,23 +109,19 @@
               <span>{{ chatText || '说点什么' }}</span>
               <img src="../../assets/img/icon/home/voice.png" alt="" />
             </div>
-            <img
-              src="../../assets/img/icon/home/love.webp"
-              alt=""
-              class="more"
-              @click="sendLike"
-            />
-            <img
-              src="../../assets/img/icon/home/gift.webp"
-              alt=""
-              class="gift"
-            />
+            <img src="../../assets/img/icon/home/love.webp" alt="" class="more" @click="sendLike" />
+            <img src="../../assets/img/icon/home/gift.webp" alt="" class="gift" />
           </div>
         </div>
         <div class="right">
           <div class="avatar-wrapper" :class="{ followed: isFollowing }">
             <img :src="hostAvatar" alt="" class="avatar" />
-            <div v-if="!isFollowing" @click.stop="toggleFollow" class="options" ref="attentionOption">
+            <div
+              v-if="!isFollowing"
+              @click.stop="toggleFollow"
+              class="options"
+              ref="attentionOption"
+            >
               <img class="no" src="../../assets/img/icon/add-light.png" alt="" />
               <img class="yes" src="../../assets/img/icon/ok-white.png" alt="" />
             </div>
@@ -150,7 +156,8 @@
           :key="h.id"
           class="float-heart"
           :style="{ left: h.x + 'px' }"
-        >❤️</span>
+          >❤️</span
+        >
       </transition-group>
     </div>
   </div>
@@ -162,6 +169,12 @@ import { getFeaturedLive, joinLive, leaveLive, likeLive } from '@/api/live'
 import { toggleFollowUser } from '@/api/user'
 import { useBaseStore } from '@/store/pinia'
 import { _checkImgUrl } from '@/utils'
+import {
+  SrsWhepPlayer,
+  normalizeSrsUrls,
+  playSrsFallback,
+  type SrsMediaUrls
+} from '@/utils/streaming/srs_rtc'
 import defaultAvatarPng from '@/assets/img/icon/people-gray.png'
 
 const store = useBaseStore()
@@ -183,41 +196,50 @@ let heartId = 0
 let msgKey = 0
 let barrageKey = 0
 
-const videoCanvas = ref<HTMLCanvasElement>()
+const videoEl = ref<HTMLVideoElement>()
 const commentsRef = ref<HTMLDivElement>()
 const chatInputRef = ref<HTMLInputElement>()
 const attentionOption = ref<HTMLDivElement>()
 
 let liveWs: WebSocket | null = null
-let canvasCtx: CanvasRenderingContext2D | null = null
+let player: SrsWhepPlayer | null = null
+let fallbackStop: (() => void) | null = null
+let mediaUrls: SrsMediaUrls = {}
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
 let wsStopped = false
 let reconnectAttempts = 0
+let mounted = false
+let playbackGeneration = 0
+let mediaRecoveryTimer: ReturnType<typeof setTimeout> | null = null
+let mediaRecoveryAttempts = 0
 
-const hostAvatar = computed(() =>
-  _checkImgUrl(host.value?.avatar_168x168?.url_list?.[0]) ||
-  _checkImgUrl(host.value?.avatar) ||
-  defaultAvatarPng
+const hostAvatar = computed(
+  () =>
+    _checkImgUrl(host.value?.avatar_168x168?.url_list?.[0]) ||
+    _checkImgUrl(host.value?.avatar) ||
+    defaultAvatarPng
 )
 
 const visibleMessages = computed(() => chatMessages.value.slice(-20))
 
 // ---- 生命周期 ----
 onMounted(async () => {
-  if (videoCanvas.value) {
-    canvasCtx = videoCanvas.value.getContext('2d')
-    resizeCanvas()
-    window.addEventListener('resize', resizeCanvas)
-  }
-
+  mounted = true
+  const generation = ++playbackGeneration
   try {
     const res: any = await getFeaturedLive()
-    if (res.success && res.data) {
+    if (mounted && generation === playbackGeneration && res.success && res.data) {
       roomId.value = res.data.id
       host.value = res.data.host
       viewerCount.value = res.data.viewerCount || 0
       likeCount.value = res.data.likeCount || 0
-      await joinLive(roomId.value)
+      mediaUrls = normalizeSrsUrls((res.data.media || {}) as SrsMediaUrls)
+      const joined: any = await joinLive(roomId.value)
+      if (!mounted || generation !== playbackGeneration) return
+      if (joined?.success && joined.data?.media)
+        mediaUrls = normalizeSrsUrls(joined.data.media as SrsMediaUrls)
+      await initPlayer(generation)
+      if (!mounted || generation !== playbackGeneration) return
       connectWs()
     }
   } catch {
@@ -226,34 +248,105 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  mounted = false
+  playbackGeneration++
   wsStopped = true
-  if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null }
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer)
+    wsReconnectTimer = null
+  }
+  if (mediaRecoveryTimer) {
+    clearTimeout(mediaRecoveryTimer)
+    mediaRecoveryTimer = null
+  }
   if (liveWs) {
     liveWs.onclose = null
-    try { liveWs.close() } catch { /* ignore */ }
+    try {
+      liveWs.close()
+    } catch {
+      /* ignore */
+    }
   }
   if (roomId.value) leaveLive(roomId.value).catch(() => {})
-  window.removeEventListener('resize', resizeCanvas)
+  player?.stop()
+  player = null
+  fallbackStop?.()
+  fallbackStop = null
 })
 
-// ---- Canvas ----
-function resizeCanvas() {
-  if (!videoCanvas.value) return
-  videoCanvas.value.width = window.innerWidth
-  videoCanvas.value.height = window.innerHeight
+async function initPlayer(generation = ++playbackGeneration) {
+  if (!videoEl.value || !mounted || generation !== playbackGeneration) return
+  fallbackStop?.()
+  fallbackStop = null
+  player?.stop()
+  player = null
+  let whepPlayer: SrsWhepPlayer | null = null
+  try {
+    if (!mediaUrls.whepUrl) throw new Error('WHEP 地址不可用')
+    whepPlayer = new SrsWhepPlayer(mediaUrls.whepUrl, {
+      onConnectionStateChange: (state) => {
+        if (state === 'disconnected' || state === 'failed') schedulePlaybackRecovery()
+      }
+    })
+    player = whepPlayer
+    await whepPlayer.start(videoEl.value)
+    if (!mounted || generation !== playbackGeneration || player !== whepPlayer) {
+      whepPlayer.stop()
+      if (player === whepPlayer) player = null
+      return
+    }
+    mediaRecoveryAttempts = 0
+  } catch {
+    if (whepPlayer && player === whepPlayer) {
+      whepPlayer.stop()
+      player = null
+    }
+    if (!mounted || generation !== playbackGeneration) return
+    try {
+      fallbackStop = await playSrsFallback(videoEl.value, mediaUrls)
+    } catch {
+      // The room detail remains usable; the dedicated LiveWatch route offers
+      // a retry surface when every playback provider is unavailable.
+    }
+  }
+}
+
+function schedulePlaybackRecovery() {
+  if (!mounted || wsStopped || mediaRecoveryTimer || mediaRecoveryAttempts >= 5) return
+  const attempt = mediaRecoveryAttempts++
+  mediaRecoveryTimer = setTimeout(
+    () => {
+      mediaRecoveryTimer = null
+      if (!mounted || wsStopped) return
+      void initPlayer(++playbackGeneration)
+    },
+    Math.min(30_000, 1_000 * 2 ** attempt)
+  )
 }
 
 // ---- WebSocket ----
 function connectWs() {
-  if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null }
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer)
+    wsReconnectTimer = null
+  }
   if (liveWs) {
-    liveWs.onopen = null; liveWs.onmessage = null; liveWs.onerror = null; liveWs.onclose = null
-    try { liveWs.close() } catch { /* ignore */ }
+    liveWs.onopen = null
+    liveWs.onmessage = null
+    liveWs.onerror = null
+    liveWs.onclose = null
+    try {
+      liveWs.close()
+    } catch {
+      /* ignore */
+    }
   }
 
-  const token = localStorage.getItem('token') || ''
+  const token = encodeURIComponent(localStorage.getItem('token') || '')
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  liveWs = new WebSocket(`${protocol}//${location.host}/ws/live/${roomId.value}?role=viewer&token=${token}`)
+  liveWs = new WebSocket(
+    `${protocol}//${location.host}/ws/live/${roomId.value}?role=viewer&token=${token}`
+  )
 
   liveWs.onopen = () => {
     reconnectAttempts = 0
@@ -263,11 +356,12 @@ function connectWs() {
     try {
       const msg = JSON.parse(e.data)
       switch (msg.type) {
-        case 'frame':
-          renderFrame(msg.data)
-          break
         case 'chat':
-          chatMessages.value.push({ nickname: msg.nickname || '观众', text: msg.text, _key: ++msgKey })
+          chatMessages.value.push({
+            nickname: msg.nickname || '观众',
+            text: msg.text,
+            _key: ++msgKey
+          })
           if (chatMessages.value.length > 200) chatMessages.value.splice(0, 100)
           addFloatingBarrage(msg.nickname || '观众', msg.text)
           nextTick(scrollComments)
@@ -279,13 +373,24 @@ function connectWs() {
           viewerCount.value = msg.count
           break
         case 'end':
+          if (mediaRecoveryTimer) {
+            clearTimeout(mediaRecoveryTimer)
+            mediaRecoveryTimer = null
+          }
+          mediaRecoveryAttempts = 5
           chatMessages.value.push({ nickname: '系统', text: '直播已结束', _key: ++msgKey })
+          player?.stop()
+          player = null
+          fallbackStop?.()
+          fallbackStop = null
           break
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
-  liveWs.onclose = (ev) => {
+  liveWs.onclose = () => {
     if (wsStopped) return
     if (reconnectAttempts < 10) {
       reconnectAttempts++
@@ -294,19 +399,13 @@ function connectWs() {
   }
 }
 
-function renderFrame(dataUrl: string) {
-  if (!canvasCtx || !videoCanvas.value) return
-  const img = new Image()
-  img.onload = () => canvasCtx!.drawImage(img, 0, 0, videoCanvas.value!.width, videoCanvas.value!.height)
-  img.src = dataUrl
-}
-
 // ---- 弹幕漂浮 ----
 function addFloatingBarrage(nickname: string, text: string) {
   const top = 150 + Math.random() * 180
-  floatingBarrages.value.push({ nickname, text, top, _key: ++barrageKey })
+  const key = ++barrageKey
+  floatingBarrages.value.push({ nickname, text, top, _key: key })
   setTimeout(() => {
-    floatingBarrages.value = floatingBarrages.value.filter(b => b._key !== barrageKey)
+    floatingBarrages.value = floatingBarrages.value.filter((b) => b._key !== key)
   }, 6000)
   if (floatingBarrages.value.length > 15) floatingBarrages.value.shift()
 }
@@ -319,11 +418,13 @@ function focusInput() {
 
 function sendChat() {
   if (!chatText.value.trim() || !liveWs || liveWs.readyState !== WebSocket.OPEN) return
-  liveWs.send(JSON.stringify({
-    type: 'chat',
-    nickname: store.userinfo?.nickname || '观众',
-    text: chatText.value.trim()
-  }))
+  liveWs.send(
+    JSON.stringify({
+      type: 'chat',
+      nickname: store.userinfo?.nickname || '观众',
+      text: chatText.value.trim()
+    })
+  )
   chatText.value = ''
   showInput.value = false
 }
@@ -335,15 +436,14 @@ function scrollComments() {
 
 // ---- 点赞 ----
 function sendLike() {
-  if (liveWs && liveWs.readyState === WebSocket.OPEN) {
-    liveWs.send(JSON.stringify({ type: 'like', count: 1 }))
-  }
+  const wsOpen = !!liveWs && liveWs.readyState === WebSocket.OPEN
+  if (wsOpen) liveWs!.send(JSON.stringify({ type: 'like', count: 1 }))
   if (roomId.value) likeLive(roomId.value).catch(() => {})
-  likeCount.value++
+  if (!wsOpen) likeCount.value++
   const h = { id: ++heartId, x: Math.random() * 150 + 20 }
   floatingHearts.value.push(h)
   setTimeout(() => {
-    floatingHearts.value = floatingHearts.value.filter(v => v.id !== h.id)
+    floatingHearts.value = floatingHearts.value.filter((v) => v.id !== h.id)
   }, 1200)
 }
 
@@ -355,7 +455,9 @@ async function toggleFollow() {
     if (res.success) {
       isFollowing.value = res.data?.isAttention ?? !isFollowing.value
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 </script>
 
@@ -390,7 +492,9 @@ async function toggleFollow() {
   pointer-events: none;
   z-index: 1;
 
-  > * { pointer-events: auto; }
+  > * {
+    pointer-events: auto;
+  }
 
   @tag-bg: rgba(58, 58, 70, 0.3);
 
@@ -565,7 +669,9 @@ async function toggleFollow() {
           @text-color: rgb(164, 234, 253);
 
           &.notice {
-            .text { color: @text-color; }
+            .text {
+              color: @text-color;
+            }
           }
 
           .name {
@@ -596,7 +702,9 @@ async function toggleFollow() {
           align-items: center;
           justify-content: space-between;
 
-          img { width: 20rem; }
+          img {
+            width: 20rem;
+          }
         }
 
         .more {
@@ -670,8 +778,14 @@ async function toggleFollow() {
           }
 
           &.attention {
-            .no { opacity: 0; transform: rotate(180deg); }
-            .yes { opacity: 1; transform: rotate(0deg); }
+            .no {
+              opacity: 0;
+              transform: rotate(180deg);
+            }
+            .yes {
+              opacity: 1;
+              transform: rotate(0deg);
+            }
           }
         }
       }
@@ -716,9 +830,17 @@ async function toggleFollow() {
 }
 
 @keyframes barrage-slide {
-  from { transform: translateX(100%); opacity: 1; }
-  80% { opacity: 1; }
-  to { transform: translateX(-120vw); opacity: 0; }
+  from {
+    transform: translateX(100%);
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-120vw);
+    opacity: 0;
+  }
 }
 
 // ============ 加入提示 ============
@@ -744,10 +866,21 @@ async function toggleFollow() {
 }
 
 @keyframes join-slide {
-  from { opacity: 0; transform: translateX(50%); }
-  10% { opacity: 1; transform: translateX(0); }
-  80% { opacity: 1; }
-  to { opacity: 0; transform: translateX(-30%); }
+  from {
+    opacity: 0;
+    transform: translateX(50%);
+  }
+  10% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  80% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-30%);
+  }
 }
 
 // ============ 聊天输入 ============
@@ -774,7 +907,9 @@ async function toggleFollow() {
     -webkit-backdrop-filter: blur(16px);
     color: #fff;
 
-    &::placeholder { color: rgba(255, 255, 255, 0.35); }
+    &::placeholder {
+      color: rgba(255, 255, 255, 0.35);
+    }
   }
 
   .send-btn {
@@ -807,8 +942,17 @@ async function toggleFollow() {
 }
 
 @keyframes floatUp {
-  0% { opacity: 1; transform: translateY(0) scale(0.4); }
-  30% { opacity: 1; transform: translateY(-30rem) scale(1.2); }
-  100% { opacity: 0; transform: translateY(-100rem) scale(0.7); }
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(0.4);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-30rem) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-100rem) scale(0.7);
+  }
 }
 </style>

@@ -16,6 +16,8 @@
 
 Spring Boot 只签发短期 ingest/play token、绑定 `room_id`、校验主播所有权、接收 SRS 状态和维护单一 viewer presence。媒体帧不经过 `LiveStreamHandler`、Kafka 或普通聊天 WS。SRS ingest 使用受控的 stream key/HTTP callback 或 provider JWT（由部署 profile 明确一种方式）；WHEP 播放使用短期播放 token/签名 URL；具体 endpoint、TTL、签名算法和失败码必须在 `contracts/rtc-control.openapi.yaml` 与部署配置中固定。
 
+RTC-006 当前工作区已经把浏览器主路径迁移到 SRS WHIP/WHEP，HLS/HTTP-FLV 作为播放器降级；控制 WS 仅保留聊天、点赞和人数投影。此阶段仍是 `in_progress`：当前随机 stream key 不是短期媒体授权，真实浏览器首解码帧、SRS callback ACL 和分布式 presence 仍属于发布门。
+
 ## 2. 迁移期通道
 
 旧 `/ws/live/{room}` 只允许作为 `legacy-bridge`：
@@ -45,6 +47,8 @@ Spring Boot 只签发短期 ingest/play token、绑定 `room_id`、校验主播�
 
 viewer presence 由一个服务权威维护，以 `(room_id, user_id, session_id)` 幂等；数据库 join/leave 计数与 WebSocket 连接数不得双重增减。
 
+实现约束：数据库 `viewer_count` 使用原子增量，控制 WS 连接只提供实时展示；在 Redis TTL presence 和 provider heartbeat 接入前，不得把当前单机 WS roster 当作多实例计数真相，也不得用普通 `update_time` 超时结束直播。
+
 ## 5. 现有硬故障迁移顺序
 
 1. 停止把 WebCodecs 自定义二进制当作直播生产链路。
@@ -52,3 +56,15 @@ viewer presence 由一个服务权威维护，以 `(room_id, user_id, session_id
 3. 将 LiveCreate 改为一次 ingest 连接，LiveWatch 改为 WHEP/LL-HLS/HLS fallback。
 4. 保留聊天/点赞控制 WS，但与媒体连接分开。
 5. 在 provider 路径有真实 QoE 和回滚后，再退役 legacy。
+
+## 6. RTC-006 交付边界
+
+已完成的代码边界：
+
+- `src/utils/streaming/srs_rtc.ts` 负责 WHIP/WHEP、首帧等待、媒体统计和 HLS/HTTP-FLV fallback。
+- `LiveCreate.vue` 只建立一个浏览器 WHIP producer；原生引擎模式不会再重复发布同一 stream。
+- `LiveWatch.vue` 和首页直播入口使用 `<video>`，自动播放默认静音并提供用户手势开声。
+- `LivePreviewCard.vue`、`LiveFeedItem.vue` 使用封面，不再建立失效的 WebCodecs/帧 WS。
+- `/api/live/engine/webrtc/offer` 已返回 410，禁止新增 SDP echo 调用。
+
+未完成的发布门：短期 ingest/play token 和 SRS on_publish/on_play 回调、唯一 presence session、provider reconciliation、生产 HTTPS 反代、Origin allowlist、真实浏览器/弱网/重连 smoke。完整接口约束见 `docs/contracts/live-media-contract.md`。

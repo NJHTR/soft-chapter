@@ -71,3 +71,11 @@ docker compose -f docker-compose.streaming.yml down -v       # 连卷一起清�
 - SRS WHIP ingest 媒体实测:无 stub/echo,由 RTC-006 迁移任务验收真实推拉流。
 - LiveKit webhook → 后端(`host.docker.internal:9191/api/rtc/webhook/livekit`):签名契约见 `docs/contracts/livekit-webhook.md`;端到端推送验证依赖后端起来 + migration_034/035 执行,归属 RTC-004 联调(RTC-003 已用签名向量/幂等单测覆盖,不宣称端到端已验证)。
 - 后端环境变量注入:`RTC_LIVEKIT_API_KEY`、`RTC_LIVEKIT_API_SECRET`、`RTC_LIVEKIT_WEBHOOK_SECRET`(= LIVEKIT_API_SECRET)、`RTC_TOKEN_TTL_SECONDS`(60-900,默认 300);未配置则 token 签发/webhook 校验 fail-closed。
+
+## RTC-006 直播迁移提示
+
+- 浏览器直播主路径是 SRS WHIP/WHEP；`/ws/live` 只承载聊天、点赞和人数控制，不能发送媒体帧。
+- 开发环境的 `/media/srs`、`/media/srs-http` 代理由 Vite 提供；生产必须在网关配置等价的 HTTPS 反代或注入 `SRS_RTC_PUBLIC_BASE` / `SRS_HTTP_PUBLIC_BASE` 绝对地址。
+- `SRS_RTC_CANDIDATE` 必须是浏览器可达地址。端口健康不代表 WHIP/WHEP 已经发布或首帧已解码。
+- 当前 RTC-006 尚未通过真实双浏览器 WHIP→WHEP、HLS/HTTP-FLV fallback、provider 重启和 viewer presence 幂等；详见 `docs/contracts/live-media-contract.md` 和任务文件。
+- stream key 目前是随机能力值，不等同短期 ingest/play token。生产启用前必须接入 SRS callback/网关 ACL 和撤销策略，不能直接把 HTTP smoke 当安全验收。

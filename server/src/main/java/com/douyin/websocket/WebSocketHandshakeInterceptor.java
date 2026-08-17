@@ -8,6 +8,8 @@ import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
 import java.util.Map;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 
 @Component
 public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
@@ -27,7 +29,8 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
                 String[] pair = param.split("=");
                 if (pair.length == 2 && "token".equals(pair[0])) {
                     try {
-                        Long userId = jwtUtil.getUserIdFromToken(pair[1]);
+                        Long userId = jwtUtil.getUserIdFromToken(
+                                URLDecoder.decode(pair[1], StandardCharsets.UTF_8));
                         attributes.put("userId", userId);
                         return true;
                     } catch (Exception e) {

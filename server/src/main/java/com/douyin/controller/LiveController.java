@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.douyin.common.PageDTO;
 import com.douyin.common.Result;
+import com.douyin.config.LiveMediaProperties;
+import com.douyin.engine.StreamingEngine;
+import com.douyin.engine.StreamingSessionManager;
 import com.douyin.entity.Follow;
 import com.douyin.entity.LiveRoom;
 import com.douyin.entity.User;
@@ -13,10 +16,11 @@ import com.douyin.mapper.UserMapper;
 import com.douyin.service.LiveService;
 import com.douyin.utils.JwtUtil;
 import com.douyin.vo.UserVO;
+import com.douyin.websocket.LiveStreamHandler;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -29,28 +33,34 @@ public class LiveController {
     private final UserMapper userMapper;
     private final FollowMapper followMapper;
     private final JwtUtil jwtUtil;
+    private final StreamingSessionManager sessionManager;
+    private final StreamingEngine streamingEngine;
+    private final LiveMediaProperties mediaProperties;
 
     public LiveController(LiveService liveService, UserMapper userMapper,
-                          FollowMapper followMapper, JwtUtil jwtUtil) {
+                          FollowMapper followMapper, JwtUtil jwtUtil,
+                          StreamingSessionManager sessionManager,
+                          StreamingEngine streamingEngine,
+                          LiveMediaProperties mediaProperties) {
         this.liveService = liveService;
         this.userMapper = userMapper;
         this.followMapper = followMapper;
         this.jwtUtil = jwtUtil;
+        this.sessionManager = sessionManager;
+        this.streamingEngine = streamingEngine;
+        this.mediaProperties = mediaProperties;
     }
 
     private Long getLoginUserId(HttpServletRequest req) {
         String auth = req.getHeader("Authorization");
         if (auth != null && auth.startsWith("Bearer ")) {
             String token = auth.substring(7);
-            try {
-                return jwtUtil.getUserIdFromToken(token);
-            } catch (Exception ignored) {
-            }
+            try { return jwtUtil.getUserIdFromToken(token); }
+            catch (Exception ignored) {}
         }
         return null;
     }
 
-    /** 创建直播间 */
     @PostMapping("/create")
     public Result<LiveRoom> create(@RequestBody Map<String, String> body, HttpServletRequest req) {
         Long userId = getLoginUserId(req);
@@ -61,34 +71,37 @@ public class LiveController {
         return Result.ok(room);
     }
 
-    /** 开播 */
     @PostMapping("/{id}/start")
     public Result<LiveRoom> start(@PathVariable Long id, HttpServletRequest req) {
         Long userId = getLoginUserId(req);
         if (userId == null) return Result.fail("请先登录");
-        LiveRoom room = liveService.startLive(id, userId);
+        LiveRoom room;
+        try {
+            room = liveService.startLive(id, userId);
+        } catch (IllegalStateException ex) {
+            log.warn("Live provider unavailable for room {}: {}", id, ex.getMessage());
+            return Result.fail("直播媒体服务未就绪");
+        }
         if (room == null) return Result.fail("直播间不存在或无权限");
         return Result.ok(room);
     }
 
-    /** 关播 */
     @PostMapping("/{id}/end")
     public Result<LiveRoom> end(@PathVariable Long id, HttpServletRequest req) {
         Long userId = getLoginUserId(req);
         if (userId == null) return Result.fail("请先登录");
         LiveRoom room = liveService.endLive(id, userId);
         if (room == null) return Result.fail("直播间不存在或无权限");
+        LiveStreamHandler.broadcastEnd(id);
         return Result.ok(room);
     }
 
-    /** 直播间详情 */
     @GetMapping("/{id}")
     public Result<Map<String, Object>> detail(@PathVariable Long id, HttpServletRequest req) {
         LiveRoom room = liveService.getById(id);
         if (room == null) return Result.fail("直播间不存在");
 
         User host = userMapper.selectById(room.getHostUserId());
-
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", room.getId());
         data.put("hostUserId", room.getHostUserId());
@@ -98,16 +111,35 @@ public class LiveController {
         data.put("viewerCount", room.getViewerCount());
         data.put("totalViewers", room.getTotalViewers());
         data.put("likeCount", room.getLikeCount());
-        data.put("streamUrl", room.getStreamUrl());
         data.put("playUrl", room.getPlayUrl());
         data.put("createTime", room.getCreateTime());
-        if (host != null) {
-            data.put("host", UserVO.from(host));
+        if ("LIVE".equals(room.getStatus())) {
+            Long actorId = getLoginUserId(req);
+            if (actorId != null) data.put("media", mediaFor(room, actorId));
         }
+
+        // Native-engine stats are optional and never represent the SRS browser
+        // path unless the deployment explicitly enables the real engine.
+        if ("LIVE".equals(room.getStatus())) {
+            var session = sessionManager.getSession(id);
+            if (session != null && session.isActive()) {
+                var stats = session.getStats();
+                data.put("stats", Map.of(
+                    "captureFps", stats.getCaptureFps(),
+                    "encodeFps", stats.getEncodeFps(),
+                    "currentBitrate", stats.getCurrentBitrate(),
+                    "rttMs", stats.getRttMs(),
+                    "packetLoss", stats.getPacketLoss(),
+                    "gpuUsage", stats.getGpuUsagePercent(),
+                    "uptimeMs", session.getUptimeMs()
+                ));
+            }
+        }
+
+        if (host != null) data.put("host", UserVO.from(host));
         return Result.ok(data);
     }
 
-    /** 正在直播的房间列表 */
     @GetMapping("/rooms")
     public Result<PageDTO<Map<String, Object>>> rooms(
             @RequestParam(defaultValue = "1") int pageNo,
@@ -119,7 +151,6 @@ public class LiveController {
                 .orderByDesc(LiveRoom::getCreateTime);
 
         IPage<LiveRoom> page = liveService.page(new Page<>(pageNo, pageSize), wrapper);
-
         List<Long> hostIds = page.getRecords().stream()
                 .map(LiveRoom::getHostUserId).distinct().toList();
         Map<Long, User> userMap = new HashMap<>();
@@ -137,27 +168,24 @@ public class LiveController {
             m.put("status", r.getStatus());
             m.put("viewerCount", r.getViewerCount());
             m.put("likeCount", r.getLikeCount());
+            m.put("encoderType", r.getEncoderType());
+            m.put("codec", r.getCodec());
             User u = finalUserMap.get(r.getHostUserId());
-            if (u != null) {
-                m.put("host", UserVO.from(u));
-            }
+            if (u != null) m.put("host", UserVO.from(u));
             return m;
         }).toList();
 
         return Result.ok(new PageDTO<>(page.getTotal(), pageNo, pageSize, list));
     }
 
-    /** 推荐/精选直播间（观众最多的） */
     @GetMapping("/featured")
-    public Result<Map<String, Object>> featured() {
+    public Result<Map<String, Object>> featured(HttpServletRequest req) {
         LiveRoom room = liveService.getOne(
                 new LambdaQueryWrapper<LiveRoom>()
                         .eq(LiveRoom::getStatus, "LIVE")
                         .orderByDesc(LiveRoom::getViewerCount)
                         .last("LIMIT 1"));
-
         if (room == null) return Result.fail("当前没有直播");
-
         User host = userMapper.selectById(room.getHostUserId());
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", room.getId());
@@ -166,17 +194,19 @@ public class LiveController {
         data.put("status", room.getStatus());
         data.put("viewerCount", room.getViewerCount());
         data.put("likeCount", room.getLikeCount());
+        data.put("encoderType", room.getEncoderType());
+        data.put("codec", room.getCodec());
+        Long actorId = getLoginUserId(req);
+        if (actorId != null) data.put("media", mediaFor(room, actorId));
         if (host != null) data.put("host", UserVO.from(host));
         return Result.ok(data);
     }
 
-    /** 用户关注的主播正在直播的房间列表 */
     @GetMapping("/rooms/following")
     public Result<List<Map<String, Object>>> followingRooms(HttpServletRequest req) {
         Long userId = getLoginUserId(req);
         if (userId == null) return Result.fail("请先登录");
 
-        // 查出用户关注的所有用户ID
         List<Long> followIds = followMapper.selectList(
                 new LambdaQueryWrapper<Follow>()
                         .eq(Follow::getUserId, userId)
@@ -185,7 +215,6 @@ public class LiveController {
 
         if (followIds.isEmpty()) return Result.ok(List.of());
 
-        // 查这些关注用户正在直播的房间
         List<LiveRoom> rooms = liveService.list(
                 new LambdaQueryWrapper<LiveRoom>()
                         .eq(LiveRoom::getStatus, "LIVE")
@@ -203,6 +232,7 @@ public class LiveController {
             m.put("status", r.getStatus());
             m.put("viewerCount", r.getViewerCount());
             m.put("likeCount", r.getLikeCount());
+            m.put("codec", r.getCodec());
             User u = userMap.get(r.getHostUserId());
             if (u != null) m.put("host", UserVO.from(u));
             return m;
@@ -211,26 +241,102 @@ public class LiveController {
         return Result.ok(list);
     }
 
-    /** 加入直播间（增加人数） */
     @PostMapping("/{id}/join")
-    public Result<?> join(@PathVariable Long id) {
+    public Result<?> join(@PathVariable Long id, HttpServletRequest req) {
+        if (getLoginUserId(req) == null) return Result.fail("请先登录");
         LiveRoom room = liveService.joinRoom(id);
         if (room == null) return Result.fail("直播间未开播或不存在");
-        return Result.ok(Map.of("viewerCount", room.getViewerCount()));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("viewerCount", room.getViewerCount());
+        out.put("media", mediaFor(room, getLoginUserId(req)));
+        return Result.ok(out);
     }
 
-    /** 离开直播间 */
     @PostMapping("/{id}/leave")
-    public Result<?> leave(@PathVariable Long id) {
+    public Result<?> leave(@PathVariable Long id, HttpServletRequest req) {
+        if (getLoginUserId(req) == null) return Result.fail("请先登录");
         liveService.leaveRoom(id);
         return Result.ok();
     }
 
-    /** 点赞直播间 */
     @PostMapping("/{id}/like")
-    public Result<?> like(@PathVariable Long id) {
+    public Result<?> like(@PathVariable Long id, HttpServletRequest req) {
+        if (getLoginUserId(req) == null) return Result.fail("请先登录");
         liveService.addLike(id);
         LiveRoom room = liveService.getById(id);
         return Result.ok(Map.of("likeCount", room != null ? room.getLikeCount() : 0));
+    }
+
+    // ===== Streaming Engine Management =====
+
+    @PutMapping("/{id}/bitrate")
+    public Result<?> updateBitrate(@PathVariable Long id,
+                                    @RequestBody Map<String, Integer> body,
+                                    HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        LiveRoom room = liveService.getById(id);
+        if (room == null || !userId.equals(room.getHostUserId())) return Result.fail("无权操作该直播间");
+        int bitrate = Math.max(300_000, Math.min(body.getOrDefault("bitrate", 2_500_000), 8_000_000));
+        var session = sessionManager.getSession(id);
+        if (session != null) {
+            session.getEngine().setBitrate(bitrate);
+            return Result.ok(Map.of("bitrate", bitrate));
+        }
+        return Result.fail("直播间未开播");
+    }
+
+    @PutMapping("/{id}/beauty")
+    public Result<?> updateBeauty(@PathVariable Long id,
+                                   @RequestBody StreamingEngine.BeautyConfig config,
+                                   HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        LiveRoom room = liveService.getById(id);
+        if (room == null || !userId.equals(room.getHostUserId())) return Result.fail("无权操作该直播间");
+        var session = sessionManager.getSession(id);
+        if (session != null) {
+            session.getEngine().setBeautyConfig(config);
+            return Result.ok();
+        }
+        return Result.fail("直播间未开播");
+    }
+
+    @GetMapping("/{id}/stats")
+    public Result<?> getStreamStats(@PathVariable Long id, HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        LiveRoom room = liveService.getById(id);
+        if (userId == null || room == null || !userId.equals(room.getHostUserId())) {
+            return Result.fail("无权查看该直播间统计");
+        }
+        var session = sessionManager.getSession(id);
+        if (session != null && session.isActive()) {
+            return Result.ok(session.getStats());
+        }
+        return Result.fail("直播间未开播");
+    }
+
+    @GetMapping("/engine/status")
+    public Result<Map<String, Object>> engineStatus() {
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("activeSessions", sessionManager.getActiveCount());
+        status.put("nativeEngine", streamingEngine.isNativeAvailable());
+        status.put("activeRooms", sessionManager.getActiveRoomIds());
+        return Result.ok(status);
+    }
+
+    private Map<String, Object> mediaFor(LiveRoom room, Long actorId) {
+        Map<String, Object> media = new LinkedHashMap<>();
+        String key = room.getSrtStreamId();
+        if (key == null || key.isBlank()) return media;
+        media.put("whepUrl", mediaProperties.whep(key));
+        media.put("hlsUrl", mediaProperties.hls(key));
+        media.put("httpFlvUrl", mediaProperties.httpFlv(key));
+        media.put("ingestMode", "native-engine".equals(room.getEncoderType()) ? "native" : "browser-whip");
+        if (actorId != null && actorId.equals(room.getHostUserId())) {
+            media.put("whipUrl", mediaProperties.whip(key));
+            media.put("rtmpUrl", mediaProperties.rtmp(key));
+        }
+        return media;
     }
 }
