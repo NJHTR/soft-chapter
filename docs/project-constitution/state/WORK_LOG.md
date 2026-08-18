@@ -178,3 +178,12 @@ pnpm run build-only                         # 只读审查记录为通过
 ### 下一步
 
 完成 RTC-001 文档提交后，按依赖顺序认领 RTC-002：补齐可重复的 LiveKit/coturn/SRS 开发环境、健康检查和最小 token/ingest 验证。
+## 2026-08-17：RTC-006 真实浏览器媒体验收与主播恢复
+
+- Docker 媒体栈已启动并健康：SRS、LiveKit、coturn；未启动前端或 Spring Boot，保留给用户自行启动。
+- 修正本机 SRS candidate：`10.68.138.84` 在 Docker UDP 回包上间歇性 ICE 不稳定，切换到 WSL host `172.21.160.1` 后稳定通过。
+- 使用 Chromium fake camera + H.264 codec preference 完成真实 WHIP/WHEP：WHIP `connected`，WHEP 首个解码帧 `640x480`。
+- 真实 fallback：HLS master → media playlist → TS 片段可读，HTTP-FLV 读取约 70 KiB；TS 用 `ffprobe` 确认为 H.264/AAC。
+- 前端补充主播 WHIP 失败/断开后的 5 次有界指数退避重连，并让 WHEP recvonly transceiver 使用 H.264/Opus 偏好。
+- 验证：`pnpm exec vue-tsc --noEmit --pretty false`、`pnpm exec eslint src/pages/live/LiveCreate.vue src/utils/streaming/srs_rtc.ts`、`pnpm run build-only` 均通过；Maven CLI 当前未安装，未重复运行后端测试。
+- 仍未关闭的发布门：短期媒体 token/SRS callback ACL、Redis presence 幂等、provider heartbeat/reconciliation、SRS 重启与公网 HTTPS/WSS/TURN 矩阵。

@@ -17,6 +17,8 @@
 
 - `SrsWhipPublisher`：浏览器轨道直接向 SRS WHIP 发布，默认 H.264/Opus、720p30、2.5 Mbps，并按设备能力使用 ideal constraints。
 - `SrsWhepPlayer`：WHEP 收流，等待视频解码首帧；会话有 generation/peer identity 保护，停止或卸载时取消未完成协商并释放远端轨道；连接进入失败/断开状态时由页面有限退避重建。
+- 主播 WHIP 连接进入 `disconnected`/`failed` 后按 1s/2s/4s/8s/16s 有界退避重建，最多 5 次；卸载、结束直播或新一代会话会取消恢复任务。
+- WHIP/WHEP 协商在收发两端都偏好 H.264 + Opus；WHEP recvonly transceiver 不再因为没有 sender track 而跳过 codec preference。
 - fallback 播放器：HLS.js、原生 HLS、HTTP-FLV 在 manifest、autoplay 或首帧失败时销毁实例并清理 `<video>`，避免切换页面后残留媒体管线。
 - `LiveCreate`、`LiveWatch` 和首页直播入口已不再使用自定义 WebCodecs 帧作为媒体主路径。
 - `/ws/live` 仅处理聊天、点赞、viewer_count；媒体帧、二进制消息和旧 SDP echo 已封口。
@@ -35,7 +37,8 @@
 - [x] 旧 `/api/live/engine/webrtc/offer` 返回 410，前端不再导出伪造 offer API。
 - [x] 前端 WHEP/HLS/HTTP-FLV 适配器、代理前缀和播放器清理路径已实现。
 - [x] WHEP/WHIP 异步竞态、断线回调和页面级有限退避恢复已实现；恢复次数有上限，不把控制 WS 重连误当作媒体恢复。
-- [ ] 真实 WHIP ingest、WHEP 首个解码帧、主播重连和 HLS/HTTP-FLV fallback 通过（需要 Docker + HTTPS 浏览器）。
+- [x] 本机 Docker 媒体验收通过：`SRS_RTC_CANDIDATE=172.21.160.1` 时 WHIP `connected`、WHEP 首帧 `640x480`、HLS master/media playlist 与 TS 片段、HTTP-FLV 数据均可读；TS 经 `ffprobe` 确认为 H.264/AAC。
+- [ ] HTTPS/公网 candidate 下的主播重连、跨网络 ICE/TURN 和浏览器矩阵仍待发布环境验收；前端已具备有界恢复逻辑。
 - [ ] viewer presence 以 `(room,user,session)` 幂等，数据库和连接数不双计（当前仍有 REST + WS 双投影风险）。
 - [ ] 主播所有权、短期 ingest/play token、SRS callback、房间状态和 viewer 权限有契约测试。
 - [ ] provider 重启、异常断开、STARTING/DEGRADED/ENDING 状态恢复通过。

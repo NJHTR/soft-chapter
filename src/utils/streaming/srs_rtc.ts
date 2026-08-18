@@ -138,7 +138,9 @@ function preferBaselineCodecs(pc: RTCPeerConnection): void {
   // browser's native fallback when codec preferences are unavailable instead
   // of advertising a codec that the provider cannot ingest.
   for (const transceiver of pc.getTransceivers()) {
-    const kind = transceiver.sender.track?.kind
+    // recvonly WHEP transceivers have no sender track; the receiver track
+    // still carries the media kind before a remote description is applied.
+    const kind = transceiver.sender.track?.kind || transceiver.receiver.track?.kind
     if (!kind || typeof transceiver.setCodecPreferences !== 'function') continue
     if (typeof RTCRtpSender.getCapabilities !== 'function') continue
     const capabilities = RTCRtpSender.getCapabilities(kind)

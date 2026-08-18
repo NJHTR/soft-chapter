@@ -51,6 +51,16 @@ SRS 端点由 `LiveMediaProperties` 生成。开发环境通过 Vite `/media/srs
 
 当前 stream key 是每次开播随机生成并仅通过登录后的控制接口返回。短期 ingest token、播放 token、SRS `on_publish/on_play` 回调和撤销语义仍是 RTC-006 发布阻断项；随机 key 不能被当作完整授权系统。
 
+### 本机媒体验收记录（2026-08-17）
+
+在 Docker Desktop/WSL 环境使用 `SRS_RTC_CANDIDATE=172.21.160.1`，通过 `docs/verification/.rtc006_browser_smoke.mjs` 完成真实浏览器链路：
+
+- WHIP：Chromium 发布 `connectionState=connected`、`iceConnectionState=connected`。
+- WHEP：SRS 返回 H.264/Opus，远端 `<video>` 触发首个解码帧，分辨率 `640x480`（fake camera 基线）。
+- HLS：master playlist、带 `hls_ctx` 的 media playlist 和 TS 片段均返回，TS 片段约 94 KiB。
+- HTTP-FLV：读取约 70 KiB 直播数据；对应 HLS TS 用 `ffprobe` 验证为 H.264 视频 + AAC 音频。
+- `10.68.138.84` 在本机 Docker UDP 回包上存在间歇性 ICE 不稳定，因此开发机配置采用 WSL host 地址；生产必须注入真实公网/内网可达 candidate，不能照抄该地址。
+
 ## 4. 编解码与降级
 
 - 浏览器主路径优先 H.264 视频 + Opus 音频；发送端在能力可用时设置 codec preference。

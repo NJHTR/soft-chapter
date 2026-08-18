@@ -3,7 +3,7 @@
 ## 前置
 
 1. 在 `deploy/streaming/` 复制 `.env.example` 为 `.env` 并填写:
-   - `SRS_RTC_CANDIDATE`:浏览器可直达的宿主机 IP(局域网/公网),填错则 WHIP/WHEP 协商到容器内网 IP,表现为"收不到流"
+   - `SRS_RTC_CANDIDATE`:浏览器可直达的宿主机 IP(局域网/公网),填错则 WHIP/WHEP 协商到容器内网 IP,表现为"收不到流"。Windows Docker Desktop 本机验收可使用当前 WSL host 地址(例如 `172.21.160.1`)，不要将该地址用于公网部署
    - `LIVEKIT_API_SECRET` / `TURN_SHARED_SECRET`:随机 hex(如 `openssl rand -hex 32`)
 2. 启动 Docker Desktop(Windows)或 docker daemon。
 

@@ -225,6 +225,10 @@ let statsInterval: ReturnType<typeof setInterval> | null = null
 let mediaUrls: SrsMediaUrls = {}
 let starting = false
 let lifecycleGeneration = 0
+let publisherRecoveryTimer: ReturnType<typeof setTimeout> | null = null
+let publisherRecoveryAttempts = 0
+let publisherRecoveryRunning = false
+const MAX_PUBLISHER_RECOVERY_ATTEMPTS = 5
 
 // ===== Lifecycle =====
 onMounted(async () => {
@@ -347,10 +351,7 @@ async function startBroadcast() {
       )
     }
     if (liveVideo.value) liveVideo.value.srcObject = mediaStream
-    publisher = new SrsWhipPublisher(mediaStream, mediaUrls.whipUrl, {
-      bitrate: quality.bitrate,
-      frameRate: quality.fps
-    })
+    publisher = createPublisher(mediaStream, mediaUrls.whipUrl, quality.bitrate, quality.fps)
     await publisher.start()
     if (!isCurrent()) return
     currentBitrate.value = quality.bitrate
@@ -368,6 +369,71 @@ async function startBroadcast() {
   } finally {
     starting = false
   }
+}
+
+function createPublisher(
+  stream: MediaStream,
+  endpoint: string,
+  bitrate: number,
+  frameRate: number
+) {
+  return new SrsWhipPublisher(stream, endpoint, {
+    bitrate,
+    frameRate,
+    onConnectionStateChange: (state) => {
+      if (state === 'connected') {
+        publisherRecoveryAttempts = 0
+        return
+      }
+      if (state === 'disconnected' || state === 'failed') schedulePublisherRecovery()
+    }
+  })
+}
+
+function schedulePublisherRecovery() {
+  if (
+    wsStopped ||
+    starting ||
+    publisherRecoveryRunning ||
+    publisherRecoveryTimer ||
+    !mediaStream ||
+    !mediaUrls.whipUrl ||
+    publisherRecoveryAttempts >= MAX_PUBLISHER_RECOVERY_ATTEMPTS
+  )
+    return
+
+  const generation = lifecycleGeneration
+  const attempt = ++publisherRecoveryAttempts
+  const delay = Math.min(30_000, 1_000 * 2 ** (attempt - 1))
+  publisherRecoveryTimer = setTimeout(async () => {
+    publisherRecoveryTimer = null
+    if (wsStopped || generation !== lifecycleGeneration || !mediaStream || !mediaUrls.whipUrl)
+      return
+    publisherRecoveryRunning = true
+    const quality =
+      qualityOptions.find((q) => q.value === selectedQuality.value) || qualityOptions[1]
+    const previous = publisher
+    previous?.stop()
+    const next = createPublisher(mediaStream, mediaUrls.whipUrl, quality.bitrate, quality.fps)
+    publisher = next
+    try {
+      await next.start()
+      if (generation !== lifecycleGeneration || wsStopped || publisher !== next) {
+        next.stop()
+        return
+      }
+      currentBitrate.value = quality.bitrate
+    } catch (error) {
+      if (publisher === next) publisher = null
+      console.warn(`[live] WHIP recovery attempt ${attempt} failed`, error)
+      // Retry after the running guard is released in finally.
+      publisherRecoveryAttempts = Math.max(publisherRecoveryAttempts, attempt)
+    } finally {
+      publisherRecoveryRunning = false
+      if (!wsStopped && generation === lifecycleGeneration && !publisher)
+        schedulePublisherRecovery()
+    }
+  }, delay)
 }
 
 // ===== WebSocket Signaling =====
@@ -467,6 +533,13 @@ async function cleanupLiveSession() {
     clearInterval(statsInterval)
     statsInterval = null
   }
+
+  if (publisherRecoveryTimer) {
+    clearTimeout(publisherRecoveryTimer)
+    publisherRecoveryTimer = null
+  }
+  publisherRecoveryAttempts = 0
+  publisherRecoveryRunning = false
 
   publisher?.stop()
   publisher = null
