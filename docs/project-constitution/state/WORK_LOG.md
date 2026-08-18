@@ -1,5 +1,11 @@
 # 工作日志
 
+## 2026-08-18：RTC-006 最终 Docker/provider smoke
+
+- 恢复并验证 Docker 媒体栈后执行 `powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc`：8/8 全部通过（compose、容器健康、SRS API、LiveKit metrics、coturn、SRS HTTP-FLV、TURN UDP allocate、LiveKit CLI 真实 H.264 发布）。
+- 提交后的浏览器验收脚本再次通过：WHIP `connected`、WHEP 首帧、HLS master/media/TS、HTTP-FLV 数据。
+- 前端和后端应用服务均未启动，留给用户自行启动。
+
 ## 2026-08-17：RTC-006 媒体生命周期收口
 
 - WHEP/WHIP 适配器增加 generation 与 peer identity 检查；停止、卸载和异步协商竞态不会再把旧轨道写回新页面，协商完成后才会登记 SRS `Location` 并在取消时清理会话。

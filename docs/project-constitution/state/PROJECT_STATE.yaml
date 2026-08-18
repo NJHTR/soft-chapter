@@ -5,7 +5,7 @@ project:
   constitution: docs/project-constitution/PROJECT_CONSTITUTION.md
   state_owner: /root
 baseline:
-  observed_at: "2026-08-17"
+  observed_at: "2026-08-18"
   branch: dev/full
   head_commit: 968acff
   remote_tracking: origin/dev/full
@@ -149,6 +149,8 @@ verification:
       result: passed (H.264 video 640x480 + AAC audio)
     - command: pnpm exec eslint src/pages/live/LiveCreate.vue src/utils/streaming/srs_rtc.ts
       result: passed
+    - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc
+      result: passed_8_of_8_on_2026-08-18
   unavailable:
     - maven_backend_tests_other_modules
     - browser_webrtc_e2e
