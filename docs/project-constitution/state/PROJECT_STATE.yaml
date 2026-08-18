@@ -159,4 +159,4 @@ verification:
     - maven_backend_tests_rtc006 (maven executable unavailable in this session)
     - live_presence_idempotency_and_provider_acl (RTC-006 review gate)
 last_verified_commit: 968acff
-last_doc_commit: 968acff
+last_doc_commit: ba23461
