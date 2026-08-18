@@ -8,6 +8,7 @@ import com.douyin.rtc.domain.CallState;
 import com.douyin.rtc.domain.CallStateMachine;
 import com.douyin.rtc.service.CallService;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -179,7 +180,9 @@ public class LiveKitTokenService {
                 .header()
                 .keyId(apiKey)
                 .and()
-                .signWith(key)
+                // LiveKit v1.x accepts HS256 access tokens. JJWT's one-argument
+                // overload selects HS512 for long secrets, which LiveKit rejects.
+                .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 

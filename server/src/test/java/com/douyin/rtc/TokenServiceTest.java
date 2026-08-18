@@ -19,6 +19,7 @@ import org.mockito.ArgumentCaptor;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
 
@@ -83,6 +84,21 @@ class TokenServiceTest {
         assertThat(video).containsEntry("canSubscribe", true);
         assertThat(claims.getIssuer()).isEqualTo(API_KEY);
         assertThat(claims.getExpiration()).isEqualTo(new Date(claims.getIssuedAt().getTime() + 300_000));
+    }
+
+    @Test
+    void tokenUsesHs256AcceptedByLiveKit() {
+        CallSession session = session("call-1", CallState.NEGOTIATING, null);
+        when(callService.getCall("call-1")).thenReturn(session);
+        when(callService.getParticipant("call-1", INITIATOR))
+                .thenReturn(participant("call-1", INITIATOR, "initiator"));
+
+        TokenResult result = service.issue("call-1", INITIATOR, null, "trace");
+        String header = new String(
+                Base64.getUrlDecoder().decode(result.token().substring(0, result.token().indexOf('.'))),
+                StandardCharsets.UTF_8);
+
+        assertThat(header).contains("\"alg\":\"HS256\"");
     }
 
     @Test

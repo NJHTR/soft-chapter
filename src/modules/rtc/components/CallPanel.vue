@@ -20,7 +20,7 @@
           <div v-if="store.error" class="rtc-error">{{ store.error }}</div>
           <div class="rtc-actions dialing-actions">
             <div class="rtc-action-btn hangup" @click="store.cancel()">
-              <div class="btn-circle"><img :src="iconCallEnd" alt="" /></div>
+              <div class="btn-circle hangup"><img :src="iconCallEnd" alt="" /></div>
               <span>取消</span>
             </div>
           </div>
@@ -28,7 +28,7 @@
 
         <!-- ═══ 来电 ═══ -->
         <div v-else-if="store.phase === 'ringingIn'" class="rtc-center">
-          <img class="rtc-avatar big" :src="store.incoming?.avatar || defaultAvatar" alt="" />
+          <img class="rtc-avatar big" :src="peerAvatar" alt="" />
           <div class="rtc-name">{{ store.incoming?.name || '来电' }}</div>
           <div class="rtc-status">
             {{
@@ -59,7 +59,7 @@
           <div v-if="store.error" class="rtc-error">{{ store.error }}</div>
           <div class="rtc-actions dialing-actions">
             <div class="rtc-action-btn hangup" @click="store.hangup()">
-              <div class="btn-circle"><img :src="iconCallEnd" alt="" /></div>
+              <div class="btn-circle hangup"><img :src="iconCallEnd" alt="" /></div>
               <span>挂断</span>
             </div>
           </div>
@@ -324,6 +324,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRtcStore } from '@/modules/rtc/store/useRtcStore'
 import { registerRtOutputEl } from '@/modules/rtc/adapter/rtcMediaPort'
 import { useBaseStore } from '@/store/pinia'
+import { _checkImgUrl } from '@/utils'
 import defaultAvatar from '@/assets/img/icon/people-gray.png'
 import iconCall from '@/assets/img/icon/message/chat/call.png'
 import iconCallEnd from '@/assets/img/icon/message/chat/call-end.png'
@@ -345,8 +346,14 @@ const peerStream = computed(() => {
   return id ? (store.remoteStreams[id] ?? null) : null
 })
 const peerName = computed(() => store.outgoingMeta?.name || store.incoming?.name || '对方')
-const peerAvatar = computed(() => store.outgoingMeta?.avatar || store.incoming?.avatar || '')
-const myAvatar = computed(() => baseStore.userinfo.avatar_168x168?.url_list?.[0] || '')
+function resolveAvatar(url?: string | null): string {
+  return _checkImgUrl(url || '') || defaultAvatar
+}
+
+const peerAvatar = computed(() =>
+  resolveAvatar(store.outgoingMeta?.avatar || store.incoming?.avatar)
+)
+const myAvatar = computed(() => resolveAvatar(baseStore.userinfo.avatar_168x168?.url_list?.[0]))
 const peerVideoEnable = computed(
   () =>
     !!peerStream.value?.getVideoTracks().some((track) => track.readyState !== 'ended') &&
@@ -381,7 +388,7 @@ const remoteParticipantEntries = computed(() =>
       identity,
       stream,
       name: member?.name || identity,
-      avatar: member?.avatar || '',
+      avatar: resolveAvatar(member?.avatar),
       muted: store.remoteMuted[identity] || { audio: false, video: false }
     }
   })
@@ -486,7 +493,6 @@ onMounted(() => {
     height: 96rem;
     border-radius: 50%;
     object-fit: cover;
-    border: 3px solid rgba(255, 255, 255, 0.15);
     &.grey {
       opacity: 0.6;
       filter: grayscale(1);
@@ -693,7 +699,6 @@ onMounted(() => {
 
 .audio-mid {
   .rtc-avatar.speaking {
-    border-color: #14bf5f;
     box-shadow: 0 0 18rem rgba(20, 191, 95, 0.55);
   }
 }
