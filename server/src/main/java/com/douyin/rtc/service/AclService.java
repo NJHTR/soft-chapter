@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * 通话成员 ACL — 校验发起方/目标是否具备通话资格。
- * 成员关系一律查询现有表(t_friend / t_group_member),不建新表,
+ * 成员关系一律查询现有表(t_follow / t_group_member),不建新表,
  * 不信任客户端传入的昵称、空 user_id 或 roster 文本。
  */
 @Service
@@ -28,7 +28,7 @@ public class AclService {
     }
 
     /**
-     * direct 通话: 要求双方互为好友(t_friend 双向 status=1)。
+     * direct 通话: 要求双方互相关注(t_follow 双向记录)。
      */
     public void assertDirectCallAllowed(Long actorId, Long targetUserId) {
         assertAuthenticated(actorId);
@@ -38,8 +38,8 @@ public class AclService {
         if (actorId.equals(targetUserId)) {
             throw new CallDomainException(CallErrorCode.INVALID_ARGUMENT, "不能呼叫自己");
         }
-        if (aclMapper.mutualFriendConfirmed(actorId, targetUserId) < 1) {
-            throw new CallDomainException(CallErrorCode.NOT_AUTHORIZED, "双方不是好友,无权发起通话");
+        if (aclMapper.mutualFollowConfirmed(actorId, targetUserId) < 1) {
+            throw new CallDomainException(CallErrorCode.NOT_AUTHORIZED, "双方未互相关注,无权发起通话");
         }
     }
 

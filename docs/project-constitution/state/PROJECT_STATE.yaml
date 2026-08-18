@@ -140,7 +140,7 @@ verification:
     - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc
       result: passed_8_of_8 (compose config / containers healthy / srs api / livekit metrics / coturn 3478 / srs flv 8080 / TURN UDP allocate via REST creds / livekit-cli publish-demo real media)
     - command: mvn -f server/pom.xml test -Dtest=com.douyin.rtc.**
-      result: passed_98_of_98 (RTC-005 roster lifecycle, transition table, idempotency, out-of-order, participant, ttl worker, token claims, webhook signature + vector, official webhook JWT, dedup)
+      result: passed_100_of_100 (RTC-005 roster lifecycle, transition table, idempotency, out-of-order, participant ACL including mutual-follow policy, ttl worker, token claims, webhook signature + vector, official webhook JWT, dedup)
     - command: npx --yes @redocly/cli lint docs/contracts/rtc-control.openapi.yaml
       result: passed (OpenAPI valid, 0 warnings)
     - command: node docs/verification/.rtc006_browser_smoke.mjs

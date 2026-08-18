@@ -52,7 +52,7 @@ public final class RtcRepoFixture {
     public final List<CallEvent> eventLog = new ArrayList<>();
     public final List<Message> projections = new ArrayList<>();
 
-    public final Set<String> mutualFriends = new HashSet<>();
+    public final Set<String> follows = new HashSet<>();
     public final Map<Long, Set<Long>> groupMembersByGroup = new HashMap<>();
 
     public RtcRepoFixture() {
@@ -181,10 +181,10 @@ public final class RtcRepoFixture {
                 .toList());
 
         // ===== ACL =====
-        when(acl.mutualFriendConfirmed(anyLong(), anyLong())).thenAnswer(inv -> {
+        when(acl.mutualFollowConfirmed(anyLong(), anyLong())).thenAnswer(inv -> {
             Long a = inv.getArgument(0);
             Long b = inv.getArgument(1);
-            return mutualFriends.contains(key(a, b)) ? 1 : 0;
+            return follows.contains(key(a, b)) && follows.contains(key(b, a)) ? 1 : 0;
         });
         when(acl.isGroupMember(anyLong(), anyLong())).thenAnswer(inv -> {
             Long groupId = inv.getArgument(0);
@@ -223,13 +223,16 @@ public final class RtcRepoFixture {
     }
 
     private static String key(Long a, Long b) {
-        long lo = Math.min(a, b);
-        long hi = Math.max(a, b);
-        return lo + "|" + hi;
+        return a + "|" + b;
     }
 
-    public void setMutualFriend(Long a, Long b) {
-        mutualFriends.add(key(a, b));
+    public void setMutualFollow(Long a, Long b) {
+        follows.add(key(a, b));
+        follows.add(key(b, a));
+    }
+
+    public void setFollow(Long followerId, Long followedId) {
+        follows.add(key(followerId, followedId));
     }
 
     public void addGroupMember(Long groupId, Long userId) {

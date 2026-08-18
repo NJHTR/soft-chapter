@@ -73,7 +73,7 @@ class IdempotencyTest {
 
     @Test
     void createRejectsReservedSystemEventId() {
-        fx.setMutualFriend(INITIATOR, CALLEE);
+        fx.setMutualFollow(INITIATOR, CALLEE);
         assertThatThrownBy(() -> svc.createCall(new CreateCallCommand(
                 INITIATOR, "direct", CALLEE, null, "audio", "livekit",
                 "creq-sys-00001", "sys:forged", "trace")))
@@ -85,7 +85,7 @@ class IdempotencyTest {
 
     @Test
     void createRejectsReservedTtlEventId() {
-        fx.setMutualFriend(INITIATOR, CALLEE);
+        fx.setMutualFollow(INITIATOR, CALLEE);
         assertThatThrownBy(() -> svc.createCall(new CreateCallCommand(
                 INITIATOR, "direct", CALLEE, null, "audio", "livekit",
                 "creq-ttl-00001", "ttl:call-x:123456", "trace")))

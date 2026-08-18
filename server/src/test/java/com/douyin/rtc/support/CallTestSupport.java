@@ -33,7 +33,7 @@ public final class CallTestSupport {
     }
 
     public static CallSession createDirect(CallService svc, RtcRepoFixture fx, String clientRequestId, String eventId) {
-        fx.setMutualFriend(INITIATOR, CALLEE);
+        fx.setMutualFollow(INITIATOR, CALLEE);
         return svc.createCall(new CreateCallCommand(
                 INITIATOR, "direct", CALLEE, null, "audio", "livekit",
                 clientRequestId, eventId, "trace-create"));

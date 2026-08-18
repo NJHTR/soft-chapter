@@ -122,8 +122,8 @@ class ParticipantTest {
     // ==================== ACL 拒绝路径 ====================
 
     @Test
-    void directCallRequiresMutualFriendship() {
-        // 未建立好友关系
+    void directCallRequiresMutualFollow() {
+        // 未建立互相关注关系
         assertThatThrownBy(() -> svc.createCall(CallTestSupport.directCommand(
                 INITIATOR, CALLEE, "creq-acl-00001", "evt-create-0001")))
                 .isInstanceOf(CallDomainException.class)
@@ -133,8 +133,32 @@ class ParticipantTest {
     }
 
     @Test
+    void directCallAllowsMutualFollowWithoutFriendRecord() {
+        fx.setMutualFollow(INITIATOR, CALLEE);
+
+        CallSession call = svc.createCall(CallTestSupport.directCommand(
+                INITIATOR, CALLEE, "creq-acl-mutual-follow-0001", "evt-create-mutual-follow-0001"));
+
+        assertThat(call.getInitiatorId()).isEqualTo(INITIATOR);
+        assertThat(fx.participant(call.getCallId(), CALLEE)).isNotNull();
+        assertThat(fx.sessionsByCall).hasSize(1);
+    }
+
+    @Test
+    void directCallRejectsOneWayFollow() {
+        // 仅发起方关注目标方，不能发起一对一通话
+        fx.setFollow(INITIATOR, CALLEE);
+        assertThatThrownBy(() -> svc.createCall(CallTestSupport.directCommand(
+                INITIATOR, CALLEE, "creq-acl-one-way-follow-0001", "evt-create-one-way-follow-0001")))
+                .isInstanceOf(CallDomainException.class)
+                .satisfies(t -> assertThat(((CallDomainException) t).getCode())
+                        .isEqualTo(CallErrorCode.NOT_AUTHORIZED));
+        assertThat(fx.sessionsByCall).isEmpty();
+    }
+
+    @Test
     void selfCallIsInvalid() {
-        fx.setMutualFriend(INITIATOR, INITIATOR);
+        fx.setMutualFollow(INITIATOR, INITIATOR);
         assertThatThrownBy(() -> svc.createCall(CallTestSupport.directCommand(
                 INITIATOR, INITIATOR, "creq-self-00001", "evt-create-0001")))
                 .isInstanceOf(CallDomainException.class)

@@ -25,7 +25,8 @@ paths:
       summary: 创建通话
       description: |
         创建 direct 或 group 通话。`client_request_id` 是幂等键；同一发起者
-        使用相同幂等键重试时返回原会话。服务端从好友关系或群成员快照生成
+        使用相同幂等键重试时返回原会话。direct 通话要求双方互相关注；group
+        通话则由服务端从群成员快照生成
         参与者列表，不信任客户端传入的 roster。
       operationId: createRtcCall
       security:
@@ -377,7 +378,7 @@ components:
         target_user_id:
           allOf:
             - $ref: '#/components/schemas/UserId'
-          description: direct 通话目标用户。服务端仍会校验好友/ACL。
+          description: direct 通话目标用户。服务端要求双方互相关注；group 仍按群成员 ACL 校验。
         target_user_ids:
           type: array
           minItems: 1

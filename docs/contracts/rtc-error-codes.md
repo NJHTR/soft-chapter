@@ -9,7 +9,7 @@
 | 错误码 | 场景 | 语义 |
 |---|---|---|
 | `INVALID_STATE_TRANSITION` | 状态机转移表未列出的转换 | 返回当前状态,不隐式修正 |
-| `NOT_AUTHORIZED` | 未登录 / 非成员 / 非发起者 / 双方非好友 | 拒绝命令 |
+| `NOT_AUTHORIZED` | 未登录 / 非成员 / 非发起者 / 一对一双方未互相关注 | 拒绝命令 |
 | `INVALID_ARGUMENT` | 缺参数 / 呼叫自己 / token TTL 越界 | 拒绝 |
 | `SESSION_NOT_FOUND` | call / participant 不存在 | 查询或命令失败 |
 | `CALL_EXPIRED` | RINGING/NEGOTIATING 超时窗口外操作 | TTL worker 或命令守卫 |

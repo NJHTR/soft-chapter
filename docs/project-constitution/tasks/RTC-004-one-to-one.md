@@ -20,6 +20,12 @@
 4. 官方 LiveKit webhook（Authorization JWT）和迁移期 HMAC header 都能被明确识别，事件账本与状态机保持幂等。
 5. 旧 `Call.vue` 仅保留群聊/兼容入口；RTC-004 开启时不得处理 1 对 1 的 offer/answer/ICE。
 
+### 一对一通话 ACL
+
+- direct 通话只要求双方在 `t_follow` 存在双向关注记录（互相关注）。
+- 单向关注、未关注均拒绝创建 direct 通话。
+- 不要求 `t_friend` 好友记录；群聊仍按 `t_group_member` 成员资格校验。
+
 ## 非目标
 
 - 本任务不迁移群聊 roster、simulcast、active speaker 网格；这些属于 RTC-005。
