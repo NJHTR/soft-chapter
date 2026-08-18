@@ -68,7 +68,7 @@ deepseek:
 
 # MinIO
 minio:
-  enabled: ${MINIO_ENABLED:true}
+  enabled: ${MINIO_ENABLED:false}
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
   access-key: ${MINIO_ACCESS_KEY:}
   secret-key: ${MINIO_SECRET_KEY:}
