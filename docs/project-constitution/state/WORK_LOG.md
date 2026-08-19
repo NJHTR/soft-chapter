@@ -1,5 +1,23 @@
 # 工作日志
 
+## 2026-08-20：RTC-006 provider generation、关闭回调和 presence 加固
+
+- 提交：`3bc701b`（四个 SRS callback 事务边界与 provider room lock）、`94d349d`（REST/WS/Redis 缺失 sessionId fail-closed）、`9c70437` 与 `ec3f286`（SRS server/cid generation、分页 fail-closed、旧 generation CAS/grace 单测）、`02fa7b8`（旧 generation 定向 retire 与 providerDisconnected CAS）、`876eb57`（关闭回调签名 token 校验，允许过期 token 仅用于确切 provider generation 的关闭）。
+- SRS stream reconciliation 不再无条件结束当前 active projection：它锁定房间并只结束快照中的 `provider_session_id`；若新 `on_publish` 已抢先更新房间，旧 reconciliation 的状态 CAS 失败，不会降级新发布者。
+- `on_unpublish/on_stop` 缺少 token、用途不匹配或签名错误时拒绝；长期直播的过期 admission token可通过签名验证完成精确关闭，避免把 token TTL 当作媒体存活时间。
+- callback secret 限制为至少 32 个 URL-safe 字符；新增 `deploy/streaming/provider-callback-smoke.ps1`，只输出状态摘要，不输出 secret、token、完整 URL 或响应体。
+- 验证：`mvn -f server/pom.xml test` 通过 148/148，`mvn -f server/pom.xml -Dtest=com.douyin.live.** test` 通过 24/24，`mvn -f server/pom.xml -Dtest=com.douyin.rtc.** test` 通过 105/105；provider generation/reconciliation/session 测试 19/19；`mvn -f server/pom.xml -DskipTests compile`、`vue-tsc`、RTC ESLint、前端构建、compose config、PowerShell smoke 脚本语法检查和 `git diff --check` 均通过。前端构建保留既有 libarchive externalization、circular chunk 和 vendor 体积警告。
+- 未执行且不宣称通过：Docker daemon 无法连接 `dockerDesktopLinuxEngine`，因此真实 SRS callback、WHIP/WHEP post-change、SRS 重启恢复和 Redis 多实例异常断开仍待验收；RTC-006 继续为 `in_progress`。
+
+## 2026-08-20：RTC-006 provider callback/session/reconciliation 实现提交
+
+- 提交：`25e440a feat(RTC-006): add provider callback reconciliation`。
+- 增加 durable `live_provider_session` 投影和 `migration_038_live_provider_session.sql`；036/037 继续保留给 AI-003/AI-004。SRS callback 区分 `on_publish/on_play/on_unpublish/on_stop`，校验 callback secret、短期 media token、stream key、房间状态、主播身份和 provider generation。
+- provider 生命周期使用 `STARTING -> ACTIVE -> DEGRADED -> ENDED`；reconciliation 只在 SRS API 可达且严格响应确认无流时消耗 bounded grace。SRS API 错误/非完整响应会 fail-closed，不会把所有房间当作无流；老版本无 durable generation 的 LIVE 行迁入受控 grace，不以 stream name 直接信任。
+- 审查修复：PLAY callback 不再刷新 publisher heartbeat；过期 generation 的 publish 返回拒绝而非误放行；重复 unpublish 不能延长 grace；callback secret 最少 32 字符；房间状态更新增加 generation CAS；SRS stream snapshot 使用分页和 `code=0`/显式 `publish.active` 校验。
+- 验证：Maven 全套 `127/127` 通过；`vue-tsc`、`eslint src/modules/rtc`、前端构建、compose config 和 diff check 通过。构建仍有既有 `libarchive-wasm` browser externalization、circular chunk、vendor 体积警告。
+- 未执行且不宣称通过：Docker daemon 当前无法连接 `dockerDesktopLinuxEngine`，故真实 SRS callback、SRS 重启/异常断开、Redis 多实例 presence、WHIP/WHEP post-change 和双浏览器媒体未验收。RTC-006 继续为 `in_progress`；`src/modules/rtc/components/CallPanel.vue` 用户 UI 修改及忽略的 `server/src/main/resources/application.yml` 均未纳入本提交。
+
 ## 2026-08-19：RTC-012 选择性订阅基础契约
 
 - 新增 provider-neutral 的远端订阅端口：质量层、音频/视频订阅、可见参与者集合和 active speaker。

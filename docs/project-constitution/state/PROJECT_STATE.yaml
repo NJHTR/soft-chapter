@@ -5,13 +5,16 @@ project:
   constitution: docs/project-constitution/PROJECT_CONSTITUTION.md
   state_owner: /root
 baseline:
-  observed_at: "2026-08-19"
+  observed_at: "2026-08-20"
   branch: dev/full
-  head_commit: ca813ec
+  head_commit: 25e440a
   remote_tracking: origin/dev/full
-  worktree_dirty: false
+  remote_tracking_commit: 890506ae05bb0a2c52b076370d81546a71c80c51
+  worktree_dirty: true
   dirty_worktree_policy: preserve_and_avoid
-  known_user_changes: []
+  known_user_changes:
+    - src/modules/rtc/components/CallPanel.vue (user UI change; preserved and not included in RTC-006 commit)
+    - server/src/main/resources/application.yml (ignored local runtime configuration; preserved and not included)
 architecture_decisions:
   rtc_provider: livekit_sfu
   live_provider: srs_for_broadcast_with_whep_and_hls_fallback
@@ -38,6 +41,10 @@ current_task:
     - 后端 SRS 媒体地址、房间 ACL 和控制面边界
     - HLS/HTTP-FLV fallback 保留
     - LiveCreate/LiveWatch 迁移到新链路
+    - SRS callback、provider session/reconciliation 和 bounded grace
+    - server/sql/migration_038_live_provider_session.sql (036/037 reserved by AI tasks)
+  evidence_commits: [25e440a, 3bc701b, 94d349d, 9c70437, ec3f286, 02fa7b8, 876eb57]
+  evidence_scope: callback/session/reconciliation implementation, generation CAS, presence validation and Java contract tests passed; runtime provider, Redis multi-instance and browser gates remain open
 tasks:
   - id: RTC-001
     title: 建立实时媒体宪法、基线和架构契约
@@ -132,7 +139,7 @@ known_blockers:
     description: C++ WebRTCStreamer 无实际库链接，send_packet/connect 为 stub
     owner_task: RTC-009
   - id: B-003
-    description: 媒体帧已被控制 WS 丢弃；控制 envelope、限流、Origin allowlist 和 provider callback 尚未完成，Redis TTL presence 已实现但未完成多实例故障验收
+    description: callback/session/reconciliation code and contract tests are committed; real SRS callback authentication, provider restart convergence, Redis multi-instance presence and Origin allowlist acceptance remain open
     owner_task: RTC-006
   - id: B-004
     description: legacy WebCodecs 非生产分支仍有 payload copy、轨道选择和 capability await 风险；WebRTC 入口已 fail-closed，最终代码删除由 RTC-009 负责
@@ -152,18 +159,30 @@ resolved_blockers:
     description: WebCodecs sender/player 的旧 WebRTC 入口已 fail-closed，不再创建 PeerConnection 或请求旧 offer API；控制面 offer 继续返回 410
 verification:
   completed:
+    - command: mvn -f server/pom.xml -DskipTests compile
+      result: passed_on_2026-08-20
+    - command: mvn -f server/pom.xml test
+      result: passed_148_of_148_on_2026-08-20
+    - command: mvn -f server/pom.xml -Dtest=com.douyin.live.** test
+      result: passed_24_of_24_on_2026-08-20
+    - command: mvn -f server/pom.xml -Dtest=com.douyin.rtc.** test
+      result: passed_105_of_105_on_2026-08-20
+    - command: pnpm exec eslint src/modules/rtc
+      result: passed_on_2026-08-20
     - command: pnpm exec vue-tsc --noEmit --pretty false
-      result: passed_in_current_worktree
+      result: passed_on_2026-08-20
     - command: pnpm run build-only
-      result: passed_in_current_worktree
+      result: passed_on_2026-08-20_with_existing_chunk_warnings
     - command: docker compose -f docker-compose.streaming.yml --env-file deploy/streaming/.env.example config --quiet
       result: passed_in_current_worktree
+    - command: powershell parser deploy/streaming/provider-callback-smoke.ps1
+      result: passed_on_2026-08-20
     - command: native streaming-engine smoke tests
       result: passed_by_existing_runtime_report
     - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc
       result: passed_8_of_8 (compose config / containers healthy / srs api / livekit metrics / coturn 3478 / srs flv 8080 / TURN UDP allocate via REST creds / livekit-cli publish-demo real media)
     - command: mvn -f server/pom.xml test -Dtest=com.douyin.rtc.**
-      result: passed_100_of_100 (RTC-005 roster lifecycle, transition table, idempotency, out-of-order, participant ACL including mutual-follow policy, ttl worker, token claims, webhook signature + vector, official webhook JWT, dedup)
+      result: historical_passed_100_of_100 (superseded by current 127-test full suite)
     - command: npx --yes @redocly/cli lint docs/contracts/rtc-control.openapi.yaml
       result: passed (OpenAPI valid, 0 warnings)
     - command: node docs/verification/.rtc006_browser_smoke.mjs
@@ -183,15 +202,16 @@ verification:
     - command: git diff --check
       result: passed_for_94370b5_on_2026-08-19
   unavailable:
-    - maven_backend_tests_other_modules
+    - docker_srs_callback_auth_and_provider_restart_recovery (Docker daemon unavailable: dockerDesktopLinuxEngine named pipe connection failure)
     - browser_webrtc_e2e
     - turn_nat_matrix
     - turn_tls_5349 (no cert until RTC-003)
     - rtc-e2e_backend_livekit_webhook (needs migration_034/035 + backend up, RTC-004)
     - srs_whip_whep_browser_media_smoke (passed locally; requires host-reachable candidate and Playwright/Chromium in repeatable CI)
-    - maven_backend_tests_rtc006 (maven executable unavailable in this session)
-    - live_presence_idempotency_and_provider_acl (RTC-006 review gate)
+    - live_presence_redis_multi_instance_and_abnormal_disconnect (RTC-006 review gate; Redis runtime not executed)
+    - live_provider_callback_runtime_and_restart_recovery (RTC-006 review gate; Docker daemon unavailable)
+    - browser_post_change_whip_whep_and_dual_browser_media (RTC-006 review gate; browser/provider runtime not executed)
     - rtc_qoe_real_weak_network_and_2_4_8_participant_matrix
     - rtc_qoe_server_aggregation_and_sfu_egress_measurement
-last_verified_commit: 94370b5
-last_doc_commit: b00d6fe
+last_verified_commit: 876eb57
+last_doc_commit: 34ea3c9
