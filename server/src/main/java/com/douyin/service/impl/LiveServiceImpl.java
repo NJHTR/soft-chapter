@@ -210,7 +210,12 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
                 .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED"))
                 .eq(LiveRoom::getSrtStreamId, streamKey);
         if (isBlank(room.getProviderSessionId())) {
-            transition.isNull(LiveRoom::getProviderSessionId);
+            // Rows created before RTC-006 used an empty string as the
+            // provider-session sentinel. Accept both legacy representations
+            // during the forward-migration window, then persist the real
+            // generation below so later heartbeats remain strict.
+            transition.and(w -> w.isNull(LiveRoom::getProviderSessionId)
+                    .or().eq(LiveRoom::getProviderSessionId, ""));
         } else {
             transition.eq(LiveRoom::getProviderSessionId, normalizeProviderId(room.getProviderSessionId()));
         }
@@ -276,7 +281,11 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
                 .eq(LiveRoom::getSrtStreamId, streamKey)
                 .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED"));
         if (isBlank(room.getProviderSessionId())) {
-            transition.isNull(LiveRoom::getProviderSessionId);
+            // Reconciliation may encounter a pre-RTC-006 row that still has
+            // the old empty-string default. Treat it the same as SQL NULL;
+            // this path carries no provider generation identity.
+            transition.and(w -> w.isNull(LiveRoom::getProviderSessionId)
+                    .or().eq(LiveRoom::getProviderSessionId, ""));
         } else {
             transition.eq(LiveRoom::getProviderSessionId, normalizeProviderId(room.getProviderSessionId()));
         }

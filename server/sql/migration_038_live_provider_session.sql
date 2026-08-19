@@ -7,7 +7,7 @@ USE douyin;
 
 ALTER TABLE t_live_room
     ADD COLUMN IF NOT EXISTS provider_state VARCHAR(24) DEFAULT 'IDLE' COMMENT 'Provider state: IDLE/STARTING/ACTIVE/DISCONNECTED/UNAVAILABLE/ENDED',
-    ADD COLUMN IF NOT EXISTS provider_session_id VARCHAR(128) DEFAULT '' COMMENT 'Current publish provider session',
+    ADD COLUMN IF NOT EXISTS provider_session_id VARCHAR(128) DEFAULT NULL COMMENT 'Current publish provider session',
     ADD COLUMN IF NOT EXISTS provider_last_seen_at DATETIME DEFAULT NULL COMMENT 'Provider last heartbeat',
     ADD COLUMN IF NOT EXISTS provider_grace_until DATETIME DEFAULT NULL COMMENT 'Provider reconciliation grace deadline';
 
