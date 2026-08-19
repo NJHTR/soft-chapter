@@ -58,7 +58,7 @@ export function getAnalyticsOverview() {
 export function getVideoPostTrend(params?: { period?: string; days?: number }) {
   return request({ url: '/admin/analytics/video-post-trend', method: 'get', params })
 }
-export function getEngagementTrend(params?: { period?: string; days?: number }) {
+export function getEngagementTrend(params?: { period?: string; days?: number; start?: string; end?: string }) {
   return request({ url: '/admin/analytics/engagement-trend', method: 'get', params })
 }
 export function getTopVideos(params?: { metric?: string; limit?: number }) {
@@ -106,8 +106,8 @@ export function getExtractQueueStatus() {
 }
 
 // === Enhanced Analytics ===
-export function getDashboardSummary() {
-  return request({ url: '/admin/analytics/dashboard-summary', method: 'get' })
+export function getDashboardSummary(params?: { start?: string; end?: string }) {
+  return request({ url: '/admin/analytics/dashboard-summary', method: 'get', params })
 }
 export function getContentBreakdown() {
   return request({ url: '/admin/analytics/content-breakdown', method: 'get' })
@@ -118,15 +118,45 @@ export function getUserGrowth(params?: { days?: number }) {
 export function getEngagementDetail(params?: { days?: number }) {
   return request({ url: '/admin/analytics/engagement-detail', method: 'get', params })
 }
-export function getTrafficSources() {
-  return request({ url: '/admin/analytics/traffic-sources', method: 'get' })
+export function getTrafficSources(params?: { start?: string; end?: string }) {
+  return request({ url: '/admin/analytics/traffic-sources', method: 'get', params })
 }
 export function getDeviceStats() {
   return request({ url: '/admin/analytics/device-stats', method: 'get' })
 }
-export function getEcommerceOverview() {
-  return request({ url: '/admin/analytics/ecommerce-overview', method: 'get' })
+export function getEcommerceOverview(params?: { start?: string; end?: string }) {
+  return request({ url: '/admin/analytics/ecommerce-overview', method: 'get', params })
 }
 export function getUserSegments() {
   return request({ url: '/admin/analytics/user-segments', method: 'get' })
+}
+
+// === Unified Metrics Query (design.md §2.1) ===
+export function metricsQuery(data: {
+  metrics: string[]
+  timeRange: { start: string; end: string }
+  interval?: string
+  filters?: { field: string; operator: string; value: string }[]
+  groupBy?: string[]
+  compareWith?: string
+}) {
+  return request({ url: '/admin/analytics/metrics/query', method: 'post', data })
+}
+
+// === Audit Drill-down (design.md §2.2) ===
+export function getAuditDrilldown(params?: { status?: string; page?: number; pageSize?: number }) {
+  return request({ url: '/admin/analytics/audit-drilldown', method: 'get', params })
+}
+
+// === Recent Activity Feed ===
+export function getRecentActivity(params?: { limit?: number }) {
+  return request({ url: '/admin/analytics/recent-activity', method: 'get', params })
+}
+
+// === Dashboard Config ===
+export function getDashboardConfig() {
+  return request({ url: '/admin/dashboard/config', method: 'get' })
+}
+export function saveDashboardConfig(data: any) {
+  return request({ url: '/admin/dashboard/config', method: 'put', data })
 }

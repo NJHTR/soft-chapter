@@ -423,8 +423,8 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
 
 .admin-sidebar {
   width: 200px;
-  background: #fff;
-  border-right: 1px solid #e8e8e8;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -432,9 +432,9 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
 }
 
 .sidebar-title {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  color: #999;
+  color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 1px;
   padding: 16px 20px 10px;
@@ -443,28 +443,27 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
 .sidebar-nav {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: 4px 8px;
 }
 
 .sidebar-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 20px;
-  color: #555;
+  padding: 9px 12px;
+  color: #64748b;
   text-decoration: none;
   font-size: 13px;
-  border-left: 3px solid transparent;
+  border-radius: 8px;
   transition: all 0.15s;
 
   &:hover {
-    color: #333;
-    background: #f9f9f9;
+    color: #0f172a;
+    background: rgba(0, 0, 0, 0.04);
   }
   &.router-link-active {
     color: #fe2c55;
-    background: #fff5f7;
-    border-left-color: #fe2c55;
+    background: rgba(254, 44, 85, 0.06);
     font-weight: 500;
   }
 }
@@ -481,18 +480,16 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #f0f2f5;
+  background: url('@/assets/img/p_bg.png') center / cover no-repeat;
 }
 
 .breadcrumb-bar {
-  height: 36px;
+  height: 34px;
   display: flex;
   align-items: center;
   padding: 0 24px;
   font-size: 12px;
-  color: #999;
-  background: #fff;
-  border-bottom: 1px solid #eee;
+  color: #94a3b8;
   flex-shrink: 0;
 }
 .crumb-sep {
@@ -508,6 +505,8 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside))
   flex: 1;
   overflow-y: auto;
   padding: 20px 24px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(6px);
 }
 .admin-content.no-padding {
   padding: 0;
