@@ -14,6 +14,11 @@
 | RTC-008 | 录制和转码 | `planned` | RTC-005、RTC-006 | Egress/DVR、异步 FFmpeg、对象存储、审计 |
 | RTC-009 | Legacy 退役和 native 收口 | `planned` | RTC-007、RTC-008 | 迁移桥、feature flag、退出报告、C++ 独立验证 |
 | RTC-010 | 安全、负载、故障演练和发布 | `planned` | RTC-007、RTC-008、RTC-009 | NAT/弱网/长通话/负载/回滚门禁 |
+| RTC-011 | SFU/TURN/客户端容量观测、Admission 与压测 | `planned` | RTC-007 | QoE 基线、容量报告、room admission、压测 harness |
+| RTC-012 | 客户端选择性订阅与媒体减载 | `planned` | RTC-005、RTC-007 | publication 生命周期、simulcast/dynacast、可见性、音频优先 |
+| RTC-013 | LiveKit 多节点、Redis 路由与 TURN 区域池 | `planned` | RTC-011 | room placement、节点 drain、扩容和故障演练 |
+| RTC-014 | Stage + audience 大规模直播分层 | `planned` | RTC-006、RTC-013 | SRS/CDN audience、上麦、breakout room |
+| RTC-015 | 受控 1 对 1 P2P 实验与 SFU 回退 | `planned` | RTC-004、RTC-007 | 独立信令、ICE 探测、灰度、质量和隐私验收 |
 
 ## AI 持续学习任务索引
 

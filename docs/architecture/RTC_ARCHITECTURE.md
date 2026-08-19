@@ -91,3 +91,18 @@ Spring Boot `rtc-domain` 负责编排；`rtc-persistence` 负责权威账本写�
 - 群聊首期：最多 8 人；发布端只一条上行，订阅由 SFU 根据视图和 active speaker 控制。
 - 互动连麦：房主和嘉宾使用 LiveKit；普通观看者走直播分发链路，不为每个观众创建 P2P 连接。
 - 大规模直播：WebRTC 只服务互动和低延迟小规模观看，CDN/HLS 承接长尾观众。
+
+## 6. 客户端减载与规模分层
+
+客户端已经负责采集、编码、解码和渲染，但这不等于可以让客户端无边界地互相转发媒体。
+正式策略见 [ADR-005](../adr/ADR-005-CLIENT-OFFLOAD-AND-SCALE.md) 和
+[RTC_SCALE_AND_CLIENT_OFFLOAD.md](./RTC_SCALE_AND_CLIENT_OFFLOAD.md)：
+
+- 1 对 1 默认继续使用 LiveKit；未来只对 direct、双方同意且非录制场景灰度 P2P，直连失败回退 SFU。
+- 3～8 人群聊继续使用 SFU，依靠 simulcast、dynacast、可见 tile/active speaker 订阅和音频优先减少无效流量。
+- 互动连麦限制在 stage（首期 8 人，后续 16 人需压测）；普通观众走 SRS/WHEP/LL-HLS/HLS/HTTP-FLV/CDN。
+- 多个独立房间按房间求和并分配到 LiveKit 多节点；单个“万人通话”不是一个 WebRTC 双向房间。
+
+SFU 房间有 `P` 个发布者、每路视频码率为 `B` 时，ingress 约为 `P×B`，全订阅 egress
+约为 `P×(P-1)×B`。选择性订阅主讲/可见视频数为 `S` 时，egress 约降为 `P×S×B`，
+音频另计。所有容量数字必须通过真实浏览器、TURN 和节点压测确认，不能把开发 compose 的单节点配置宣称为生产上限。

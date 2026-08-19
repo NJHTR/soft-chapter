@@ -25,6 +25,11 @@
 
 SFU 启用 simulcast/dynacast，客户端只订阅可见或 active speaker 的适当层。发送器参数变更必须使用 `RTCRtpSender.setParameters()` 或 provider API，不能重建页面状态。
 
+客户端减载不是客户端 relay：浏览器可以编码多层、暂停未消费层、暂停隐藏视频并保留音频，
+但群聊媒体仍由 LiveKit SFU 转发。`adaptiveStream` 只有在 RemoteTrack 的真实 attach/detach
+和元素可见性契约完成后才能开启；当前 `MediaStream/srcObject` 适配器暂不直接打开该选项。
+容量估算按房间参与者数和订阅关系计算，不能把客户端 CPU/上行转发当作服务器的免费替代。
+
 ## 4. 最小指标
 
 客户端每 2-5 秒采样并聚合：

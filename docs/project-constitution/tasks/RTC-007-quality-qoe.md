@@ -7,6 +7,14 @@
 - 负责目录：`src/modules/rtc/quality/`、`src/modules/live/quality/`、`server/.../metrics/`、监控配置
 - 禁止修改：用超分/滤镜掩盖源质量、将指标写成假常量、绕过 provider 拆自制拥塞控制
 
+## 容量与客户端减载边界
+
+- 控制面、SFU、TURN、直播 CDN 分开测量；Spring/Kafka/聊天 WS 不承载媒体帧。
+- 群聊使用 SFU；先完成 publication 生命周期、可见性和 `<video>` attach/detach 契约，再启用
+  `adaptiveStream`、选择性订阅和 active-speaker 层切换。
+- `dynacast`/simulcast 可以让客户端停止无订阅层，但不能把参与者变成群聊 relay。
+- 1 对 1 P2P 只能作为后续显式 feature flag 的实验，不能作为本任务的默认拓扑或群聊回退。
+
 ## 目标
 
 实现能力协商、simulcast/ABR、QoE 事件、音频优先、ICE restart、降层/降分辨率/降帧率和恢复滞后策略。
@@ -19,3 +27,10 @@
 - [ ] 接通、首帧、冻结率、RTT、TURN 成功率和恢复率达到文档 SLO。
 - [ ] QoE dashboard 能区分 provider、浏览器、设备、地域和版本。
 
+## 后续拆分任务
+
+- `RTC-011`：SFU/TURN/客户端 QoE 基线、容量公式、room admission 和压测矩阵。
+- `RTC-012`：publication 生命周期、可见订阅、simulcast/dynacast/adaptiveStream、音频优先。
+- `RTC-013`：Redis 共享路由、LiveKit 多节点/多地域、room placement 和 TURN 区域池。
+- `RTC-014`：LiveKit stage + SRS/CDN audience、上麦和 breakout room。
+- `RTC-015`：受控 1 对 1 P2P 实验、ICE 质量探测和 SFU 回退。
