@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.util.MultiValueMap;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.net.URLDecoder;
@@ -64,6 +65,7 @@ public class SrsCallbackController {
      * into a Map (which is content-type dependent).
      */
     @PostMapping("/on_publish")
+    @Transactional
     public ResponseEntity<String> onPublish(
             @RequestParam(required = false) MultiValueMap<String, String> params,
             @RequestBody(required = false) String rawBody) {
@@ -72,6 +74,7 @@ public class SrsCallbackController {
     }
 
     @PostMapping("/on_play")
+    @Transactional
     public ResponseEntity<String> onPlay(
             @RequestParam(required = false) MultiValueMap<String, String> params,
             @RequestBody(required = false) String rawBody) {
@@ -80,6 +83,7 @@ public class SrsCallbackController {
     }
 
     @PostMapping("/on_unpublish")
+    @Transactional
     public ResponseEntity<String> onUnpublish(
             @RequestParam(required = false) MultiValueMap<String, String> params,
             @RequestBody(required = false) String rawBody) {
@@ -87,6 +91,7 @@ public class SrsCallbackController {
     }
 
     @PostMapping("/on_stop")
+    @Transactional
     public ResponseEntity<String> onStop(
             @RequestParam(required = false) MultiValueMap<String, String> params,
             @RequestBody(required = false) String rawBody) {
@@ -94,23 +99,27 @@ public class SrsCallbackController {
     }
 
     /** Direct-call overload retained for contract tests without MockMvc. */
+    @Transactional
     public ResponseEntity<String> onPublish(Map<String, Object> body, Map<String, String> params) {
         return handlePublishOrPlay(callbackRequest(params, body), LiveMediaTokenService.Purpose.INGEST,
                 "on_publish");
     }
 
     /** Direct-call overload retained for contract tests without MockMvc. */
+    @Transactional
     public ResponseEntity<String> onPlay(Map<String, Object> body, Map<String, String> params) {
         return handlePublishOrPlay(callbackRequest(params, body), LiveMediaTokenService.Purpose.PLAY,
                 "on_play");
     }
 
     /** Direct-call overload retained for contract tests without MockMvc. */
+    @Transactional
     public ResponseEntity<String> onUnpublish(Map<String, Object> body, Map<String, String> params) {
         return closeProviderSession(callbackRequest(params, body), "PUBLISH", "on_unpublish", true);
     }
 
     /** Direct-call overload retained for contract tests without MockMvc. */
+    @Transactional
     public ResponseEntity<String> onStop(Map<String, Object> body, Map<String, String> params) {
         return closeProviderSession(callbackRequest(params, body), "PLAY", "on_stop", false);
     }

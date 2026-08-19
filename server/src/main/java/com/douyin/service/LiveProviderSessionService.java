@@ -31,6 +31,7 @@ public class LiveProviderSessionService {
     @Transactional
     public LiveProviderSession accept(Long roomId, String direction, String clientId, String serverId,
                                       String providerSessionId, String streamKey, Long userId, String event) {
+        mapper.lockLiveRoom(roomId);
         Optional<LiveProviderSession> sameGeneration = mapper.findByGeneration(
                 roomId, direction, streamKey, providerSessionId);
         if (sameGeneration != null && sameGeneration.isPresent()
@@ -43,9 +44,15 @@ public class LiveProviderSessionService {
             Optional<LiveProviderSession> activeResult = mapper.findActivePublish(roomId, streamKey);
             LiveProviderSession active = activeResult == null ? null : activeResult.orElse(null);
             if (active != null && !Objects.equals(active.getProviderSessionId(), providerSessionId)) {
-                // A delayed callback from an older publisher generation must
-                // not replace the currently active generation.
-                return null;
+                if (!Objects.equals(active.getServerId(), serverId)) {
+                    mapper.markEnded(roomId, "PUBLISH", active.getClientId(), active.getServerId(),
+                            active.getProviderSessionId(), streamKey, "provider_restart",
+                            LocalDateTime.now(clock));
+                } else {
+                    // A second client on the same SRS generation is a
+                    // concurrent publisher, not a restart.
+                    return null;
+                }
             }
         }
         LocalDateTime now = LocalDateTime.now(clock);
@@ -67,8 +74,17 @@ public class LiveProviderSessionService {
         return session;
     }
 
+    public int retireActivePublish(Long roomId, String streamKey, String event) {
+        return mapper.retireActivePublish(roomId, streamKey, event, LocalDateTime.now(clock));
+    }
+
+    @Transactional
     public int close(Long roomId, String direction, String clientId, String serverId,
                      String providerSessionId, String streamKey, String event) {
+        // The callback may be a delayed event from an older provider
+        // generation. Serialize it with publish admission on the room row so
+        // an old unpublish cannot retire a newly admitted publisher.
+        mapper.lockLiveRoom(roomId);
         return mapper.markEnded(roomId, direction, clientId, serverId, providerSessionId,
                 streamKey, event, LocalDateTime.now(clock));
     }

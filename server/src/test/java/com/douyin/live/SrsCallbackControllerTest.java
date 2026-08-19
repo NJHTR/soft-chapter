@@ -10,6 +10,8 @@ import com.douyin.service.LiveService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.MultiValueMap;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -18,6 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -154,6 +157,21 @@ class SrsCallbackControllerTest {
 
         assertEquals(HttpStatus.FORBIDDEN, controller.onPlay(Map.of(), params(token, CALLBACK_SECRET))
                 .getStatusCode());
+    }
+
+    @Test
+    void httpCallbacksRunInsideATransactionBoundary() throws NoSuchMethodException {
+        assertTransactional("onPublish");
+        assertTransactional("onPlay");
+        assertTransactional("onUnpublish");
+        assertTransactional("onStop");
+    }
+
+    private static void assertTransactional(String methodName) throws NoSuchMethodException {
+        assertTrue(SrsCallbackController.class
+                        .getMethod(methodName, MultiValueMap.class, String.class)
+                        .isAnnotationPresent(Transactional.class),
+                () -> methodName + " must keep the room mutation, provider session projection, and state transition atomic");
     }
 
     private static Map<String, String> params(String token, String callbackSecret) {
