@@ -4,7 +4,7 @@
 
 - 状态：`planned`
 - 依赖：RTC-004、RTC-005、RTC-006
-- 负责目录：`src/modules/rtc/quality/`、`src/modules/live/quality/`、`server/.../metrics/`、监控配置
+- 负责目录：`src/modules/rtc/quality/`、`src/modules/rtc/adapter/`、`src/modules/rtc/store/`、`src/modules/live/quality/`、`server/.../metrics/`、监控配置
 - 禁止修改：用超分/滤镜掩盖源质量、将指标写成假常量、绕过 provider 拆自制拥塞控制
 
 ## 容量与客户端减载边界
@@ -18,6 +18,12 @@
 ## 目标
 
 实现能力协商、simulcast/ABR、QoE 事件、音频优先、ICE restart、降层/降分辨率/降帧率和恢复滞后策略。
+
+## 前置实现证据（不代表任务已认领或完成）
+
+- `7859fd7`：增加 provider-neutral QoE snapshot，并在通话期间读取远端 inbound RTP 统计。
+- `94370b5`：按 `trackSid/source` 区分摄像头、屏幕共享和音频轨道；采样串行化、停止后不回写，并在 LiveKit 信令重连后恢复。
+- 当前快照只保存在客户端 store，尚未关联完整 room/call/trace，也不驱动 ABR；RTC-006 完成前本任务保持 `planned`。
 
 ## DoD
 
