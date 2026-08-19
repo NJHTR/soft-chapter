@@ -287,7 +287,13 @@ public class SrsCallbackController {
         for (String pair : query.split("&")) {
             String[] parts = pair.split("=", 2);
             if (parts.length == 2 && key.equals(parts[0])) {
-                return URLDecoder.decode(parts[1], StandardCharsets.UTF_8);
+                try {
+                    return URLDecoder.decode(parts[1], StandardCharsets.UTF_8);
+                } catch (IllegalArgumentException ignored) {
+                    // A malformed callback query is not an application error.
+                    // Treat it as an absent capability and reject the callback.
+                    return null;
+                }
             }
         }
         return null;

@@ -148,6 +148,15 @@ class SrsCallbackControllerTest {
     }
 
     @Test
+    void rejectsMalformedCallbackParamInsteadOfThrowingAnInternalServerError() {
+        Map<String, String> callback = params(null, CALLBACK_SECRET);
+        callback.put("param", "token=%ZZ");
+
+        assertEquals(HttpStatus.FORBIDDEN, controller.onPlay(Map.of(), callback).getStatusCode());
+        verify(sessionService, never()).accept(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     void delayedPublishGenerationIsRejectedWithoutReplacingTheCurrentRoomSession() {
         String token = tokenService.issue(
                 liveRoom.getId(), STREAM_KEY, liveRoom.getHostUserId(), LiveMediaTokenService.Purpose.INGEST).value();

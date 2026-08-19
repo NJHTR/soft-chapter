@@ -5,10 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -22,16 +26,58 @@ public class SrsLiveProviderClient implements LiveProviderClient {
 
     private static final int PAGE_SIZE = 100;
     private static final int MAX_PAGES = 1_000;
+    private static final long DEFAULT_CONNECT_TIMEOUT_MILLIS = 2_000;
+    private static final long DEFAULT_READ_TIMEOUT_MILLIS = 5_000;
+    private static final long MIN_TIMEOUT_MILLIS = 250;
+    private static final long MAX_TIMEOUT_MILLIS = 30_000;
 
     private final RestClient client;
     private final ObjectMapper objectMapper;
     private final String apiBase;
 
+    @Autowired
     public SrsLiveProviderClient(RestClient.Builder builder, ObjectMapper objectMapper,
-                                 @Value("${live.media.reconciliation.srs-api-base:http://localhost:1985}") String apiBase) {
+                                 @Value("${live.media.reconciliation.srs-api-base:http://localhost:1985}") String apiBase,
+                                 @Value("${live.media.reconciliation.connect-timeout-ms:2000}") long connectTimeoutMillis,
+                                 @Value("${live.media.reconciliation.read-timeout-ms:5000}") long readTimeoutMillis) {
+        this(builder, objectMapper, apiBase, timeoutConfiguration(connectTimeoutMillis, readTimeoutMillis));
+    }
+
+    /** Compatibility constructor for mock-backed unit tests. */
+    SrsLiveProviderClient(RestClient.Builder builder, ObjectMapper objectMapper, String apiBase) {
         this.client = builder.baseUrl(trimTrailingSlash(apiBase)).build();
         this.objectMapper = objectMapper;
         this.apiBase = trimTrailingSlash(apiBase);
+    }
+
+    SrsLiveProviderClient(RestClient.Builder builder, ObjectMapper objectMapper, String apiBase,
+                          TimeoutConfiguration timeouts) {
+        this.client = timedClient(builder, apiBase, timeouts);
+        this.objectMapper = objectMapper;
+        this.apiBase = trimTrailingSlash(apiBase);
+    }
+
+    static TimeoutConfiguration timeoutConfiguration(long connectTimeoutMillis, long readTimeoutMillis) {
+        return new TimeoutConfiguration(
+                boundedTimeout(connectTimeoutMillis, DEFAULT_CONNECT_TIMEOUT_MILLIS),
+                boundedTimeout(readTimeoutMillis, DEFAULT_READ_TIMEOUT_MILLIS));
+    }
+
+    static RestClient timedClient(RestClient.Builder builder, String apiBase, TimeoutConfiguration timeouts) {
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(timeouts.connectTimeout())
+                .build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(timeouts.readTimeout());
+        return builder.clone()
+                .requestFactory(requestFactory)
+                .baseUrl(trimTrailingSlash(apiBase))
+                .build();
+    }
+
+    private static Duration boundedTimeout(long configuredMillis, long defaultMillis) {
+        long effectiveMillis = configuredMillis <= 0 ? defaultMillis : configuredMillis;
+        return Duration.ofMillis(Math.max(MIN_TIMEOUT_MILLIS, Math.min(MAX_TIMEOUT_MILLIS, effectiveMillis)));
     }
 
     @Override
@@ -117,7 +163,10 @@ public class SrsLiveProviderClient implements LiveProviderClient {
 
     private record Page(Set<String> activeStreams,
                         Map<String, String> activeSessions,
-                        int streamCount,
-                        String providerServerId) {
+                         int streamCount,
+                         String providerServerId) {
+    }
+
+    record TimeoutConfiguration(Duration connectTimeout, Duration readTimeout) {
     }
 }

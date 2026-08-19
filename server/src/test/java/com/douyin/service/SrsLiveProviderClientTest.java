@@ -6,11 +6,18 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.time.Duration;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
@@ -98,5 +105,49 @@ class SrsLiveProviderClientTest {
 
         assertFalse(client.snapshot().reachable());
         server.verify();
+    }
+
+    @Test
+    void boundsConfiguredConnectAndReadTimeouts() {
+        SrsLiveProviderClient.TimeoutConfiguration defaults =
+                SrsLiveProviderClient.timeoutConfiguration(0, 0);
+        assertEquals(Duration.ofSeconds(2), defaults.connectTimeout());
+        assertEquals(Duration.ofSeconds(5), defaults.readTimeout());
+
+        SrsLiveProviderClient.TimeoutConfiguration bounded =
+                SrsLiveProviderClient.timeoutConfiguration(1, 60_000);
+        assertEquals(Duration.ofMillis(250), bounded.connectTimeout());
+        assertEquals(Duration.ofSeconds(30), bounded.readTimeout());
+    }
+
+    @Test
+    void treatsAnSrsApiThatDoesNotReturnAsUnavailableWithinReadTimeout() throws IOException {
+        HttpServer httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        httpServer.setExecutor(executor);
+        httpServer.createContext("/api/v1/streams", exchange -> {
+            try {
+                Thread.sleep(1_000);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            byte[] response = "{\"code\":0,\"server\":\"srs-x\",\"streams\":[]}".getBytes();
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        httpServer.start();
+        try {
+            String apiBase = "http://127.0.0.1:" + httpServer.getAddress().getPort();
+            SrsLiveProviderClient client = new SrsLiveProviderClient(
+                    RestClient.builder(), new ObjectMapper(), apiBase,
+                    SrsLiveProviderClient.timeoutConfiguration(250, 250));
+
+            assertTimeoutPreemptively(Duration.ofSeconds(3),
+                    () -> assertFalse(client.snapshot().reachable()));
+        } finally {
+            httpServer.stop(0);
+            executor.shutdownNow();
+        }
     }
 }
