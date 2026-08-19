@@ -57,7 +57,7 @@ SRS 端点由 `LiveMediaProperties` 生成。开发环境通过 Vite `/media/srs
 
 将 `deploy/streaming/srs-auth.conf.example` 中的 callback 段合并到生产 SRS vhost，并把 callback URL 限制在 Spring 控制面内网地址。SRS 只收到控制回调，不会把 SDP、RTP 或编码帧发送给 Spring；`on_publish`/`on_play` 返回非 2xx 时 provider 必须拒绝媒体会话。
 
-provider 会话收敛和重启恢复的详细约束见 [`docs/contracts/live-media-reconciliation.md`](./live-media-reconciliation.md)。`25e440a` 已提交 provider session projection、SRS callback 和 reconciliation worker；后续 `3bc701b`、`9c70437`、`ec3f286`、`02fa7b8` 和 `876eb57` 增加事务房间锁、SRS `server:cid` generation 校验、旧 generation 定向 CAS、presence session 拒绝和关闭回调 token 校验。实现定义了幂等键、`GRACE` 收敛窗口、严格的 SRS stream snapshot 解析和不依赖 `update_time` 的生命周期；真实 SRS callback、重启恢复和 Redis 多实例验收仍是 RTC-006 发布门。
+provider 会话收敛和重启恢复的详细约束见 [`docs/contracts/live-media-reconciliation.md`](./live-media-reconciliation.md)。`25e440a` 已提交 provider session projection、SRS callback 和 reconciliation worker；后续 `3bc701b`、`9c70437`、`ec3f286`、`02fa7b8`、`876eb57`、`2c2ef00`、`a54c83d` 和 `99acc27` 增加事务房间锁、SRS `server:cid` generation 校验、旧 generation 定向 CAS、旧 sentinel 前向迁移、原子缺流过渡、presence session/TTL 生命周期、SRS API timeout 和关闭回调 token 校验。实现定义了幂等键、`GRACE` 收敛窗口、严格的 SRS stream snapshot 解析和不依赖 `update_time` 的生命周期；真实 SRS callback、重启恢复和 Redis 多实例验收仍是 RTC-006 发布门。
 
 SRS 的 `on_unpublish/on_stop` 也必须携带原始媒体 token（通常位于 callback 的 `param` 查询串）。控制面会以签名验证 token，即使长直播结束时 admission token 已过期，也只允许匹配确切房间、stream key、用途和 provider generation 的关闭事件；缺失或用途不匹配的关闭回调会被拒绝并交给 reconciliation 的 bounded grace 收敛。
 

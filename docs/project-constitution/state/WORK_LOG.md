@@ -1,5 +1,14 @@
 # 工作日志
 
+## 2026-08-20：RTC-006 可靠性审查收口（代码与契约）
+
+- 提交：`2c2ef00`（兼容旧 `provider_session_id=''` 并新增 `migration_039_normalize_provider_session_id.sql`）、`a54c83d`（provider 缺流/代际变化/GRACE 到期统一进入事务化精确 generation transition）、`99acc27`（Redis presence 原子 Lua 生命周期、SRS API connect/read timeout、畸形 callback 参数 fail-closed）。
+- provider reconciliation 现在在同一数据库事务中锁定直播房间、退休快照 generation 并执行状态 CAS；旧 SRS server 上的合法重连不会被 stale snapshot 阻塞或误降级。旧空字符串 generation 在向前迁移后归一为 `NULL`，心跳仍严格要求真实 generation。
+- presence 使用显式 `StringRedisSerializer` 执行 Redis Lua：过期成员清理、ZSET touch、PEXPIRE、leave 空集合删除和 count 都是原子操作，避免多实例并发时 read-then-delete 删除新会话。SRS reconciliation API 默认 connect/read timeout 为 2s/5s，并限制在 250ms~30s。
+- 验证：`mvn -f server/pom.xml test` 通过 `163/163`；RTC-006 相关 live 测试 `25/25`；generation/reconciliation/provider 目标测试 `33/33`；额外目标组合 `26/26`；`mvn ... -DskipTests compile`、`git diff --check` 通过。本机 Redis 6379 实测 `touch=true, count=1, leave=true, countAfter=0`。
+- Docker `smoke.ps1 -ProfileName webrtc` 后置运行通过容器健康、SRS API、LiveKit metrics、TURN UDP allocate、HTTP-FLV 和 LiveKit CLI 真实媒体；coturn 宿主机 TCP 3478 探测失败，记录为 `7/8`，不能宣称 TCP fallback 已验收。Spring 后端未启动，因此真实 SRS callback、SRS 重启恢复和多实例 Redis 故障注入未执行；Playwright 包未安装，未重复浏览器 WHIP/WHEP。
+- RTC-006 继续保持 `in_progress`。`CallPanel.vue` 用户修改和本地忽略的 `server/src/main/resources/application.yml` 均未纳入本轮提交。
+
 ## 2026-08-20：RTC-006 provider generation、关闭回调和 presence 加固
 
 - 提交：`3bc701b`（四个 SRS callback 事务边界与 provider room lock）、`94d349d`（REST/WS/Redis 缺失 sessionId fail-closed）、`9c70437` 与 `ec3f286`（SRS server/cid generation、分页 fail-closed、旧 generation CAS/grace 单测）、`02fa7b8`（旧 generation 定向 retire 与 providerDisconnected CAS）、`876eb57`（关闭回调签名 token 校验，允许过期 token 仅用于确切 provider generation 的关闭）。

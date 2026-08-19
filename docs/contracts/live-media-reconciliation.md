@@ -56,7 +56,7 @@ STARTING -> ACTIVE -> DEGRADED -> ENDED
 
 ## 5. Heartbeat / Reconciliation
 
-当前仓库已经有 Redis TTL presence 和 provider session/reconciliation 实现，但 RTC-006 仍需真实环境验收：
+当前仓库已经有 Redis TTL presence 和 provider session/reconciliation 实现；`a54c83d` 将缺流、generation 变化和 grace 到期的 session retirement 与 room CAS 放入同一事务，`99acc27` 以 Redis Lua 原子维护 presence key 生命周期并为 SRS API 设置有界超时，但 RTC-006 仍需真实环境验收：
 
 - `last_seen_at` 由 provider 回调、健康检查或 reconciliation job 更新。
 - `grace_period_seconds` 应对短暂重启或网络抖动。
@@ -78,5 +78,6 @@ STARTING -> ACTIVE -> DEGRADED -> ENDED
 ## 7. 当前实现与剩余验收
 
 当前工作区已提供 `live_provider_session` 投影、SRS callback 控制器、可达性
-reconciliation worker 和独立 provider 状态字段；但在真实 SRS callback、重启恢复、
-Redis 多实例和浏览器媒体环境完成前，RTC-006 必须保持 `in_progress`。
+reconciliation worker、事务化 generation transition、旧 sentinel 前向迁移和独立 provider
+状态字段；但在真实 SRS callback、重启恢复、Redis 多实例和浏览器媒体环境完成前，RTC-006
+必须保持 `in_progress`。

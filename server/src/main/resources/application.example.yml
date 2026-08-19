@@ -28,6 +28,9 @@ live:
       initial-delay-ms: ${LIVE_MEDIA_RECONCILIATION_INITIAL_DELAY_MS:10000}
       interval-ms: ${LIVE_MEDIA_RECONCILIATION_INTERVAL_MS:15000}
       grace-seconds: ${LIVE_MEDIA_RECONCILIATION_GRACE_SECONDS:45}
+      # Bound provider API calls so one hung SRS cannot block reconciliation.
+      connect-timeout-ms: ${LIVE_MEDIA_RECONCILIATION_CONNECT_TIMEOUT_MS:2000}
+      read-timeout-ms: ${LIVE_MEDIA_RECONCILIATION_READ_TIMEOUT_MS:5000}
     auth:
       # Enable in production together with a random secret of at least 32 chars.
       enabled: ${LIVE_MEDIA_AUTH_ENABLED:false}

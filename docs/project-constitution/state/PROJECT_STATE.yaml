@@ -7,7 +7,7 @@ project:
 baseline:
   observed_at: "2026-08-20"
   branch: dev/full
-  head_commit: 876eb57
+  head_commit: 99acc27
   remote_tracking: origin/dev/full
   remote_tracking_commit: 890506ae05bb0a2c52b076370d81546a71c80c51
   worktree_dirty: true
@@ -43,8 +43,9 @@ current_task:
     - LiveCreate/LiveWatch 迁移到新链路
     - SRS callback、provider session/reconciliation 和 bounded grace
     - server/sql/migration_038_live_provider_session.sql (036/037 reserved by AI tasks)
-  evidence_commits: [25e440a, 3bc701b, 94d349d, 9c70437, ec3f286, 02fa7b8, 876eb57]
-  evidence_scope: callback/session/reconciliation implementation, generation CAS, presence validation and Java contract tests passed; runtime provider, Redis multi-instance and browser gates remain open
+    - server/sql/migration_039_normalize_provider_session_id.sql
+  evidence_commits: [25e440a, 3bc701b, 94d349d, 9c70437, ec3f286, 02fa7b8, 876eb57, 2c2ef00, a54c83d, 99acc27]
+  evidence_scope: callback/session/reconciliation implementation, atomic generation transitions, legacy sentinel migration, Redis Lua TTL lifecycle, bounded SRS API timeouts and malformed callback fail-closed behavior are covered by Java tests and local Redis verification; real callback runtime, Redis multi-instance, browser and SRS restart gates remain open
 tasks:
   - id: RTC-001
     title: 建立实时媒体宪法、基线和架构契约
@@ -162,9 +163,9 @@ verification:
     - command: mvn -f server/pom.xml -DskipTests compile
       result: passed_on_2026-08-20
     - command: mvn -f server/pom.xml test
-      result: passed_148_of_148_on_2026-08-20
+      result: passed_163_of_163_on_2026-08-20
     - command: mvn -f server/pom.xml -Dtest=com.douyin.live.** test
-      result: passed_24_of_24_on_2026-08-20
+      result: passed_25_of_25_on_2026-08-20
     - command: mvn -f server/pom.xml -Dtest=com.douyin.rtc.** test
       result: passed_105_of_105_on_2026-08-20
     - command: pnpm exec eslint src/modules/rtc
@@ -181,6 +182,12 @@ verification:
       result: passed_by_existing_runtime_report
     - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc
       result: passed_8_of_8 (compose config / containers healthy / srs api / livekit metrics / coturn 3478 / srs flv 8080 / TURN UDP allocate via REST creds / livekit-cli publish-demo real media)
+    - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc (post-change)
+      result: passed_7_of_8; coturn TCP 3478 host probe failed while container health and TURN UDP allocate passed; investigate host Docker TCP probe before production claim
+    - command: mvn -f server/pom.xml -Dtest=com.douyin.service.LiveProviderReconciliationJobTest,com.douyin.service.LiveProviderReconciliationTransitionServiceTest,com.douyin.service.LiveProviderSessionServiceTest,com.douyin.service.SrsLiveProviderClientTest,com.douyin.service.impl.LiveServiceImplProviderGenerationTest test
+      result: passed_33_of_33_on_2026-08-20
+    - command: local Redis 6379 LivePresenceService jshell verification
+      result: passed (touch=true, count=1, leave=true, countAfter=0); multi-instance failure injection remains open
     - command: mvn -f server/pom.xml test -Dtest=com.douyin.rtc.**
       result: historical_passed_100_of_100 (superseded by current 127-test full suite)
     - command: npx --yes @redocly/cli lint docs/contracts/rtc-control.openapi.yaml
@@ -202,16 +209,16 @@ verification:
     - command: git diff --check
       result: passed_for_94370b5_on_2026-08-19
   unavailable:
-    - docker_srs_callback_auth_and_provider_restart_recovery (Docker daemon unavailable: dockerDesktopLinuxEngine named pipe connection failure)
+    - docker_srs_callback_auth_and_provider_restart_recovery (Spring backend was not running; no callback HTTP or restart recovery was executed)
     - browser_webrtc_e2e
     - turn_nat_matrix
     - turn_tls_5349 (no cert until RTC-003)
     - rtc-e2e_backend_livekit_webhook (needs migration_034/035 + backend up, RTC-004)
     - srs_whip_whep_browser_media_smoke (passed locally; requires host-reachable candidate and Playwright/Chromium in repeatable CI)
-    - live_presence_redis_multi_instance_and_abnormal_disconnect (RTC-006 review gate; Redis runtime not executed)
-    - live_provider_callback_runtime_and_restart_recovery (RTC-006 review gate; Docker daemon unavailable)
-    - browser_post_change_whip_whep_and_dual_browser_media (RTC-006 review gate; browser/provider runtime not executed)
+    - live_presence_redis_multi_instance_and_abnormal_disconnect (RTC-006 review gate; only single local Redis touch/count/leave was executed)
+    - live_provider_callback_runtime_and_restart_recovery (RTC-006 review gate; Spring backend was not running)
+    - browser_post_change_whip_whep_and_dual_browser_media (RTC-006 review gate; Playwright package is not installed in this workspace)
     - rtc_qoe_real_weak_network_and_2_4_8_participant_matrix
     - rtc_qoe_server_aggregation_and_sfu_egress_measurement
-last_verified_commit: 876eb57
+last_verified_commit: 99acc27
 last_doc_commit: 5354582

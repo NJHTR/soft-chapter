@@ -97,7 +97,7 @@ KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092
 - 生产媒体授权：设置 `LIVE_MEDIA_AUTH_ENABLED=true`、长度至少 32 的 `LIVE_MEDIA_TOKEN_SECRET` 和长度至少 32 的 `SRS_CALLBACK_TOKEN`，将 `srs-auth.conf.example` 渲染为不含占位符的私有配置后，再合并进 SRS vhost。未配置 callback 时不要宣称短期令牌已保护 provider。
 - `SRS_CALLBACK_TOKEN` 只能使用 URL-safe 随机字符（`A-Z`、`a-z`、`0-9`、`-`、`_`），避免 `&`、`?`、`#` 改写 SRS callback 查询串。反向代理、SRS 和 Spring access log 必须脱敏 `callback_token`、媒体 token 和完整媒体 URL。
 - Windows Docker Desktop 中 SRS 容器回调 IDEA 后端通常使用 `host.docker.internal:9191`；Linux Docker 需要配置 `host-gateway` 或使用同一容器网络内的服务名。`spring-control:9191` 并不属于当前 compose，不能直接使用。
-- 启用 reconciliation 时还要配置 `LIVE_MEDIA_RECONCILIATION_ENABLED=true` 和 `SRS_API_BASE`。SRS API 不可达只会使直播进入 `DEGRADED`，不会自动关播；API 恢复且明确无流后才开始有界 grace period。
+- 启用 reconciliation 时还要配置 `LIVE_MEDIA_RECONCILIATION_ENABLED=true` 和 `SRS_API_BASE`。`LIVE_MEDIA_RECONCILIATION_CONNECT_TIMEOUT_MS` 与 `LIVE_MEDIA_RECONCILIATION_READ_TIMEOUT_MS` 默认分别为 2000/5000，且控制面会限制在 250~30000 ms，避免一个挂起的 SRS API 阻塞下一轮收敛。SRS API 不可达只会使直播进入 `DEGRADED`，不会自动关播；API 恢复且明确无流后才开始有界 grace period。
 
 ### RTC-006 callback 运行验收
 

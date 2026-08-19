@@ -58,7 +58,7 @@ RTC-007 到 RTC-010 必须在真实浏览器、TURN、弱网、重连和故障�
 - 已完成的契约：控制面 OpenAPI、LiveKit webhook 事件账本、错误码和 `douyin.realtime.v1` 信令 schema。
 - 尚未满足的发布门禁：真实双浏览器接通、TURN relay、官方 webhook 端到端回调和 QoE 报告。
 - RTC-004/005 的控制面与代码路径已完成，但真实双浏览器/媒体 provider 验收仍记录在对应任务的 review gate 中。
-- `25e440a`、`3bc701b`、`94d349d`、`9c70437`、`ec3f286`、`02fa7b8`、`876eb57` 已提交 RTC-006 的短期媒体授权、SRS callback、provider session/reconciliation、generation CAS、presence session 约束、migration_038 和 Java 契约测试；真实 SRS callback、SRS 重启/异常断开、Redis 多实例 presence、浏览器 post-change 验收未完成，RTC-006 保持 `in_progress`。
+- `25e440a`、`3bc701b`、`94d349d`、`9c70437`、`ec3f286`、`02fa7b8`、`876eb57`、`2c2ef00`、`a54c83d`、`99acc27` 已提交 RTC-006 的短期媒体授权、SRS callback、provider session/reconciliation、generation CAS、原子缺流过渡、旧 generation 迁移、Redis Lua TTL presence、SRS API 超时和 malformed callback fail-closed；Java 测试及单实例 Redis 语义验证已通过。真实 SRS callback、SRS 重启/异常断开、Redis 多实例 presence、浏览器 post-change 验收未完成，RTC-006 保持 `in_progress`。
 - RTC-007 已有本地 QoE 快照与采样生命周期的前置提交 `7859fd7`、`94370b5`，但服务端聚合、ABR、弱网矩阵和 SLO 门禁未完成，状态保持 `planned`。
 - RTC-012 已有订阅端口和群聊可见性策略的前置提交 `8d6939e`、`f1d8bf9`，但 `adaptiveStream`、真实 2/4/8 人浏览器矩阵和 SFU egress 量化未完成，状态保持 `planned`。
 

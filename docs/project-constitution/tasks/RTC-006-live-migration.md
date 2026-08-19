@@ -28,6 +28,7 @@
 - SRS `on_publish/on_play/on_unpublish/on_stop` callback 已拆分，具备 callback secret、短期 token、stream key、房间/主播 ACL、provider session 幂等和 bounded reconciliation；实现提交为 `25e440a`。
 - 新增 `server/sql/migration_038_live_provider_session.sql`，036/037 保留给 AI-003/AI-004，不重编号。
 - `3bc701b`、`02fa7b8`、`876eb57` 增加回调事务房间锁、SRS provider generation CAS 和 `on_unpublish/on_stop` 的签名媒体 token 校验；`94d349d` 拒绝缺失/非法 presence session；`9c70437`、`ec3f286` 补齐 generation、分页和 grace 单测。
+- `2c2ef00` 兼容旧房间的空字符串 provider generation，并新增 `migration_039_normalize_provider_session_id.sql`；`a54c83d` 将缺流、代际变化和 grace 到期的 retirement/CAS 收敛放入同一事务，避免 stale reconciliation 阻塞同 SRS server 重连；`99acc27` 使用 Redis Lua 原子维护 presence TTL/key 生命周期，给 SRS API 增加有界 connect/read timeout，并让畸形 callback URL 参数 fail-closed。
 
 ## 必查兼容项
 
@@ -48,14 +49,15 @@
 - [ ] 真实 SRS callback HTTP 运行验收（包括 provider 返回非 2xx、缺失/错误媒体 token 时拒绝媒体会话）。
 - [x] 控制面已增加可开关的 HMAC 短期媒体 token、SRS callback 校验端点和 token 单元测试；默认开发 profile 仍关闭，生产需挂载 `deploy/streaming/srs-auth.conf.example` 的 callback 段并完成真实 provider 验收。
 - [x] provider session projection、heartbeat/reconciliation、bounded grace 和异常 generation 防护已实现并有单测。
+- [x] provider 缺流/代际变化的精确 retirement 与 room CAS 已事务化；旧 generation sentinel 已有前向迁移，presence Lua 生命周期和 SRS API timeout 已有单测及本机 Redis 单实例验证。
 - [ ] 真实 SRS 重启、主播异常断开、STARTING/DEGRADED/ENDING 状态恢复验收。
 - [ ] 2026-09-30 前完成灰度指标采集，按路线图达成 legacy 退役门槛。
 
 ## Review Gate 与剩余风险
 
 1. **媒体授权**：callback secret 与短期 ingest/play token 已实现，启用媒体鉴权时 token secret 和 callback secret 均要求至少 32 字符；生产 callback 配置仍需渲染、内网限制和真实 SRS 验收。
-2. **presence**：已引入 Redis TTL presence 和唯一 session id；代码/单测 fail-closed，但仍需真实 Redis 多实例、异常断开和数据库重启场景验证 reconciliation。
-3. **生命周期**：不能用 `update_time` 判断媒体存活；provider heartbeat/reconciliation 和 bounded grace 已实现，真实 SRS restart/断开收敛仍待验收。
+2. **presence**：已引入 Redis TTL presence 和唯一 session id；Lua touch/leave/count 为原子操作且 Redis 不可用时 fail-closed，单实例已实测，但仍需真实 Redis 多实例、异常断开和数据库重启场景验证。
+3. **生命周期**：不能用 `update_time` 判断媒体存活；provider heartbeat/reconciliation、generation retirement 和 bounded grace 已实现，真实 SRS restart/断开收敛仍待验收。
 4. **部署**：生产网关必须反代 `/media/srs`、`/media/srs-http`，配置真实 SRS candidate、HTTPS/WSS、Origin allowlist 和 TURN/ICE 策略。
 5. **真实性**：类型检查、构建和 HTTP 端口健康不能替代真实浏览器媒体验证；未验证项必须保持未勾选。
 6. **收敛契约**：`docs/contracts/live-media-reconciliation.md` 与 provider session/reconciliation worker 已随 `25e440a` 提交；文档/单测不替代真实 provider runtime 验收。
