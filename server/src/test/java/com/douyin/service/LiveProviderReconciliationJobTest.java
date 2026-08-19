@@ -168,6 +168,74 @@ class LiveProviderReconciliationJobTest {
         verify(sessions, never()).heartbeat(99L, null, "stream-1");
     }
 
+    @Test
+    void staleAbsenceSnapshotTransitionsOnlyItsCapturedGeneration() {
+        LiveService liveService = mock(LiveService.class);
+        LiveProviderSessionService sessions = mock(LiveProviderSessionService.class);
+        LiveProviderClient provider = mock(LiveProviderClient.class);
+        LiveProviderReconciliationTransitionService transitions = mock(
+                LiveProviderReconciliationTransitionService.class);
+        LiveRoom room = room("srs-1:old-client");
+        when(liveService.listProviderRooms()).thenReturn(List.of(room));
+        when(provider.snapshot()).thenReturn(new LiveProviderClient.LiveProviderSnapshot(true, Set.of()));
+
+        new LiveProviderReconciliationJob(liveService, sessions, provider, transitions,
+                Clock.fixed(NOW, ZoneOffset.UTC)).reconcileOnce();
+
+        // The room list is a point-in-time snapshot. A newer on_publish can
+        // acquire the room lock after this list was read; the transition must
+        // carry the old generation into the DB CAS instead of widening to any
+        // current publisher.
+        verify(transitions).retireAndDisconnect(
+                99L, "stream-1", "srs-1:old-client", "provider_missing");
+        verify(transitions, never()).retireAndDisconnect(
+                99L, "stream-1", "srs-1:new-client", "provider_missing");
+        verify(liveService, never()).providerDisconnected(
+                99L, "stream-1", "srs-1:old-client");
+    }
+
+    @Test
+    void generationMismatchUsesTheTransactionalRetireAndDisconnectTransition() {
+        LiveService liveService = mock(LiveService.class);
+        LiveProviderSessionService sessions = mock(LiveProviderSessionService.class);
+        LiveProviderClient provider = mock(LiveProviderClient.class);
+        LiveProviderReconciliationTransitionService transitions = mock(
+                LiveProviderReconciliationTransitionService.class);
+        LiveRoom room = room("srs-1:old-client");
+        when(liveService.listProviderRooms()).thenReturn(List.of(room));
+        when(provider.snapshot()).thenReturn(new LiveProviderClient.LiveProviderSnapshot(
+                true, Set.of("stream-1"), Map.of("stream-1", "srs-2:new-client"), "srs-2"));
+
+        new LiveProviderReconciliationJob(liveService, sessions, provider, transitions,
+                Clock.fixed(NOW, ZoneOffset.UTC)).reconcileOnce();
+
+        verify(transitions).retireAndDisconnect(
+                99L, "stream-1", "srs-1:old-client", "generation_changed");
+        verify(sessions, never()).retirePublishGeneration(
+                99L, "stream-1", "srs-1:old-client", "generation_changed");
+    }
+
+    @Test
+    void absenceAfterGraceUsesTheTransactionalRetireAndEndTransition() {
+        LiveService liveService = mock(LiveService.class);
+        LiveProviderSessionService sessions = mock(LiveProviderSessionService.class);
+        LiveProviderClient provider = mock(LiveProviderClient.class);
+        LiveProviderReconciliationTransitionService transitions = mock(
+                LiveProviderReconciliationTransitionService.class);
+        LiveRoom room = room("srs-1:old-client");
+        room.setProviderGraceUntil(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
+        when(liveService.listProviderRooms()).thenReturn(List.of(room));
+        when(provider.snapshot()).thenReturn(new LiveProviderClient.LiveProviderSnapshot(true, Set.of()));
+
+        new LiveProviderReconciliationJob(liveService, sessions, provider, transitions,
+                Clock.fixed(NOW, ZoneOffset.UTC)).reconcileOnce();
+
+        verify(transitions).retireAndEnd(99L, "stream-1", "srs-1:old-client",
+                "provider_missing", "provider_missing");
+        verify(liveService, never()).endProviderRoom(
+                99L, "stream-1", "srs-1:old-client", "provider_missing");
+    }
+
     private static LiveRoom room(String providerSessionId) {
         LiveRoom room = new LiveRoom();
         room.setId(99L);

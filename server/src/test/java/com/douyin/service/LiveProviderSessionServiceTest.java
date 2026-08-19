@@ -127,6 +127,38 @@ class LiveProviderSessionServiceTest {
                 eq("srs-old:client-1"), eq("generation_changed"), any());
     }
 
+    @Test
+    void aRetiredGenerationNoLongerBlocksAReplacementClientOnTheSameServer() {
+        LiveProviderSessionMapper mapper = mock(LiveProviderSessionMapper.class);
+        when(mapper.retirePublishGeneration(eq(99L), eq("stream-1"), eq("srs-1:old-client"),
+                eq("provider_missing"), any())).thenReturn(1);
+        when(mapper.findByGeneration(99L, "PUBLISH", "stream-1", "srs-1:new-client"))
+                .thenReturn(Optional.empty());
+        when(mapper.findActivePublish(99L, "stream-1")).thenReturn(Optional.empty());
+
+        assertEquals(1, service(mapper).retirePublishGeneration(
+                99L, "stream-1", "srs-1:old-client", "provider_missing"));
+        LiveProviderSession accepted = service(mapper).accept(
+                99L, "PUBLISH", "new-client", "srs-1", "srs-1:new-client",
+                "stream-1", 7L, "on_publish");
+
+        org.junit.jupiter.api.Assertions.assertNotNull(accepted);
+        assertEquals("srs-1:new-client", accepted.getProviderSessionId());
+        verify(mapper).upsertActive(any(LiveProviderSession.class));
+    }
+
+    @Test
+    void legacyRetirementStillLocksTheRoomBeforeTheDisconnectCas() {
+        LiveProviderSessionMapper mapper = mock(LiveProviderSessionMapper.class);
+
+        assertEquals(0, service(mapper).retirePublishGeneration(
+                99L, "stream-1", null, "provider_missing"));
+
+        verify(mapper).lockLiveRoom(99L);
+        verify(mapper, never()).retirePublishGeneration(
+                any(), any(), any(), any(), any());
+    }
+
     private static LiveProviderSessionService service(LiveProviderSessionMapper mapper) {
         return new LiveProviderSessionService(mapper, Clock.fixed(NOW, ZoneOffset.UTC));
     }

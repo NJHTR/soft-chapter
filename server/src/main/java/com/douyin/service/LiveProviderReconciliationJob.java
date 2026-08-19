@@ -2,6 +2,7 @@ package com.douyin.service;
 
 import com.douyin.entity.LiveRoom;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -23,22 +24,36 @@ public class LiveProviderReconciliationJob {
 
     private final LiveService liveService;
     private final LiveProviderSessionService sessionService;
+    private final LiveProviderReconciliationTransitionService transitionService;
     private final LiveProviderClient providerClient;
     private final Clock clock;
 
+    @Autowired
     public LiveProviderReconciliationJob(LiveService liveService,
                                          LiveProviderSessionService sessionService,
-                                         LiveProviderClient providerClient) {
-        this(liveService, sessionService, providerClient, Clock.systemUTC());
+                                         LiveProviderClient providerClient,
+                                         LiveProviderReconciliationTransitionService transitionService) {
+        this(liveService, sessionService, providerClient, transitionService, Clock.systemUTC());
+    }
+
+    /** Compatibility constructor for focused tests. */
+    LiveProviderReconciliationJob(LiveService liveService,
+                                  LiveProviderSessionService sessionService,
+                                  LiveProviderClient providerClient,
+                                  Clock clock) {
+        this(liveService, sessionService, providerClient,
+                new LiveProviderReconciliationTransitionService(sessionService, liveService), clock);
     }
 
     LiveProviderReconciliationJob(LiveService liveService,
                                   LiveProviderSessionService sessionService,
                                   LiveProviderClient providerClient,
+                                  LiveProviderReconciliationTransitionService transitionService,
                                   Clock clock) {
         this.liveService = liveService;
         this.sessionService = sessionService;
         this.providerClient = providerClient;
+        this.transitionService = transitionService;
         this.clock = clock;
     }
 
@@ -72,27 +87,23 @@ public class LiveProviderReconciliationJob {
                     // bounded chance to claim it, then converge safely.
                     LocalDateTime graceUntil = room.getProviderGraceUntil();
                     if (graceUntil == null) {
-                        liveService.providerDisconnected(room.getId(), streamKey, null);
-                    } else if (!now.isBefore(graceUntil)) {
-                        liveService.endProviderRoom(
+                        transitionService.retireAndDisconnect(
                                 room.getId(), streamKey, null, "unverified_provider_generation");
+                    } else if (!now.isBefore(graceUntil)) {
+                        transitionService.retireAndEnd(room.getId(), streamKey, null,
+                                "unverified_provider_generation", "unverified_provider_generation");
                     }
                     continue;
                 }
                 String observedSession = snapshot.activePublishSessions().get(streamKey);
                 if (observedSession == null) {
-                    sessionService.retirePublishGeneration(
-                            room.getId(), streamKey, room.getProviderSessionId(), "generation_unverified");
-                    // providerDisconnected carries the expected generation as
-                    // a CAS. A new on_publish that wins the race remains
-                    // ACTIVE instead of being degraded by this stale snapshot.
-                    liveService.providerDisconnected(room.getId(), streamKey, room.getProviderSessionId());
+                    transitionService.retireAndDisconnect(room.getId(), streamKey,
+                            room.getProviderSessionId(), "generation_unverified");
                     continue;
                 }
                 if (!observedSession.equals(room.getProviderSessionId())) {
-                    sessionService.retirePublishGeneration(
-                            room.getId(), streamKey, room.getProviderSessionId(), "generation_changed");
-                    liveService.providerDisconnected(room.getId(), streamKey, room.getProviderSessionId());
+                    transitionService.retireAndDisconnect(room.getId(), streamKey,
+                            room.getProviderSessionId(), "generation_changed");
                     continue;
                 }
                 sessionService.heartbeat(room.getId(), room.getProviderSessionId(), streamKey);
@@ -102,10 +113,11 @@ public class LiveProviderReconciliationJob {
 
             LocalDateTime graceUntil = room.getProviderGraceUntil();
             if (graceUntil == null) {
-                liveService.providerDisconnected(room.getId(), streamKey, room.getProviderSessionId());
+                transitionService.retireAndDisconnect(room.getId(), streamKey,
+                        room.getProviderSessionId(), "provider_missing");
             } else if (!now.isBefore(graceUntil)) {
-                LiveRoom ended = liveService.endProviderRoom(
-                        room.getId(), streamKey, room.getProviderSessionId(), "provider_missing");
+                LiveRoom ended = transitionService.retireAndEnd(room.getId(), streamKey,
+                        room.getProviderSessionId(), "provider_missing", "provider_missing");
                 if (ended != null) {
                     log.info("Ended stale live provider room id={} reason=provider_missing", room.getId());
                 }

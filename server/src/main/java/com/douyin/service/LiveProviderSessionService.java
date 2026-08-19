@@ -76,7 +76,14 @@ public class LiveProviderSessionService {
 
     @Transactional
     public int retirePublishGeneration(Long roomId, String streamKey, String providerSessionId, String event) {
-        if (providerSessionId == null || providerSessionId.isBlank()) return 0;
+        // Even a legacy room without a durable generation must acquire the
+        // room lock before reconciliation changes its state. The zero-row
+        // retirement is intentional, but skipping the lock would let a fresh
+        // on_publish interleave with the legacy disconnect CAS.
+        if (providerSessionId == null || providerSessionId.isBlank()) {
+            mapper.lockLiveRoom(roomId);
+            return 0;
+        }
         // Reconciliation may be operating on a snapshot taken before a new
         // on_publish callback arrived. Lock and target only the generation
         // observed by that snapshot; never retire whichever session happens
