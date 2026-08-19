@@ -22,6 +22,12 @@ live:
     srs-rtc-base: ${SRS_RTC_PUBLIC_BASE:}
     srs-http-base: ${SRS_HTTP_PUBLIC_BASE:}
     rtmp-base: ${SRS_RTMP_PUBLIC_BASE:rtmp://localhost:1935/live/}
+    reconciliation:
+      enabled: ${LIVE_MEDIA_RECONCILIATION_ENABLED:false}
+      srs-api-base: ${SRS_API_BASE:http://localhost:1985}
+      initial-delay-ms: ${LIVE_MEDIA_RECONCILIATION_INITIAL_DELAY_MS:10000}
+      interval-ms: ${LIVE_MEDIA_RECONCILIATION_INTERVAL_MS:15000}
+      grace-seconds: ${LIVE_MEDIA_RECONCILIATION_GRACE_SECONDS:45}
     auth:
       # Enable in production together with a random secret of at least 32 chars.
       enabled: ${LIVE_MEDIA_AUTH_ENABLED:false}

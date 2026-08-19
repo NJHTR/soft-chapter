@@ -92,6 +92,8 @@ KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092
 - 浏览器直播主路径是 SRS WHIP/WHEP；`/ws/live` 只承载聊天、点赞和人数控制，不能发送媒体帧。
 - 开发环境的 `/media/srs`、`/media/srs-http` 代理由 Vite 提供；生产必须在网关配置等价的 HTTPS 反代或注入 `SRS_RTC_PUBLIC_BASE` / `SRS_HTTP_PUBLIC_BASE` 绝对地址。
 - `SRS_RTC_CANDIDATE` 必须是浏览器可达地址。端口健康不代表 WHIP/WHEP 已经发布或首帧已解码。
-- 当前 RTC-006 已通过本机 WHIP→WHEP、HLS/HTTP-FLV fallback、Docker provider smoke 和 session presence 实现；公网 HTTPS/TURN、provider 重启、SRS callback 授权和多实例故障验收仍未完成，详见 `docs/contracts/live-media-contract.md` 和任务文件。
+- 当前 RTC-006 已通过本机 WHIP→WHEP、HLS/HTTP-FLV fallback 和 Docker provider smoke；公网 HTTPS/TURN、provider 重启、SRS callback 授权和多实例 presence 故障验收仍未完成，详见 `docs/contracts/live-media-contract.md` 和任务文件。
 - stream key 目前是随机能力值，不等同短期 ingest/play token。生产启用前必须接入 SRS callback/网关 ACL 和撤销策略，不能直接把 HTTP smoke 当安全验收。
-- 生产媒体授权：设置 `LIVE_MEDIA_AUTH_ENABLED=true`、长度至少 32 的 `LIVE_MEDIA_TOKEN_SECRET`、`SRS_CALLBACK_TOKEN`，并将 `srs-auth.conf.example` 的 callback 段合并到 SRS vhost；未配置 callback 时不要宣称短期令牌已保护 provider。
+- 生产媒体授权：设置 `LIVE_MEDIA_AUTH_ENABLED=true`、长度至少 32 的 `LIVE_MEDIA_TOKEN_SECRET` 和长度至少 32 的 `SRS_CALLBACK_TOKEN`，将 `srs-auth.conf.example` 渲染为不含占位符的私有配置后，再合并进 SRS vhost。未配置 callback 时不要宣称短期令牌已保护 provider。
+- Windows Docker Desktop 中 SRS 容器回调 IDEA 后端通常使用 `host.docker.internal:9191`；Linux Docker 需要配置 `host-gateway` 或使用同一容器网络内的服务名。`spring-control:9191` 并不属于当前 compose，不能直接使用。
+- 启用 reconciliation 时还要配置 `LIVE_MEDIA_RECONCILIATION_ENABLED=true` 和 `SRS_API_BASE`。SRS API 不可达只会使直播进入 `DEGRADED`，不会自动关播；API 恢复且明确无流后才开始有界 grace period。

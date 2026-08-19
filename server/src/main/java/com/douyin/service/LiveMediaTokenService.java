@@ -10,6 +10,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Optional;
 import java.util.Objects;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -28,6 +29,9 @@ public class LiveMediaTokenService {
     }
 
     public record IssuedToken(String value, long expiresAt) {
+    }
+
+    public record TokenClaims(Long roomId, String streamKey, Long userId, Purpose purpose, long expiresAt) {
     }
 
     private static final String HMAC_ALGORITHM = "HmacSHA256";
@@ -61,9 +65,14 @@ public class LiveMediaTokenService {
             throw new IllegalStateException(
                     "LIVE_MEDIA_TOKEN_SECRET must contain at least 32 characters when media auth is enabled");
         }
+        String normalizedCallbackToken = callbackToken == null ? "" : callbackToken.trim();
+        if (enabled && !normalizedCallbackToken.isBlank() && normalizedCallbackToken.length() < 32) {
+            throw new IllegalStateException(
+                    "SRS_CALLBACK_TOKEN must contain at least 32 characters when media auth is enabled");
+        }
         this.secret = normalizedSecret.getBytes(StandardCharsets.UTF_8);
         this.ttlSeconds = Math.max(30, Math.min(ttlSeconds, 3600));
-        this.callbackToken = callbackToken == null ? "" : callbackToken.trim();
+        this.callbackToken = normalizedCallbackToken;
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -102,32 +111,39 @@ public class LiveMediaTokenService {
             String streamKey,
             Purpose purpose,
             Long expectedUserId) {
-        if (!enabled || token == null || token.isBlank() || roomId == null || streamKey == null || purpose == null) {
+        Optional<TokenClaims> claims = parse(token);
+        if (claims.isEmpty() || roomId == null || streamKey == null || purpose == null) return false;
+        TokenClaims tokenClaims = claims.get();
+        if (!roomId.equals(tokenClaims.roomId())
+                || !streamKey.equals(tokenClaims.streamKey())
+                || !purpose.equals(tokenClaims.purpose())) {
             return false;
         }
+        return expectedUserId == null || expectedUserId.equals(tokenClaims.userId());
+    }
+
+    public Optional<TokenClaims> parse(String token) {
+        if (!enabled || token == null || token.isBlank()) return Optional.empty();
         try {
             String[] parts = token.split("\\.", 2);
-            if (parts.length != 2) return false;
+            if (parts.length != 2) return Optional.empty();
             String payload = new String(DECODER.decode(parts[0]), StandardCharsets.UTF_8);
             String expectedSignature = signature(payload);
             if (!MessageDigest.isEqual(
                     expectedSignature.getBytes(StandardCharsets.US_ASCII),
                     parts[1].getBytes(StandardCharsets.US_ASCII))) {
-                return false;
+                return Optional.empty();
             }
             String[] claims = payload.split("\\|", -1);
-            if (claims.length != 5) return false;
-            if (!String.valueOf(roomId).equals(claims[0])
-                    || !streamKey.equals(claims[1])
-                    || !purpose.name().equals(claims[3])) {
-                return false;
-            }
-            if (expectedUserId != null && !String.valueOf(expectedUserId).equals(claims[2])) {
-                return false;
-            }
-            return Long.parseLong(claims[4]) > Instant.now(clock).getEpochSecond();
+            if (claims.length != 5) return Optional.empty();
+            long roomId = Long.parseLong(claims[0]);
+            long userId = Long.parseLong(claims[2]);
+            Purpose purpose = Purpose.valueOf(claims[3]);
+            long expiresAt = Long.parseLong(claims[4]);
+            if (expiresAt <= Instant.now(clock).getEpochSecond()) return Optional.empty();
+            return Optional.of(new TokenClaims(roomId, claims[1], userId, purpose, expiresAt));
         } catch (RuntimeException e) {
-            return false;
+            return Optional.empty();
         }
     }
 

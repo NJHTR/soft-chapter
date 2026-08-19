@@ -2,6 +2,7 @@ package com.douyin.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.douyin.config.LiveMediaProperties;
 import com.douyin.engine.StreamingEngine;
@@ -26,15 +27,18 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
     private final StreamingEngine streamingEngine;
     private final LiveMediaProperties mediaProperties;
     private final boolean nativeEngineEnabled;
+    private final long providerGraceSeconds;
 
     public LiveServiceImpl(StreamingSessionManager sessionManager,
                            StreamingEngine streamingEngine,
                            LiveMediaProperties mediaProperties,
-                           @Value("${live.engine.enabled:false}") boolean nativeEngineEnabled) {
+                           @Value("${live.engine.enabled:false}") boolean nativeEngineEnabled,
+                           @Value("${live.media.reconciliation.grace-seconds:45}") long providerGraceSeconds) {
         this.sessionManager = sessionManager;
         this.streamingEngine = streamingEngine;
         this.mediaProperties = mediaProperties;
         this.nativeEngineEnabled = nativeEngineEnabled;
+        this.providerGraceSeconds = Math.max(15, Math.min(providerGraceSeconds, 300));
     }
 
     /*
@@ -51,7 +55,7 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
     public LiveRoom createRoom(Long hostUserId, String title, String coverUrl) {
         List<LiveRoom> oldRooms = list(new LambdaQueryWrapper<LiveRoom>()
                 .eq(LiveRoom::getHostUserId, hostUserId)
-                .eq(LiveRoom::getStatus, "LIVE"));
+                .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED")));
         for (LiveRoom r : oldRooms) {
             r.setStatus("ENDED");
             updateById(r);
@@ -95,7 +99,14 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
         room.setMinBitrate(600_000);
         room.setEncoderType(nativeEngineEnabled ? "native-engine" : "browser-webrtc");
         room.setCodec("h264");
-        room.setStatus("LIVE");
+        room.setStatus("STARTING");
+        room.setProviderState("STARTING");
+        room.setProviderSessionId(null);
+        room.setProviderLastSeenAt(null);
+        // A room that never reaches an authenticated on_publish callback also
+        // needs bounded convergence. This timestamp is a control-plane start
+        // deadline, not a proxy for media activity or update_time.
+        room.setProviderGraceUntil(LocalDateTime.now().plusSeconds(providerGraceSeconds));
         room.setUpdateTime(LocalDateTime.now());
 
         // The native engine is an explicit opt-in for deployments that have a
@@ -117,6 +128,9 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
                 sessionManager.stopSession(roomId);
                 throw new IllegalStateException("native streaming engine failed to start");
             }
+            room.setStatus("LIVE");
+            room.setProviderState("ACTIVE");
+            room.setProviderLastSeenAt(LocalDateTime.now());
         }
         updateById(room);
         log.info("Live started with SRS WHIP: roomId={}", roomId);
@@ -134,6 +148,8 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
         sessionManager.stopSession(roomId);
 
         room.setStatus("ENDED");
+        room.setProviderState("ENDED");
+        room.setProviderGraceUntil(null);
         room.setUpdateTime(LocalDateTime.now());
         updateById(room);
         log.info("Live ended: roomId={}, totalViewers={}", roomId, room.getTotalViewers());
@@ -166,5 +182,157 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
                 .setSql("like_count = COALESCE(like_count, 0) + 1")
                 .eq("id", roomId)
                 .eq("status", "LIVE"));
+    }
+
+    @Override
+    @Transactional
+    public LiveRoom providerStarted(Long roomId, String streamKey, String providerSessionId) {
+        LiveRoom room = getById(roomId);
+        if (!matchesProvider(room, streamKey) || "ENDED".equals(room.getStatus())
+                || isBlank(providerSessionId)) return null;
+        if ("LIVE".equals(room.getStatus())
+                && !isBlank(room.getProviderSessionId())
+                && !sameProviderSession(room.getProviderSessionId(), providerSessionId)) {
+            // A second delayed publish cannot steal an already-active stream.
+            // A reconnect is allowed after DISCONNECTED/DEGRADED, where the
+            // previous generation has entered its bounded recovery path.
+            return null;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        LambdaUpdateWrapper<LiveRoom> transition = new LambdaUpdateWrapper<LiveRoom>()
+                .set(LiveRoom::getStatus, "LIVE")
+                .set(LiveRoom::getProviderState, "ACTIVE")
+                .set(LiveRoom::getProviderSessionId, normalizeProviderId(providerSessionId))
+                .set(LiveRoom::getProviderLastSeenAt, now)
+                .set(LiveRoom::getProviderGraceUntil, null)
+                .eq(LiveRoom::getId, roomId)
+                .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED"))
+                .eq(LiveRoom::getSrtStreamId, streamKey);
+        if (isBlank(room.getProviderSessionId())) {
+            transition.isNull(LiveRoom::getProviderSessionId);
+        } else {
+            transition.eq(LiveRoom::getProviderSessionId, normalizeProviderId(room.getProviderSessionId()));
+        }
+        int affected = baseMapper.update(null, transition);
+        if (affected != 1) return null;
+        return getById(roomId);
+    }
+
+    @Override
+    @Transactional
+    public LiveRoom providerHeartbeat(Long roomId, String streamKey, String providerSessionId) {
+        LiveRoom room = getById(roomId);
+        if (!matchesProvider(room, streamKey) || "ENDED".equals(room.getStatus())
+                || !sameProviderSession(room.getProviderSessionId(), providerSessionId)) return null;
+        LocalDateTime now = LocalDateTime.now();
+        LambdaUpdateWrapper<LiveRoom> update = new LambdaUpdateWrapper<LiveRoom>()
+                .set(LiveRoom::getStatus, "LIVE")
+                .set(LiveRoom::getProviderState, "ACTIVE")
+                .set(LiveRoom::getProviderLastSeenAt, now)
+                .set(LiveRoom::getProviderGraceUntil, null)
+                .eq(LiveRoom::getId, roomId)
+                .eq(LiveRoom::getSrtStreamId, streamKey)
+                .eq(LiveRoom::getProviderSessionId, normalizeProviderId(providerSessionId))
+                .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED"));
+        if (baseMapper.update(null, update) != 1) return null;
+        return getById(roomId);
+    }
+
+    @Override
+    @Transactional
+    public LiveRoom providerDisconnected(Long roomId, String streamKey, String providerSessionId) {
+        LiveRoom room = getById(roomId);
+        boolean initialStart = isInitialProviderStart(room, providerSessionId);
+        if (!matchesProvider(room, streamKey) || "ENDED".equals(room.getStatus())
+                || (!initialStart && !sameProviderSession(room.getProviderSessionId(), providerSessionId))) return null;
+        LocalDateTime now = LocalDateTime.now();
+        LambdaUpdateWrapper<LiveRoom> update = new LambdaUpdateWrapper<LiveRoom>()
+                .set(LiveRoom::getProviderState, "DISCONNECTED")
+                .set(LiveRoom::getProviderLastSeenAt, now)
+                .set(LiveRoom::getProviderGraceUntil, now.plusSeconds(providerGraceSeconds))
+                .set(LiveRoom::getStatus, "DEGRADED")
+                .eq(LiveRoom::getId, roomId)
+                .eq(LiveRoom::getSrtStreamId, streamKey)
+                .eq(!initialStart, LiveRoom::getProviderSessionId, normalizeProviderId(providerSessionId))
+                .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED"));
+        if (baseMapper.update(null, update) != 1) return null;
+        return getById(roomId);
+    }
+
+    @Override
+    @Transactional
+    public LiveRoom providerUnavailable(Long roomId, String streamKey) {
+        LiveRoom room = getById(roomId);
+        if (!matchesProvider(room, streamKey) || "ENDED".equals(room.getStatus())) return null;
+        LambdaUpdateWrapper<LiveRoom> transition = new LambdaUpdateWrapper<LiveRoom>()
+                .set(LiveRoom::getProviderState, "UNAVAILABLE")
+                .set(LiveRoom::getStatus, "DEGRADED")
+                // A provider API outage must not consume an earlier disconnect
+                // deadline. Start a new bounded grace interval only after the
+                // provider becomes reachable and confirms the stream is absent.
+                .set(LiveRoom::getProviderGraceUntil, null)
+                .eq(LiveRoom::getId, roomId)
+                .eq(LiveRoom::getSrtStreamId, streamKey)
+                .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED"));
+        if (isBlank(room.getProviderSessionId())) {
+            transition.isNull(LiveRoom::getProviderSessionId);
+        } else {
+            transition.eq(LiveRoom::getProviderSessionId, normalizeProviderId(room.getProviderSessionId()));
+        }
+        int affected = baseMapper.update(null, transition);
+        if (affected != 1) return null;
+        return getById(roomId);
+    }
+
+    @Override
+    @Transactional
+    public LiveRoom endProviderRoom(Long roomId, String streamKey, String providerSessionId, String reason) {
+        LiveRoom room = getById(roomId);
+        boolean initialStart = isInitialProviderStart(room, providerSessionId);
+        if (!matchesProvider(room, streamKey)
+                || (!initialStart && !sameProviderSession(room.getProviderSessionId(), providerSessionId))) return null;
+        int affected = baseMapper.update(null, new LambdaUpdateWrapper<LiveRoom>()
+                .set(LiveRoom::getStatus, "ENDED")
+                .set(LiveRoom::getProviderState, "ENDED")
+                .set(LiveRoom::getProviderGraceUntil, null)
+                .set(LiveRoom::getProviderLastSeenAt, LocalDateTime.now())
+                .eq(LiveRoom::getId, roomId)
+                .eq(LiveRoom::getSrtStreamId, streamKey)
+                .eq(!initialStart, LiveRoom::getProviderSessionId, normalizeProviderId(providerSessionId))
+                .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED")));
+        if (affected != 1) return null;
+        log.info("Live provider room ended: roomId={}, reason={}", roomId, reason);
+        sessionManager.stopSession(roomId);
+        return getById(roomId);
+    }
+
+    @Override
+    public List<LiveRoom> listProviderRooms() {
+        return list(new LambdaQueryWrapper<LiveRoom>()
+                .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED"))
+                .isNotNull(LiveRoom::getSrtStreamId));
+    }
+
+    private static boolean matchesProvider(LiveRoom room, String streamKey) {
+        return room != null && streamKey != null && streamKey.equals(room.getSrtStreamId());
+    }
+
+    private static String normalizeProviderId(String value) {
+        if (value == null || value.isBlank()) return "unknown";
+        return value.trim().length() <= 128 ? value.trim() : value.trim().substring(0, 128);
+    }
+
+    private static boolean sameProviderSession(String current, String candidate) {
+        return !isBlank(current) && !isBlank(candidate)
+                && normalizeProviderId(current).equals(normalizeProviderId(candidate));
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private static boolean isInitialProviderStart(LiveRoom room, String providerSessionId) {
+        return room != null && ("STARTING".equals(room.getStatus()) || "DEGRADED".equals(room.getStatus()))
+                && isBlank(room.getProviderSessionId()) && isBlank(providerSessionId);
     }
 }

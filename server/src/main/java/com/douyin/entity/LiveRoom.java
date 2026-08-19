@@ -14,7 +14,7 @@ public class LiveRoom {
     private Long hostUserId;
     private String title;
     private String coverUrl;
-    private String status;   // PREVIEW / LIVE / ENDED
+    private String status;   // PREVIEW / STARTING / LIVE / DEGRADED / ENDING / ENDED
 
     private Integer viewerCount;
     private Integer totalViewers;
@@ -28,6 +28,12 @@ public class LiveRoom {
     private String srtStreamId;   // SRT stream ID for ingest auth
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String rtmpStreamKey; // RTMP stream key (fallback)
+
+    // Provider lifecycle (owned by live-media control plane, not update_time).
+    private String providerState; // IDLE / STARTING / ACTIVE / DISCONNECTED / UNAVAILABLE / ENDED
+    private String providerSessionId;
+    private LocalDateTime providerLastSeenAt;
+    private LocalDateTime providerGraceUntil;
 
     // Quality settings
     private Integer targetBitrate;    // Current target bitrate

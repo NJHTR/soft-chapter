@@ -1,9 +1,13 @@
-# RTC-006 production callback profile. Do not mount this file without setting
-# SRS_CALLBACK_TOKEN and a private, host-reachable Spring URL.
-# Merge these directives into vhost __defaultVhost__ in srs.conf; they are
-# intentionally separate from the local smoke profile, which keeps auth off.
+# RTC-006 production callback template. Render __CALLBACK_TOKEN__ and
+# __SPRING_CALLBACK_BASE__ from deployment secrets before mounting it. SRS
+# does not treat shell-style placeholders in a .conf file as Docker env vars.
+# Merge this complete http_hooks block into vhost __defaultVhost__ in srs.conf.
+# It is intentionally absent from the local smoke profile, which keeps auth off.
 
-on_publish http://spring-control:9191/api/live/provider/srs/on_publish?callback_token=$SRS_CALLBACK_TOKEN;
-on_unpublish http://spring-control:9191/api/live/provider/srs/on_unpublish?callback_token=$SRS_CALLBACK_TOKEN;
-on_play http://spring-control:9191/api/live/provider/srs/on_play?callback_token=$SRS_CALLBACK_TOKEN;
-on_stop http://spring-control:9191/api/live/provider/srs/on_stop?callback_token=$SRS_CALLBACK_TOKEN;
+http_hooks {
+    enabled on;
+    on_publish __SPRING_CALLBACK_BASE__/api/live/provider/srs/on_publish?callback_token=__CALLBACK_TOKEN__;
+    on_unpublish __SPRING_CALLBACK_BASE__/api/live/provider/srs/on_unpublish?callback_token=__CALLBACK_TOKEN__;
+    on_play __SPRING_CALLBACK_BASE__/api/live/provider/srs/on_play?callback_token=__CALLBACK_TOKEN__;
+    on_stop __SPRING_CALLBACK_BASE__/api/live/provider/srs/on_stop?callback_token=__CALLBACK_TOKEN__;
+}

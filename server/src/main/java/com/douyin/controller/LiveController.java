@@ -120,7 +120,7 @@ public class LiveController {
         data.put("totalViewers", room.getTotalViewers());
         data.put("likeCount", room.getLikeCount());
         data.put("createTime", room.getCreateTime());
-        if ("LIVE".equals(room.getStatus())) {
+        if (isMediaAdmissible(room.getStatus())) {
             Long actorId = getLoginUserId(req);
             if (actorId != null) {
                 Map<String, Object> media = mediaFor(room, actorId);
@@ -131,7 +131,7 @@ public class LiveController {
 
         // Native-engine stats are optional and never represent the SRS browser
         // path unless the deployment explicitly enables the real engine.
-        if ("LIVE".equals(room.getStatus())) {
+        if (isMediaAdmissible(room.getStatus())) {
             var session = sessionManager.getSession(id);
             if (session != null && session.isActive()) {
                 var stats = session.getStats();
@@ -372,6 +372,10 @@ public class LiveController {
             media.put("rtmpUrl", mediaProperties.rtmp(key, ingestToken));
         }
         return media;
+    }
+
+    private static boolean isMediaAdmissible(String status) {
+        return "STARTING".equals(status) || "LIVE".equals(status) || "DEGRADED".equals(status);
     }
 
     private String normalizePresenceSession(String value) {

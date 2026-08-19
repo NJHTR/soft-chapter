@@ -8,15 +8,17 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LiveMediaTokenServiceTest {
 
     private static final Clock CLOCK = Clock.fixed(Instant.ofEpochSecond(1_700_000_000), ZoneOffset.UTC);
+    private static final String CALLBACK_SECRET = "callback-secret-0123456789012345678901";
 
     @Test
     void signsAndValidatesPurposeBoundToken() {
-        LiveMediaTokenService service = service(true, "callback-secret");
+        LiveMediaTokenService service = service(true, CALLBACK_SECRET);
         var issued = service.issue(42L, "live-key", 7L, LiveMediaTokenService.Purpose.PLAY);
 
         assertTrue(service.validate(issued.value(), 42L, "live-key", LiveMediaTokenService.Purpose.PLAY));
@@ -49,9 +51,14 @@ class LiveMediaTokenServiceTest {
 
     @Test
     void validatesSharedCallbackSecretConstantTime() {
-        LiveMediaTokenService service = service(true, "callback-secret");
-        assertTrue(service.validateCallbackToken(" callback-secret "));
+        LiveMediaTokenService service = service(true, CALLBACK_SECRET);
+        assertTrue(service.validateCallbackToken(" " + CALLBACK_SECRET + " "));
         assertFalse(service.validateCallbackToken("wrong-secret"));
+    }
+
+    @Test
+    void rejectsWeakCallbackSecretWhenMediaAuthIsEnabled() {
+        assertThrows(IllegalStateException.class, () -> service(true, "too-short"));
     }
 
     private static LiveMediaTokenService service(boolean enabled, String callbackSecret) {

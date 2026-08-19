@@ -5,7 +5,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -21,7 +20,6 @@ public class LivePresenceService {
     private static final String KEY_PREFIX = "douyin:live:presence:";
 
     private final RedisTemplate<String, Object> redis;
-    private final ConcurrentHashMap<Long, ConcurrentHashMap<String, Long>> localFallback = new ConcurrentHashMap<>();
     private final AtomicBoolean redisWarningLogged = new AtomicBoolean();
 
     public LivePresenceService(RedisTemplate<String, Object> redis) {
@@ -39,9 +37,9 @@ public class LivePresenceService {
             return Boolean.TRUE.equals(added);
         } catch (Exception e) {
             warnRedis(e);
-            ConcurrentHashMap<String, Long> members = localFallback.computeIfAbsent(roomId, ignored -> new ConcurrentHashMap<>());
-            pruneLocal(members, now);
-            return members.put(member, now + TTL_MILLIS) == null;
+            // A node-local count is not a valid viewer count in a multi-node
+            // deployment. Keep it as an explicit development-only opt-in.
+            return false;
         }
     }
 
@@ -53,8 +51,7 @@ public class LivePresenceService {
             return removed != null && removed > 0;
         } catch (Exception e) {
             warnRedis(e);
-            ConcurrentHashMap<String, Long> members = localFallback.get(roomId);
-            return members != null && members.remove(member) != null;
+            return false;
         }
     }
 
@@ -68,10 +65,7 @@ public class LivePresenceService {
             return size == null ? 0 : Math.toIntExact(size);
         } catch (Exception e) {
             warnRedis(e);
-            ConcurrentHashMap<String, Long> members = localFallback.get(roomId);
-            if (members == null) return 0;
-            pruneLocal(members, now);
-            return members.size();
+            return 0;
         }
     }
 
@@ -85,11 +79,7 @@ public class LivePresenceService {
 
     private void warnRedis(Exception e) {
         if (redisWarningLogged.compareAndSet(false, true)) {
-            log.warn("Live presence Redis unavailable; using node-local fallback: {}", e.getMessage());
+            log.warn("Live presence Redis unavailable; presence operations fail closed: {}", e.getMessage());
         }
-    }
-
-    private void pruneLocal(ConcurrentHashMap<String, Long> members, long now) {
-        members.entrySet().removeIf(entry -> entry.getValue() <= now);
     }
 }
