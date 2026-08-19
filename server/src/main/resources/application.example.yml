@@ -22,6 +22,12 @@ live:
     srs-rtc-base: ${SRS_RTC_PUBLIC_BASE:}
     srs-http-base: ${SRS_HTTP_PUBLIC_BASE:}
     rtmp-base: ${SRS_RTMP_PUBLIC_BASE:rtmp://localhost:1935/live/}
+    auth:
+      # Enable in production together with a random secret of at least 32 chars.
+      enabled: ${LIVE_MEDIA_AUTH_ENABLED:false}
+      token-secret: ${LIVE_MEDIA_TOKEN_SECRET:}
+      token-ttl-seconds: ${LIVE_MEDIA_TOKEN_TTL_SECONDS:300}
+      srs-callback-token: ${SRS_CALLBACK_TOKEN:}
 
 spring:
   application:

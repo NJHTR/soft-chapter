@@ -94,3 +94,4 @@ KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092
 - `SRS_RTC_CANDIDATE` 必须是浏览器可达地址。端口健康不代表 WHIP/WHEP 已经发布或首帧已解码。
 - 当前 RTC-006 已通过本机 WHIP→WHEP、HLS/HTTP-FLV fallback、Docker provider smoke 和 session presence 实现；公网 HTTPS/TURN、provider 重启、SRS callback 授权和多实例故障验收仍未完成，详见 `docs/contracts/live-media-contract.md` 和任务文件。
 - stream key 目前是随机能力值，不等同短期 ingest/play token。生产启用前必须接入 SRS callback/网关 ACL 和撤销策略，不能直接把 HTTP smoke 当安全验收。
+- 生产媒体授权：设置 `LIVE_MEDIA_AUTH_ENABLED=true`、长度至少 32 的 `LIVE_MEDIA_TOKEN_SECRET`、`SRS_CALLBACK_TOKEN`，并将 `srs-auth.conf.example` 的 callback 段合并到 SRS vhost；未配置 callback 时不要宣称短期令牌已保护 provider。

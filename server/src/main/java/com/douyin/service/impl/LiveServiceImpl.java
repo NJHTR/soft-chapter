@@ -84,8 +84,12 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
         String streamKey = "live_" + roomId + "_" + UUID.randomUUID().toString().replace("-", "");
         room.setSrtStreamId(streamKey);
         room.setRtmpStreamKey(streamKey);
-        room.setStreamUrl(mediaProperties.rtmp(streamKey));
-        room.setPlayUrl(mediaProperties.whep(streamKey));
+        // Ingest URLs are minted per authenticated request; never persist a
+        // reusable stream-key URL in the room row.
+        room.setStreamUrl("");
+        // Playback URLs are minted per authenticated viewer; do not persist a
+        // reusable stream-key URL in the room row.
+        room.setPlayUrl("");
         room.setTargetBitrate(2_500_000);
         room.setMaxBitrate(4_000_000);
         room.setMinBitrate(600_000);

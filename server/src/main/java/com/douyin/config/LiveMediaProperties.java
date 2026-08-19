@@ -21,23 +21,43 @@ public class LiveMediaProperties {
     }
 
     public String whip(String streamKey) {
-        return endpoint(rtcBase, "/rtc/v1/whip/?app=live&stream=" + encode(streamKey), "/media/srs");
+        return whip(streamKey, null);
+    }
+
+    public String whip(String streamKey, String token) {
+        return endpoint(rtcBase, "/rtc/v1/whip/?app=live&stream=" + encode(streamKey) + tokenQuery(token, true), "/media/srs");
     }
 
     public String whep(String streamKey) {
-        return endpoint(rtcBase, "/rtc/v1/whep/?app=live&stream=" + encode(streamKey), "/media/srs");
+        return whep(streamKey, null);
+    }
+
+    public String whep(String streamKey, String token) {
+        return endpoint(rtcBase, "/rtc/v1/whep/?app=live&stream=" + encode(streamKey) + tokenQuery(token, true), "/media/srs");
     }
 
     public String hls(String streamKey) {
-        return endpoint(httpBase, "/live/" + encode(streamKey) + ".m3u8", "/media/srs-http");
+        return hls(streamKey, null);
+    }
+
+    public String hls(String streamKey, String token) {
+        return endpoint(httpBase, "/live/" + encode(streamKey) + ".m3u8" + tokenQuery(token, false), "/media/srs-http");
     }
 
     public String httpFlv(String streamKey) {
-        return endpoint(httpBase, "/live/" + encode(streamKey) + ".flv", "/media/srs-http");
+        return httpFlv(streamKey, null);
+    }
+
+    public String httpFlv(String streamKey, String token) {
+        return endpoint(httpBase, "/live/" + encode(streamKey) + ".flv" + tokenQuery(token, false), "/media/srs-http");
     }
 
     public String rtmp(String streamKey) {
-        return rtmpBase + streamKey;
+        return rtmp(streamKey, null);
+    }
+
+    public String rtmp(String streamKey, String token) {
+        return rtmpBase + streamKey + tokenQuery(token, rtmpBase.contains("?"));
     }
 
     private static String endpoint(String base, String path, String relativeBase) {
@@ -57,5 +77,10 @@ public class LiveMediaProperties {
     private static String encode(String value) {
         return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8)
                 .replace("+", "%20");
+    }
+
+    private static String tokenQuery(String token, boolean queryAlreadyPresent) {
+        if (token == null || token.isBlank()) return "";
+        return (queryAlreadyPresent ? "&" : "?") + "token=" + encode(token);
     }
 }

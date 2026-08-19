@@ -29,6 +29,9 @@ services:
       # 官方 docker 约定:conf 内 candidate $CANDIDATE,由 env 注入宿主机可达 IP
       CANDIDATE: ${SRS_RTC_CANDIDATE:?请在 .env 中设置 SRS_RTC_CANDIDATE}
       SRS_RTC_SERVER_CANDIDATE: ${SRS_RTC_CANDIDATE}
+      # Only used when deploy/streaming/srs-auth.conf.example is merged into
+      # the production vhost. Keep empty in the local smoke profile.
+      SRS_CALLBACK_TOKEN: ${SRS_CALLBACK_TOKEN:-}
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/1985'"]
       interval: 15s

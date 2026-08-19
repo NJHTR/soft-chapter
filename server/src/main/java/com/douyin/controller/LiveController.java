@@ -14,6 +14,7 @@ import com.douyin.entity.User;
 import com.douyin.mapper.FollowMapper;
 import com.douyin.mapper.UserMapper;
 import com.douyin.service.LiveService;
+import com.douyin.service.LiveMediaTokenService;
 import com.douyin.service.LivePresenceService;
 import com.douyin.utils.JwtUtil;
 import com.douyin.vo.UserVO;
@@ -37,6 +38,7 @@ public class LiveController {
     private final StreamingSessionManager sessionManager;
     private final StreamingEngine streamingEngine;
     private final LiveMediaProperties mediaProperties;
+    private final LiveMediaTokenService mediaTokenService;
     private final LivePresenceService livePresenceService;
 
     public LiveController(LiveService liveService, UserMapper userMapper,
@@ -44,6 +46,7 @@ public class LiveController {
                           StreamingSessionManager sessionManager,
                           StreamingEngine streamingEngine,
                           LiveMediaProperties mediaProperties,
+                          LiveMediaTokenService mediaTokenService,
                           LivePresenceService livePresenceService) {
         this.liveService = liveService;
         this.userMapper = userMapper;
@@ -52,6 +55,7 @@ public class LiveController {
         this.sessionManager = sessionManager;
         this.streamingEngine = streamingEngine;
         this.mediaProperties = mediaProperties;
+        this.mediaTokenService = mediaTokenService;
         this.livePresenceService = livePresenceService;
     }
 
@@ -115,11 +119,14 @@ public class LiveController {
         data.put("viewerCount", room.getViewerCount());
         data.put("totalViewers", room.getTotalViewers());
         data.put("likeCount", room.getLikeCount());
-        data.put("playUrl", room.getPlayUrl());
         data.put("createTime", room.getCreateTime());
         if ("LIVE".equals(room.getStatus())) {
             Long actorId = getLoginUserId(req);
-            if (actorId != null) data.put("media", mediaFor(room, actorId));
+            if (actorId != null) {
+                Map<String, Object> media = mediaFor(room, actorId);
+                data.put("media", media);
+                data.put("playUrl", media.get("whepUrl"));
+            }
         }
 
         // Native-engine stats are optional and never represent the SRS browser
@@ -349,13 +356,20 @@ public class LiveController {
         Map<String, Object> media = new LinkedHashMap<>();
         String key = room.getSrtStreamId();
         if (key == null || key.isBlank()) return media;
-        media.put("whepUrl", mediaProperties.whep(key));
-        media.put("hlsUrl", mediaProperties.hls(key));
-        media.put("httpFlvUrl", mediaProperties.httpFlv(key));
+        if (mediaTokenService.isEnabled() && actorId == null) return media;
+        String playToken = mediaTokenService
+                .issue(room.getId(), key, actorId, LiveMediaTokenService.Purpose.PLAY)
+                .value();
+        media.put("whepUrl", mediaProperties.whep(key, playToken));
+        media.put("hlsUrl", mediaProperties.hls(key, playToken));
+        media.put("httpFlvUrl", mediaProperties.httpFlv(key, playToken));
         media.put("ingestMode", "native-engine".equals(room.getEncoderType()) ? "native" : "browser-whip");
         if (actorId != null && actorId.equals(room.getHostUserId())) {
-            media.put("whipUrl", mediaProperties.whip(key));
-            media.put("rtmpUrl", mediaProperties.rtmp(key));
+            String ingestToken = mediaTokenService
+                    .issue(room.getId(), key, actorId, LiveMediaTokenService.Purpose.INGEST)
+                    .value();
+            media.put("whipUrl", mediaProperties.whip(key, ingestToken));
+            media.put("rtmpUrl", mediaProperties.rtmp(key, ingestToken));
         }
         return media;
     }

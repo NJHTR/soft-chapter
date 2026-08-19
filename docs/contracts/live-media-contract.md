@@ -18,8 +18,8 @@ Spring Boot 不接收或转发 SDP、RTP、编码帧和音频帧。`/ws/live` �
 ### `GET /api/live/{roomId}`
 
 - 需要登录才能返回 `media` 地址；未登录只返回房间公开元数据。
-- `media.whepUrl`、`media.hlsUrl`、`media.httpFlvUrl` 是观众出口。
-- 只有房主身份才返回 `media.whipUrl` 和 `media.rtmpUrl`。
+- `media.whepUrl`、`media.hlsUrl`、`media.httpFlvUrl` 是当前登录观众的短期播放出口；未登录响应不返回媒体地址。
+- 只有房主身份才返回带短期令牌的 `media.whipUrl` 和 `media.rtmpUrl`。
 - `media.ingestMode` 为 `browser-whip` 或 `native`，同一房间只能有一个生产者。
 
 ### `POST /api/live/{roomId}/join`
@@ -51,7 +51,11 @@ SRS 端点由 `LiveMediaProperties` 生成。开发环境通过 Vite `/media/srs
 - WHEP/WHIP 会话结束时使用响应 `Location` 执行 `DELETE`；代理前缀必须保留。
 - 浏览器端媒体会话必须带 generation/peer identity；组件卸载或新一轮协商使旧操作失效，且在收到 `Location` 后才能登记并清理 provider 会话。
 
-当前 stream key 是每次开播随机生成并仅通过登录后的控制接口返回。短期 ingest token、播放 token、SRS `on_publish/on_play` 回调和撤销语义仍是 RTC-006 发布阻断项；随机 key 不能被当作完整授权系统。
+当前 stream key 是每次开播随机生成且不再作为公开 `playUrl` 返回。启用 `LIVE_MEDIA_AUTH_ENABLED=true` 后，控制面为每个已登录主体签发 HMAC 短期 ingest/play token，SRS `on_publish/on_play` callback 使用 `SRS_CALLBACK_TOKEN` 和房间状态校验；房间结束后旧 token 因状态检查立即失效。开发环境默认关闭令牌校验以保留本机 smoke，生产必须同时设置 `LIVE_MEDIA_TOKEN_SECRET`、`SRS_CALLBACK_TOKEN` 并启用 callback 配置。
+
+### SRS callback 配置
+
+将 `deploy/streaming/srs-auth.conf.example` 中的 callback 段合并到生产 SRS vhost，并把 callback URL 限制在 Spring 控制面内网地址。SRS 只收到控制回调，不会把 SDP、RTP 或编码帧发送给 Spring；`on_publish`/`on_play` 返回非 2xx 时 provider 必须拒绝媒体会话。
 
 ### 本机媒体验收记录（2026-08-17）
 
