@@ -4,21 +4,50 @@
 
 import os
 
+# ===================== 密钥环境变量化 (见 docs/ai-agent/SECURITY.md §3, fail-closed) =====================
+
+
+def _require_env(name, hint=""):
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise RuntimeError(
+            f"缺少环境变量 {name}" + (f": {hint}" if hint else "")
+            + " (密钥不再允许硬编码进仓库, 请先轮换并注入环境)"
+        )
+    return value
+
+
+def _env_int(name, default):
+    raw = os.environ.get(name, "").strip()
+    return int(raw) if raw else default
+
+
+def _db_password():
+    for name in ("DISTILL_DB_PASSWORD", "DB_PASSWORD"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    raise RuntimeError(
+        "缺少环境变量 DISTILL_DB_PASSWORD/DB_PASSWORD: 数据库密码必须来自环境变量"
+        " (见 docs/ai-agent/SECURITY.md §3), 不再提供默认真实值"
+    )
+
+
 # ===================== 数据库 =====================
 DB_CONFIG = {
-    "host": "8.134.23.170",
-    "port": 3306,
-    "user": "dev",
-    "password": "XrKk4Kxe@H2_rtBeqwd12edqyg3qnj.,12,12",
-    "database": "douyin",
+    "host": os.environ.get("DB_HOST", "localhost"),
+    "port": _env_int("DB_PORT", 3306),
+    "user": os.environ.get("DB_USER", "root"),
+    "password": _db_password(),
+    "database": os.environ.get("DB_NAME", "douyin"),
     "charset": "utf8mb4",
 }
 
 # ===================== DeepSeek API (教师模型) =====================
 DEEPSEEK_CONFIG = {
-    "api_key": "sk-0da9464a8aea4f639b4ae1a5b11b050c",
-    "base_url": "https://api.deepseek.com",
-    "model": "deepseek-v4-flash",
+    "api_key": _require_env("DEEPSEEK_API_KEY", "DeepSeek 教师模型密钥"),
+    "base_url": os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+    "model": os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash"),
     "max_tokens": 2048,
     "temperature_augment": 0.9,   # 视频扩增: 高温度增加多样性
     "temperature_summary": 0.8,   # 摘要生成: 中等温度

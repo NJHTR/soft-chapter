@@ -28,6 +28,11 @@ dependencies = [
     "pymysql>=1.0.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
 [tool.uv]
 # RTX 4060 8GB + i9-14900
 

@@ -13,15 +13,22 @@ import tempfile
 import time
 import urllib.request
 
+
 import pymysql
 
-# 数据库配置 (与 distill/config.py 一致)
+def _require_env(name):
+    value = os.environ.get(name, "").strip()
+    if not value:
+        print(f"缺少环境变量 {name}: 数据库密码必须通过环境变量提供", file=sys.stderr)
+        sys.exit(1)
+    return value
+
 DB_CONFIG = {
-    "host": "8.134.23.170",
-    "port": 3306,
-    "user": "dev",
-    "password": "XrKk4Kxe@H2_rtBeqwd12edqyg3qnj.,12,12",
-    "database": "douyin",
+    "host": os.environ.get("DB_HOST", "localhost"),
+    "port": int(os.environ.get("DB_PORT", "3306")),
+    "user": os.environ.get("DB_USER", "root"),
+    "password": _require_env("DB_PASSWORD"),
+    "database": os.environ.get("DB_NAME", "douyin"),
     "charset": "utf8mb4",
 }
 

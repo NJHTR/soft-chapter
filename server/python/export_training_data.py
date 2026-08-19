@@ -21,13 +21,34 @@ import pymysql
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("export-training")
 
-# ========== 数据库配置 (与 application-dev.yml 一致) ==========
+# ========== 数据库配置 (密钥必须来自环境变量, 见 docs/ai-agent/SECURITY.md §3) ==========
+
+
+def _require_env(name):
+    value = os.environ.get(name, "").strip()
+    if not value:
+        log.error("缺少环境变量 %s: 数据库密码必须通过环境变量提供, 拒绝明文连接", name)
+        sys.exit(1)
+    return value
+
+
+def _env_int(name, default):
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        log.error("环境变量 %s 必须为整数, 当前值: %r", name, raw)
+        sys.exit(1)
+
+
 DB_CONFIG = {
-    "host": "8.134.23.170",
-    "port": 3306,
-    "user": "dev",
-    "password": "XrKk4Kxe@H2_rtBeqwd12edqyg3qnj.,12,12",
-    "database": "douyin",
+    "host": os.environ.get("DB_HOST", "localhost"),
+    "port": _env_int("DB_PORT", 3306),
+    "user": os.environ.get("DB_USER", "root"),
+    "password": _require_env("DB_PASSWORD"),
+    "database": os.environ.get("DB_NAME", "douyin"),
     "charset": "utf8mb4",
 }
 
