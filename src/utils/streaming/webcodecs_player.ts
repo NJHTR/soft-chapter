@@ -76,6 +76,9 @@ export class WebCodecsPlayer {
   private totalBytes = 0
   private running = false
 
+  private static readonly LEGACY_WEBRTC_ERROR =
+    'Legacy WebCodecs WebRTC player is retired; use SrsWhepPlayer, HLS, or HTTP-FLV for live playback.'
+
   constructor(canvas: HTMLCanvasElement, config: PlayerConfig) {
     this.canvas = canvas
     this.config = {
@@ -89,6 +92,9 @@ export class WebCodecsPlayer {
   }
 
   async play(): Promise<void> {
+    if (this.config.backend === 'webrtc' || this.config.protocol === 'webrtc') {
+      throw new Error(WebCodecsPlayer.LEGACY_WEBRTC_ERROR)
+    }
     this.running = true
 
     switch (this.config.backend) {
@@ -258,74 +264,7 @@ export class WebCodecsPlayer {
 
   // ===== WebRTC Player =====
   private async initWebRTC(): Promise<void> {
-    const config: RTCConfiguration = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-      ],
-    }
-
-    this.peerConnection = new RTCPeerConnection(config)
-
-    this.peerConnection.ontrack = (event: RTCTrackEvent) => {
-      const [remoteStream] = event.streams
-      const video = document.createElement('video')
-      video.srcObject = remoteStream
-      video.autoplay = true
-      video.muted = true
-      video.playsInline = true
-
-      video.addEventListener('play', () => {
-        const drawFrame = () => {
-          if (!this.running || !this.ctx || video.readyState < 2) {
-            requestAnimationFrame(drawFrame)
-            return
-          }
-
-          this.canvas.width = video.videoWidth
-          this.canvas.height = video.videoHeight
-          this.ctx.drawImage(video, 0, 0)
-          this.decodedCount++
-          this.frameTimestamps.push(performance.now())
-          if (this.frameTimestamps.length > 120) this.frameTimestamps.shift()
-
-          if (this.frameCallback && this.canvas) {
-            this.canvas.toBlob(blob => {
-              if (blob) {
-                createImageBitmap(blob).then(bitmap => {
-                  this.frameCallback!(bitmap)
-                  bitmap.close()
-                })
-              }
-            })
-          }
-
-          requestAnimationFrame(drawFrame)
-        }
-        requestAnimationFrame(drawFrame)
-      })
-    }
-
-    // Create offer and connect
-    const offer = await this.peerConnection.createOffer({
-      offerToReceiveVideo: true,
-      offerToReceiveAudio: true,
-    })
-    await this.peerConnection.setLocalDescription(offer)
-
-    // Send offer to signaling server
-    const res = await fetch('/api/live/webrtc/offer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sdp: offer.sdp,
-        type: offer.type,
-        roomId: this.extractRoomId(this.config.streamUrl),
-      }),
-    })
-    const answer = await res.json()
-    await this.peerConnection.setRemoteDescription(
-      new RTCSessionDescription({ sdp: answer.sdp, type: 'answer' })
-    )
+    throw new Error(WebCodecsPlayer.LEGACY_WEBRTC_ERROR)
   }
 
   // ===== Canvas Fallback Player =====

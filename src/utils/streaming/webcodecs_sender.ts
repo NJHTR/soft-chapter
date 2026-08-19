@@ -67,6 +67,9 @@ export class WebCodecsSender {
   private captureLoopId: number | null = null
   private bitrateController: BitrateController | null = null
 
+  private static readonly LEGACY_WEBRTC_ERROR =
+    'Legacy WebCodecs WebRTC sender is retired; use SrsWhipPublisher for live ingest.'
+
   constructor(config: SenderConfig) {
     this.config = {
       maxBitrate: config.bitrate * 2,
@@ -78,6 +81,9 @@ export class WebCodecsSender {
   }
 
   async start(): Promise<void> {
+    if (this.config.protocol === 'webrtc') {
+      throw new Error(WebCodecsSender.LEGACY_WEBRTC_ERROR)
+    }
     this.running = true
 
     // 1. Initialize camera at 4K
@@ -300,35 +306,7 @@ export class WebCodecsSender {
   }
 
   private async connectWebRTC(): Promise<void> {
-    this.peerConnection = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    })
-
-    // Add video track
-    if (this.mediaStream) {
-      for (const track of this.mediaStream.getTracks()) {
-        this.peerConnection.addTrack(track, this.mediaStream)
-      }
-    }
-
-    // Create and send offer
-    const offer = await this.peerConnection.createOffer()
-    await this.peerConnection.setLocalDescription(offer)
-
-    const res = await fetch('/api/live/webrtc/offer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sdp: offer.sdp,
-        type: offer.type,
-        roomId: this.config.streamKey,
-        isBroadcaster: true,
-      }),
-    })
-    const answer = await res.json()
-    await this.peerConnection.setRemoteDescription(
-      new RTCSessionDescription({ sdp: answer.sdp, type: 'answer' })
-    )
+    throw new Error(WebCodecsSender.LEGACY_WEBRTC_ERROR)
   }
 
   private sendPacket(data: Uint8Array): void {

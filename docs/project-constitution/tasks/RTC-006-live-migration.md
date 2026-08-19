@@ -30,6 +30,7 @@
 
 - `src/utils/streaming/webcodecs_sender.ts` 和 player 当前存在 `/api/live/webrtc/offer` 路径，与控制面 `/api/live/engine/webrtc/offer` 不一致；迁移必须删除伪造 offer 路径或明确返回 `provider_not_ready`，不能留下第二条 API。
 - legacy WebCodecs `copyTo()`、`getVideoTracks()`、codec await 和空 canvas 缺陷只做风险记录，不能成为新生产链路。
+- WebCodecs sender/player 的旧 `webrtc` 模式现在在入口处 fail-closed，不再创建 PeerConnection 或请求 `/api/live/webrtc/offer`；直播生产路径继续使用 WHIP/WHEP。
 
 ## DoD
 

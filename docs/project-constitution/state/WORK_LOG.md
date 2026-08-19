@@ -14,6 +14,12 @@
 - 订阅策略通过 Pinia action 暴露，视图不直接依赖 LiveKit 类型；音频订阅始终保持，1 对 1 继续使用全量兼容模式。
 - 验证：`vue-tsc` 和 RTC store/CallPanel ESLint 通过；真实 4/8 人浏览器、后台恢复和 egress 下降数据尚未完成。
 
+## 2026-08-19：收口旧 WebCodecs WebRTC 调用
+
+- `WebCodecsSender` 和 `WebCodecsPlayer` 的旧 `webrtc` 模式在入口处 fail-closed，不再打开摄像头、创建 PeerConnection 或请求已退役的 `/api/live/webrtc/offer`。
+- 后端 `/api/live/engine/webrtc/offer` 继续保持 410；直播生产路径只有 SRS WHIP/WHEP 和 HLS/HTTP-FLV fallback。
+- 验证：`vue-tsc`、两个 legacy 文件 ESLint 通过（仅保留未使用变量 warning）；真实浏览器直播和公网 ICE/TURN 仍需发布环境验收。
+
 ## 2026-08-19：RTC 通话流程验收与忙线并发守卫
 
 - 新增控制面 `BUSY` 错误码：发起者或目标参与者仍处于有效通话时，创建新会话返回 409，不创建第二个 LiveKit 房间。
