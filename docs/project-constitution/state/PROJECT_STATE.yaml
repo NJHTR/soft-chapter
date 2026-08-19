@@ -7,7 +7,7 @@ project:
 baseline:
   observed_at: "2026-08-18"
   branch: dev/full
-  head_commit: 968acff
+  head_commit: 5b5df51
   remote_tracking: origin/dev/full
   worktree_dirty: true
   dirty_worktree_policy: preserve_and_avoid
@@ -183,5 +183,5 @@ verification:
     - srs_whip_whep_browser_media_smoke (passed locally; requires host-reachable candidate and Playwright/Chromium in repeatable CI)
     - maven_backend_tests_rtc006 (maven executable unavailable in this session)
     - live_presence_idempotency_and_provider_acl (RTC-006 review gate)
-last_verified_commit: 968acff
+last_verified_commit: 5b5df51
 last_doc_commit: 34a35cf
