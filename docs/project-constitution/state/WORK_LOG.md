@@ -261,4 +261,5 @@ pnpm run build-only                         # 只读审查记录为通过
 - 新增 `docs/contracts/live-media-reconciliation.md`，把 SRS `on_publish/on_play/on_unpublish/on_stop` 的幂等键、`GRACE` 收敛窗口、`last_seen_at`/reconciliation 边界和审计脱敏约束单独固化下来。
 - `docs/contracts/live-media-contract.md` 现在明确引用 provider 收敛契约，避免把“回调授权”误解成“provider session 已有完整恢复 worker”。
 - `PROJECT_STATE.yaml` 基线头部从 `94370b5` 对齐到当前工作区真实 HEAD `ca813ec`；`last_verified_commit` 仍保持为已验证的 `94370b5`，因为本轮没有重新跑浏览器或 Maven 验证。
+- 记录文档提交哈希：`b00d6fe docs(RTC): add live media reconciliation contract`。
 - RTC-006 仍保持 `in_progress`：当前已具备回调授权和 TTL presence 骨架，但真实 Docker callback 联调、provider 重启恢复和多实例故障验收仍未补齐。
