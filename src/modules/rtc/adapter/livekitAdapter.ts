@@ -16,6 +16,10 @@ import {
   type LocalTrack
 } from 'livekit-client'
 import {
+  resolveSubscriptionPolicy,
+  type RtcRemoteVideoQuality
+} from '../quality/subscriptionPolicy'
+import {
   getRtOutputEls,
   setRtOutputApplier,
   type RtcMediaPort,
@@ -95,6 +99,13 @@ class LiveKitMediaPort implements RtcMediaPort {
   private originalCameraTrack: MediaStreamTrack | null = null
   private processedCameraTrack: MediaStreamTrack | null = null
   private cameraOperation: Promise<boolean> = Promise.resolve(true)
+  private remoteVideoQuality = new Map<string, RtcRemoteVideoQuality>()
+  private remoteSubscription = new Map<
+    string,
+    { audio?: boolean; video?: boolean; quality?: RtcRemoteVideoQuality }
+  >()
+  private visibleParticipants: ReadonlySet<string> | null = null
+  private activeSpeakerId: string | null = null
 
   constructor() {
     setRtOutputApplier(() => this.applyOutputToElements())
@@ -136,6 +147,10 @@ class LiveKitMediaPort implements RtcMediaPort {
     }
     this.remoteStreams.clear()
     this.localTracks.clear()
+    this.remoteVideoQuality.clear()
+    this.remoteSubscription.clear()
+    this.visibleParticipants = null
+    this.activeSpeakerId = null
     void this.resetBackgroundRemoval()
     const room = new Room(ROOM_OPTIONS)
     this.room = room
@@ -212,12 +227,7 @@ class LiveKitMediaPort implements RtcMediaPort {
       enabled: track.mediaStreamTrack.enabled
     })
     if (track.kind === Track.Kind.Video) {
-      publication.setVideoQuality(
-        this.room && this.room.remoteParticipants.size > 1
-          ? VideoQuality.LOW
-          : VideoQuality.HIGH
-      )
-      this.applyRemoteVideoQuality()
+      this.applyRemoteSubscriptionPolicy()
     }
     let stream = this.remoteStreams.get(identity)
     if (!stream) {
@@ -263,6 +273,8 @@ class LiveKitMediaPort implements RtcMediaPort {
 
   private onParticipantDisconnected = (participant: RemoteParticipant) => {
     this.remoteStreams.delete(participant.identity)
+    this.remoteVideoQuality.delete(participant.identity)
+    this.remoteSubscription.delete(participant.identity)
     this.cb.onRemoteTrackRemoved(participant.identity)
   }
 
@@ -304,8 +316,8 @@ class LiveKitMediaPort implements RtcMediaPort {
   }
 
   private onActiveSpeakersChanged = (speakers: Participant[]) => {
-    this.applyRemoteVideoQuality(speakers[0]?.identity ?? null)
-    this.cb.onActiveSpeaker(speakers[0]?.identity ?? null)
+    this.setActiveSpeaker(speakers[0]?.identity ?? null)
+    this.cb.onActiveSpeaker(this.activeSpeakerId)
   }
 
   /**
@@ -314,17 +326,62 @@ class LiveKitMediaPort implements RtcMediaPort {
    * policy is safe with the current MediaStream adapter and reduces SFU egress
    * as soon as a room has more than one remote participant.
    */
-  private applyRemoteVideoQuality(activeSpeaker: string | null = null) {
+  private applyRemoteSubscriptionPolicy() {
     const room = this.room
-    if (!room || room.remoteParticipants.size <= 1) return
+    if (!room) return
     room.remoteParticipants.forEach((participant) => {
       participant.trackPublications.forEach((publication) => {
+        const requested = this.remoteSubscription.get(participant.identity) ?? {}
+        if (publication.kind === Track.Kind.Audio) {
+          publication.setSubscribed(requested.audio ?? true)
+          return
+        }
         if (publication.kind !== Track.Kind.Video) return
-        publication.setVideoQuality(
-          participant.identity === activeSpeaker ? VideoQuality.MEDIUM : VideoQuality.LOW
-        )
+        const decision = resolveSubscriptionPolicy({
+          participantId: participant.identity,
+          visibleParticipantIds:
+            room.remoteParticipants.size <= 1 ? null : this.visibleParticipants,
+          activeSpeakerId: this.activeSpeakerId,
+          screenShare: publication.source === Track.Source.ScreenShare,
+          requestedVideoQuality:
+            requested.quality ?? this.remoteVideoQuality.get(participant.identity),
+          requestedVideo: requested.video
+        })
+        publication.setSubscribed(decision.video)
+        publication.setVideoQuality(this.toLiveKitVideoQuality(decision.quality))
       })
     })
+  }
+
+  private toLiveKitVideoQuality(quality: RtcRemoteVideoQuality): VideoQuality {
+    if (quality === 'high') return VideoQuality.HIGH
+    if (quality === 'medium') return VideoQuality.MEDIUM
+    return VideoQuality.LOW
+  }
+
+  setRemoteVideoQuality(identity: string, quality: RtcRemoteVideoQuality): void {
+    this.remoteVideoQuality.set(identity, quality)
+    this.applyRemoteSubscriptionPolicy()
+  }
+
+  setParticipantSubscription(
+    identity: string,
+    options: { audio?: boolean; video?: boolean; quality?: RtcRemoteVideoQuality }
+  ): void {
+    const previous = this.remoteSubscription.get(identity) ?? {}
+    this.remoteSubscription.set(identity, { ...previous, ...options })
+    this.applyRemoteSubscriptionPolicy()
+  }
+
+  setVisibleParticipants(identities: ReadonlySet<string> | readonly string[] | null): void {
+    this.visibleParticipants =
+      identities === null ? null : new Set(identities)
+    this.applyRemoteSubscriptionPolicy()
+  }
+
+  setActiveSpeaker(identity: string | null): void {
+    this.activeSpeakerId = identity
+    this.applyRemoteSubscriptionPolicy()
   }
 
   async setMuted(muted: boolean): Promise<void> {
@@ -471,6 +528,10 @@ class LiveKitMediaPort implements RtcMediaPort {
     }
     this.remoteStreams.clear()
     this.localTracks.clear()
+    this.remoteVideoQuality.clear()
+    this.remoteSubscription.clear()
+    this.visibleParticipants = null
+    this.activeSpeakerId = null
     setRtOutputApplier(() => this.applyOutputToElements())
   }
 

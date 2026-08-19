@@ -1,5 +1,13 @@
 # 工作日志
 
+## 2026-08-19：RTC-012 选择性订阅基础契约
+
+- 新增 provider-neutral 的远端订阅端口：质量层、音频/视频订阅、可见参与者集合和 active speaker。
+- LiveKit adapter 仅在显式设置可见集合时取消不可见视频订阅；默认仍保持兼容的全量订阅，音频默认优先。
+- 屏幕共享默认使用 HIGH，active speaker 使用 MEDIUM，其他视频使用 LOW；参与者离开或房间销毁时清理策略状态。
+- `adaptiveStream` 继续保持关闭，待真实 `RemoteTrack` attach/detach 与双浏览器验收后再评估开启。
+- 验证：`vue-tsc`、目标 ESLint、`pnpm run build-only`、`git diff --check` 通过；真实双浏览器、弱网矩阵和带宽下降统计尚未完成，RTC-012 仍为未完成任务。
+
 ## 2026-08-19：RTC 通话流程验收与忙线并发守卫
 
 - 新增控制面 `BUSY` 错误码：发起者或目标参与者仍处于有效通话时，创建新会话返回 409，不创建第二个 LiveKit 房间。

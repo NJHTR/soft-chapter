@@ -1,5 +1,7 @@
 /** RTC-004 媒体端口抽象:所有 WebRTC / getUserMedia / srcObject 操作全部收进 adapter 实现,页面只消费事件 */
 
+import type { RtcRemoteVideoQuality } from '../quality/subscriptionPolicy'
+
 export interface RtcMediaPortCallbacks {
   /** 远端参与者发布新音轨(组装进其 MediaStream 后回调;同一 stream 实例会被反复更新) */
   onRemoteTrack(identity: string, stream: MediaStream): void
@@ -33,6 +35,17 @@ export interface RtcMediaPort {
   setSpeaker(on: boolean): void
   switchFacing(facing: 'user' | 'environment'): Promise<void>
   setDevice(kind: 'audioinput' | 'audiooutput', deviceId: string): Promise<void>
+  /** Set a participant's remote video layer without exposing LiveKit types. */
+  setRemoteVideoQuality(identity: string, quality: RtcRemoteVideoQuality): void
+  /** Apply explicit audio/video subscription preferences for one participant. */
+  setParticipantSubscription(
+    identity: string,
+    options: { audio?: boolean; video?: boolean; quality?: RtcRemoteVideoQuality }
+  ): void
+  /** A null visibility set keeps the legacy full-subscription behavior. */
+  setVisibleParticipants(identities: ReadonlySet<string> | readonly string[] | null): void
+  /** Update the active speaker used by the conservative quality policy. */
+  setActiveSpeaker(identity: string | null): void
   /** 断开房间(保留实例可复用) */
   leave(): void
   /** 断开 + 清理全部监听,不可复用 */
