@@ -7,11 +7,14 @@ import {
   cancelCall,
   hangupCall,
   joinCall,
+  confirmConnectedCall,
   getCallDetail,
   genClientRequestId
 } from '@/api/rtc'
 import { sendCallSignal } from '@/utils/socket'
 import { useBaseStore } from '@/store/pinia'
+import { _notice } from '@/utils'
+import { startCallRingtone, stopCallRingtone } from '@/utils/notificationFeedback'
 import { rtcMediaPort } from '@/modules/rtc/adapter/livekitAdapter'
 import {
   ACCEPTING_CALL_STATES,
@@ -31,9 +34,11 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let durationTimer: ReturnType<typeof setInterval> | null = null
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let ringingTimer: ReturnType<typeof setTimeout> | null = null
 let joining = false
 let rejoining = false
 let listenersReady = false
+let lifecycleGeneration = 0
 
 function extractErr(res: any): string {
   const d = res?.data
@@ -70,6 +75,7 @@ export const useRtcStore = defineStore('rtc', {
     devices: {
       audioMuted: false,
       videoOff: false,
+      backgroundRemoved: false,
       speakerOn: true,
       activeInputId: null,
       activeOutputId: null
@@ -107,6 +113,25 @@ export const useRtcStore = defineStore('rtc', {
     }
   },
   actions: {
+    /** 开始主叫/被叫振铃，并与服务端默认 30 秒 ringing TTL 对齐。 */
+    beginRinging(role: 'outgoing' | 'incoming', expiresAt?: string | null) {
+      ringingTimer = clearTimer(ringingTimer)
+      startCallRingtone()
+      const configuredRemaining = expiresAt ? new Date(expiresAt).getTime() - Date.now() : 0
+      const timeoutMs = configuredRemaining > 0 ? configuredRemaining : 30_000
+      ringingTimer = setTimeout(() => {
+        if (role === 'outgoing' && this.phase === 'dialing') {
+          void this.cancel()
+        } else if (role === 'incoming' && this.phase === 'ringingIn') {
+          void this.reject()
+        }
+      }, timeoutMs)
+    },
+    stopRinging() {
+      ringingTimer = clearTimer(ringingTimer)
+      stopCallRingtone()
+    },
+
     /** 面板挂载时调用一次:注册 adapter 回调 + 全局重连监听 */
     init() {
       if (listenersReady) return
@@ -114,6 +139,12 @@ export const useRtcStore = defineStore('rtc', {
       rtcMediaPort.setCallbacks({
         onRemoteTrack: (identity, stream) => {
           this.remoteStreams = { ...this.remoteStreams, [identity]: stream }
+          console.info('[rtc] store remote stream update', {
+            identity,
+            audioTracks: stream.getAudioTracks().length,
+            videoTracks: stream.getVideoTracks().length,
+            peerId: this.peerId
+          })
           if (!this.remoteMuted[identity]) {
             this.remoteMuted = { ...this.remoteMuted, [identity]: { audio: false, video: false } }
           }
@@ -155,6 +186,7 @@ export const useRtcStore = defineStore('rtc', {
       }
       this.traceId = genTraceId()
       this.phase = 'dialing'
+      this.beginRinging('outgoing')
       this.dial()
     },
 
@@ -174,6 +206,7 @@ export const useRtcStore = defineStore('rtc', {
       }
       this.traceId = genTraceId()
       this.phase = 'dialing'
+      this.beginRinging('outgoing')
       this.dialGroup()
     },
 
@@ -181,6 +214,7 @@ export const useRtcStore = defineStore('rtc', {
     async dial() {
       const meta = this.outgoingMeta
       if (!meta) return
+      const generation = lifecycleGeneration
       const res = await createCall({
         scope: 'direct',
         mode: meta.isVideo ? 'video' : 'audio',
@@ -188,12 +222,22 @@ export const useRtcStore = defineStore('rtc', {
         client_request_id: genClientRequestId(),
         trace_id: this.traceId || undefined
       })
+      if (generation !== lifecycleGeneration || this.phase !== 'dialing') {
+        if (res.success && res.data?.call_id) {
+          await cancelCall(String(res.data.call_id), {
+            event_id: genEventId('stale-dial-cancel'),
+            trace_id: this.traceId || undefined
+          })
+        }
+        return
+      }
       if (!res.success || !res.data?.call_id) {
         this.error = extractErr(res)
         this.finishEnded(null)
         return
       }
       this.session = res.data
+      this.beginRinging('outgoing', res.data.expires_at)
       const me = useBaseStore().userinfo
       sendCallSignal(meta.toUserId!, 'call_request', {
         call_id: res.data.call_id,
@@ -209,6 +253,7 @@ export const useRtcStore = defineStore('rtc', {
     async dialGroup() {
       const gm = this.groupMeta
       if (!gm) return
+      const generation = lifecycleGeneration
       const res = await createCall({
         scope: 'group',
         mode: gm.isVideo ? 'video' : 'audio',
@@ -216,12 +261,22 @@ export const useRtcStore = defineStore('rtc', {
         client_request_id: genClientRequestId(),
         trace_id: this.traceId || undefined
       })
+      if (generation !== lifecycleGeneration || this.phase !== 'dialing') {
+        if (res.success && res.data?.call_id) {
+          await cancelCall(String(res.data.call_id), {
+            event_id: genEventId('stale-group-dial-cancel'),
+            trace_id: this.traceId || undefined
+          })
+        }
+        return
+      }
       if (!res.success || !res.data?.call_id) {
         this.error = extractErr(res)
         this.finishEnded(null)
         return
       }
       this.session = res.data
+      this.beginRinging('outgoing', res.data.expires_at)
       const me = useBaseStore().userinfo
       for (const member of gm.members) {
         sendCallSignal(member.userId, 'call_request', {
@@ -248,9 +303,17 @@ export const useRtcStore = defineStore('rtc', {
         this.phase === 'connected' ||
         this.phase === 'reconnecting'
       ) {
+        // 忙线来电不能覆盖当前会话。信令是建呼竞态下的兜底，正常路径
+        // 会在后端 create 阶段直接返回 BUSY。
+        void sendCallSignal(payload.fromUserId, 'call_busy', {
+          call_id: payload.callId,
+          reason: 'busy'
+        })
         return
       }
+      const generation = lifecycleGeneration
       const detail = await getCallDetail(payload.callId)
+      if (generation !== lifecycleGeneration || this.phase !== 'idle') return
       const call = detail.data?.call as CallSession | undefined
       const members = detail.data?.participants || []
       if (
@@ -266,16 +329,46 @@ export const useRtcStore = defineStore('rtc', {
       this.incoming = payload
       this.traceId = genTraceId()
       this.phase = 'ringingIn'
+      this.beginRinging('incoming', call.expires_at)
+    },
+
+    /** 对方在媒体会话建立前发现本端忙线时，结束发起方的拨号。 */
+    async handleBusySignal(payload: { callId: string; fromUserId?: string }) {
+      if (!payload.callId || this.session?.call_id !== payload.callId) return
+      if (this.phase !== 'dialing' && this.phase !== 'connecting') return
+      _notice('对方正在通话中')
+      const callId = this.session.call_id
+      try {
+        await cancelCall(callId, {
+          event_id: genEventId('busy-cancel'),
+          trace_id: this.traceId || undefined
+        })
+      } finally {
+        this.finishEnded('BUSY')
+      }
+    },
+
+    /** 被叫方收到主叫取消时，立即停止本地来电提示。 */
+    handleRemoteCancel(callId: string) {
+      if (!callId || this.incoming?.callId !== callId || this.phase !== 'ringingIn') return
+      this.stopRinging()
+      this.finishEnded('CANCELLED')
     },
 
     /** 被叫方:接听 */
     async accept() {
       if (!this.incoming?.callId || this.phase !== 'ringingIn') return
+      const generation = lifecycleGeneration
+      const incomingCallId = this.incoming.callId
+      this.stopRinging()
       this.phase = 'connecting'
-      const res = await acceptCall(this.incoming.callId, {
+      const res = await acceptCall(incomingCallId, {
         event_id: genEventId('accept'),
         trace_id: this.traceId || undefined
       })
+      if (generation !== lifecycleGeneration || this.phase !== 'connecting') {
+        return
+      }
       if (!res.success || !res.data?.call_id) {
         this.error = extractErr(res)
         this.finishEnded(null)
@@ -309,6 +402,7 @@ export const useRtcStore = defineStore('rtc', {
 
     /** 被叫方:拒绝 */
     async reject() {
+      this.stopRinging()
       if (this.incoming?.callId) {
         const res = await rejectCall(this.incoming.callId, {
           event_id: genEventId('reject'),
@@ -321,6 +415,7 @@ export const useRtcStore = defineStore('rtc', {
 
     /** 发起方:振铃期取消 */
     async cancel() {
+      this.stopRinging()
       const callId = this.session?.call_id
       if (callId) {
         const res = await cancelCall(callId, {
@@ -329,12 +424,16 @@ export const useRtcStore = defineStore('rtc', {
         })
         if (!res.success) this.error = extractErr(res)
       }
+      if (callId && this.outgoingMeta?.toUserId) {
+        void sendCallSignal(this.outgoingMeta.toUserId, 'call_cancelled', { call_id: callId })
+      }
       this.finishEnded(null)
     },
 
     /** 挂断(幂等,错误忽略) */
     async hangup() {
       if (this.phase === 'idle') return
+      this.stopRinging()
       const callId = this.session?.call_id || this.incoming?.callId
       this.stopPolling()
       if (callId) {
@@ -351,6 +450,7 @@ export const useRtcStore = defineStore('rtc', {
       if (joining || this.joined) return
       const callId = this.session?.call_id
       if (!callId) return
+      const generation = lifecycleGeneration
       joining = true
       try {
         const tk = await getToken({ call_id: callId, trace_id: this.traceId || undefined })
@@ -371,9 +471,15 @@ export const useRtcStore = defineStore('rtc', {
           this.error = extractErr(joined)
           return
         }
+        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') return
         await rtcMediaPort.join({ token, roomName, identity, mode: this.mode })
+        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') {
+          rtcMediaPort.dispose()
+          return
+        }
         this.joined = true
         this.phase = 'connecting'
+        await this.confirmMediaConnected(callId, generation)
       } catch (e) {
         console.warn('[rtc] join failed', e)
         this.error = '连接房间失败,正在重试'
@@ -398,6 +504,7 @@ export const useRtcStore = defineStore('rtc', {
       if (!res.success) return
       const detail = res.data as CallDetail
       const call = detail.call
+      if (String(call.state).toUpperCase() !== 'RINGING') this.stopRinging()
       this.session = Object.assign({}, this.session, call)
       this.participants = (detail.participants || []).map((p) => ({
         userId: String(p.user_id ?? ''),
@@ -425,7 +532,10 @@ export const useRtcStore = defineStore('rtc', {
 
     onAdapterConnection(kind: 'connected' | 'reconnecting' | 'disconnected') {
       if (kind === 'connected') {
-        if (this.phase === 'reconnecting') this.phase = 'connected'
+        if (this.phase === 'connecting' || this.phase === 'reconnecting') {
+          this.phase = 'connected'
+          this.startDuration()
+        }
         this.reconnectCount = 0
         reconnectTimer = clearTimer(reconnectTimer)
         return
@@ -435,11 +545,35 @@ export const useRtcStore = defineStore('rtc', {
       this.scheduleReconnect(1)
     },
 
+    /** 媒体层已连通时立即确认业务状态，不等待 LiveKit webhook。 */
+    async confirmMediaConnected(callId: string, generation: number) {
+      if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') return
+      try {
+        const res = await confirmConnectedCall(callId, {
+          event_id: genEventId('connected'),
+          trace_id: this.traceId || undefined
+        })
+        if (!res.success) {
+          console.warn('[rtc] connected confirmation rejected:', extractErr(res))
+          return
+        }
+        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') return
+        if (res.data) this.session = Object.assign({}, this.session, res.data)
+        this.phase = 'connected'
+        this.startDuration()
+      } catch (e) {
+        // The adapter connection is still usable. Polling/webhook can converge later.
+        console.warn('[rtc] connected confirmation failed', e)
+      }
+    },
+
     onAdapterClose() {
       if (this.phase !== 'connected' && this.phase !== 'reconnecting') return
       this.remoteStreams = {}
       this.remoteMuted = {}
       this.localStream = null
+      this.joined = false
+      this.onAdapterConnection('disconnected')
     },
 
     onVisibilityChange() {
@@ -455,18 +589,20 @@ export const useRtcStore = defineStore('rtc', {
         return
       }
       this.reconnectCount = attempt
+      const delayMs = Math.min(1500 * 2 ** (attempt - 1), 8000)
       reconnectTimer = setTimeout(async () => {
         reconnectTimer = clearTimer(reconnectTimer)
         if (this.phase !== 'reconnecting') return
         await this.tryRejoin()
         if (this.phase === 'reconnecting') this.scheduleReconnect(attempt + 1)
-      }, 5000)
+      }, delayMs)
     },
 
     /** 重连:重新取 token + join(新 Room) */
     async tryRejoin() {
       const callId = this.session?.call_id
       if (!callId || rejoining) return
+      const generation = lifecycleGeneration
       rejoining = true
       try {
         const tk = await getToken({ call_id: callId, trace_id: this.traceId || undefined })
@@ -474,8 +610,17 @@ export const useRtcStore = defineStore('rtc', {
         const { token, room_name: roomName, identity } = tk.data
         rtcMediaPort.dispose()
         this.joined = false
+        this.remoteStreams = {}
+        this.remoteMuted = {}
+        this.localStream = null
+        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') return
         await rtcMediaPort.join({ token, roomName, identity, mode: this.mode })
+        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') {
+          rtcMediaPort.dispose()
+          return
+        }
         this.joined = true
+        await this.confirmMediaConnected(callId, generation)
       } catch (e) {
         console.warn('[rtc] rejoin failed', e)
       } finally {
@@ -495,17 +640,18 @@ export const useRtcStore = defineStore('rtc', {
     },
 
     finishEnded(reason: string | null) {
+      void reason
+      this.stopRinging()
+      lifecycleGeneration++
+      joining = false
+      rejoining = false
       this.stopPolling()
       this.stopDuration()
       reconnectTimer = clearTimer(reconnectTimer)
-      this.phase = 'ended'
       if (this.joined || this.localStream) rtcMediaPort.dispose()
-      this.joined = false
-      this.remoteStreams = {}
-      this.remoteMuted = {}
-      this.localStream = null
-      this.endReason = reason || null
-      this.scheduleIdle()
+      // A hangup is a terminal navigation event: leave the full-screen media
+      // surface immediately instead of keeping a stale "ended" page visible.
+      this.hardResetState()
     },
 
     scheduleIdle() {
@@ -517,6 +663,10 @@ export const useRtcStore = defineStore('rtc', {
     },
 
     hardResetState() {
+      this.stopRinging()
+      lifecycleGeneration++
+      joining = false
+      rejoining = false
       this.clearIdleTimer()
       this.stopPolling()
       this.stopDuration()
@@ -541,6 +691,7 @@ export const useRtcStore = defineStore('rtc', {
       this.devices = {
         audioMuted: false,
         videoOff: false,
+        backgroundRemoved: false,
         speakerOn: true,
         activeInputId: null,
         activeOutputId: null
@@ -554,8 +705,24 @@ export const useRtcStore = defineStore('rtc', {
     },
     async toggleCamera() {
       if (this.mode !== 'video') return
-      this.devices.videoOff = !this.devices.videoOff
-      if (this.joined) await rtcMediaPort.setVideoEnabled(!this.devices.videoOff)
+      const nextVideoOff = !this.devices.videoOff
+      this.devices.videoOff = nextVideoOff
+      if (this.joined) {
+        const applied = await rtcMediaPort.setVideoEnabled(!nextVideoOff)
+        if (!applied) {
+          this.devices.videoOff = !nextVideoOff
+          this.error = '摄像头切换失败,请检查摄像头权限'
+          return
+        }
+      }
+      if (nextVideoOff) this.devices.backgroundRemoved = false
+    },
+    async toggleBackgroundRemoval() {
+      if (this.mode !== 'video' || !this.joined || this.devices.videoOff) return
+      const next = !this.devices.backgroundRemoved
+      const applied = await rtcMediaPort.setBackgroundRemoval(next)
+      if (applied) this.devices.backgroundRemoved = next
+      else this.error = '背景处理不可用,已保留原摄像头'
     },
     toggleSpeaker() {
       this.devices.speakerOn = !this.devices.speakerOn

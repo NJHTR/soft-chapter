@@ -37,7 +37,7 @@
 
       <div class="line"></div>
       <div class="title">通用</div>
-      <div class="row">
+      <div class="row" @click="feedbackOpen = true">
         <div class="left">
           <img src="@/assets/img/icon/newicon/left_menu/remind.png" alt="" />
           <span>通知设置</span>
@@ -183,12 +183,15 @@
 
       <div class="version">SeekFlow {{ gitLastCommitHash }}</div>
     </div>
+    <NotificationFeedbackSettings :open="feedbackOpen" @close="feedbackOpen = false" />
   </div>
 </template>
 <script setup lang="ts">
 import { ref } from 'vue'
+import NotificationFeedbackSettings from '@/components/NotificationFeedbackSettings.vue'
 
 const gitLastCommitHash = ref(LATEST_COMMIT_HASH)
+const feedbackOpen = ref(false)
 
 defineOptions({
   name: 'ChooseSchool'

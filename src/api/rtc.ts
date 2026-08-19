@@ -52,6 +52,11 @@ export function joinCall(callId: string, data: RtcActionRequest = {}) {
   return request({ url: `/rtc/call/${callId}/join`, method: 'post', data })
 }
 
+/** POST /api/rtc/call/{callId}/connected → 客户端媒体连接成功确认 */
+export function confirmConnectedCall(callId: string, data: RtcActionRequest = {}) {
+  return request({ url: `/rtc/call/${callId}/connected`, method: 'post', data })
+}
+
 export function leaveCall(callId: string, data: RtcActionRequest = {}) {
   return request({ url: `/rtc/call/${callId}/leave`, method: 'post', data })
 }

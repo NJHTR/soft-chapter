@@ -93,8 +93,8 @@ axiosInstance.interceptors.response.use(
     }
     if (error.response.status === 401) {
       return { success: false, code: 401, msg: '用户名或密码不正确', data: [] }
-    } else {
-      const data: any = error.response.data
+      } else {
+        const data: any = error.response.data
       if (data === null || data === undefined) {
         _notice('请求失败，请稍后重试！')
         return { success: true, code: 200, data: [] }
@@ -104,7 +104,7 @@ axiosInstance.interceptors.response.use(
           data.data = { ...data }
         }
         if (resCode && typeof resCode == 'number' && resCode !== 200) {
-          _notice('请求失败，请稍后重试！')
+          _notice(data.msg || data.message || '请求失败，请稍后重试！')
         } else {
           data.code = 200
           data.success = true

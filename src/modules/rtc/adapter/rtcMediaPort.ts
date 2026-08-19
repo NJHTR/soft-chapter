@@ -26,7 +26,9 @@ export interface RtcMediaPort {
   /** connect + 自动发布音轨(join 后按 mode 开启麦克风/摄像头) */
   join(opts: RtcMediaPortJoinOptions): Promise<void>
   setMuted(muted: boolean): Promise<void>
-  setVideoEnabled(enabled: boolean): Promise<void>
+  setVideoEnabled(enabled: boolean): Promise<boolean>
+  /** Toggle local video background removal before publishing to LiveKit. */
+  setBackgroundRemoval(enabled: boolean): Promise<boolean>
   /** 免提开关:作用于已注册的 audio/video 元素的输出设备 */
   setSpeaker(on: boolean): void
   switchFacing(facing: 'user' | 'environment'): Promise<void>

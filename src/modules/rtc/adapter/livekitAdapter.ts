@@ -11,6 +11,7 @@ import {
   type RemoteTrack,
   type RemoteTrackPublication,
   Track,
+  VideoQuality,
   type TrackPublication,
   type LocalTrack
 } from 'livekit-client'
@@ -21,6 +22,7 @@ import {
   type RtcMediaPortCallbacks,
   type RtcMediaPortJoinOptions
 } from './rtcMediaPort'
+import { BackgroundRemovalProcessor } from './backgroundRemoval'
 
 function resolveLiveKitUrl(): string {
   const configured = import.meta.env.VITE_LIVEKIT_URL as string | undefined
@@ -43,11 +45,26 @@ function resolveLiveKitUrl(): string {
   throw new Error('未配置 VITE_LIVEKIT_URL，无法连接生产 LiveKit')
 }
 
-const LIVEKIT_URL: string = resolveLiveKitUrl()
+let cachedLiveKitUrl: string | null = null
+function getLiveKitUrl(): string {
+  if (!cachedLiveKitUrl) cachedLiveKitUrl = resolveLiveKitUrl()
+  return cachedLiveKitUrl
+}
 
 const ROOM_OPTIONS = {
-  adaptiveStream: true,
-  dynacast: true
+  // The provider port currently exposes MediaStream rather than LiveKit's
+  // attach/detach element lifecycle. Keep the baseline deterministic until
+  // that contract is explicit; otherwise adaptiveStream can pause an
+  // un-attached remote video track and present a blurry/black frame.
+  adaptiveStream: false,
+  // Dynacast only pauses local simulcast layers that have no subscribers. It
+  // does not change the MediaStream binding used by the current UI, so it is
+  // safe to enable before the later adaptiveStream/visibility migration.
+  dynacast: true,
+  publishDefaults: {
+    // Make the sender contract explicit instead of relying on SDK defaults.
+    simulcast: true
+  }
 }
 
 const VIDEO_CAPTURE_OPTIONS = {
@@ -74,6 +91,10 @@ class LiveKitMediaPort implements RtcMediaPort {
   private remoteStreams = new Map<string, MediaStream>()
   private localTracks = new Map<string, MediaStreamTrack>()
   private intentionalRooms = new WeakSet<Room>()
+  private backgroundProcessor = new BackgroundRemovalProcessor()
+  private originalCameraTrack: MediaStreamTrack | null = null
+  private processedCameraTrack: MediaStreamTrack | null = null
+  private cameraOperation: Promise<boolean> = Promise.resolve(true)
 
   constructor() {
     setRtOutputApplier(() => this.applyOutputToElements())
@@ -86,20 +107,23 @@ class LiveKitMediaPort implements RtcMediaPort {
   async join(opts: RtcMediaPortJoinOptions): Promise<void> {
     this.ensureFreshRoom()
     const room = this.room!
-    await room.connect(LIVEKIT_URL, opts.token, { autoSubscribe: true })
+    await room.connect(getLiveKitUrl(), opts.token, { autoSubscribe: true })
     const lp = room.localParticipant
     if (opts.mode === 'video') {
       await this.tryEnableCamera(lp)
+      this.originalCameraTrack = lp.getTrackPublication(Track.Source.Camera)?.track?.mediaStreamTrack || null
     }
     await lp.setMicrophoneEnabled(true)
     this.syncLocalTracks(lp)
   }
 
-  private async tryEnableCamera(lp: LocalParticipant) {
+  private async tryEnableCamera(lp: LocalParticipant): Promise<boolean> {
     try {
       await lp.setCameraEnabled(true, VIDEO_CAPTURE_OPTIONS)
+      return true
     } catch (e) {
       console.warn('[rtc] camera not available, fallback to audio only', e)
+      return false
     }
   }
 
@@ -112,6 +136,7 @@ class LiveKitMediaPort implements RtcMediaPort {
     }
     this.remoteStreams.clear()
     this.localTracks.clear()
+    void this.resetBackgroundRemoval()
     const room = new Room(ROOM_OPTIONS)
     this.room = room
     this.wireEvents(room)
@@ -143,11 +168,19 @@ class LiveKitMediaPort implements RtcMediaPort {
   private onLocalTrackPublished = (pub: LocalTrackPublication) => {
     const track: LocalTrack | undefined = pub.track
     if (!track) return
+    console.info('[rtc] local track published', {
+      source: pub.source,
+      kind: pub.kind,
+      trackId: track.mediaStreamTrack.id,
+      readyState: track.mediaStreamTrack.readyState,
+      enabled: track.mediaStreamTrack.enabled
+    })
     this.localTracks.set(String(pub.source || pub.kind), track.mediaStreamTrack)
     this.emitLocalStream()
   }
 
   private onLocalTrackUnpublished = (pub: LocalTrackPublication) => {
+    console.info('[rtc] local track unpublished', { source: pub.source, kind: pub.kind })
     this.localTracks.delete(String(pub.source || pub.kind))
     this.emitLocalStream()
   }
@@ -167,16 +200,42 @@ class LiveKitMediaPort implements RtcMediaPort {
 
   private onTrackSubscribed = (
     track: RemoteTrack,
-    _publication: RemoteTrackPublication,
+    publication: RemoteTrackPublication,
     participant: RemoteParticipant
   ) => {
     const identity = participant.identity
+    console.info('[rtc] remote track subscribed', {
+      identity,
+      kind: track.kind,
+      trackId: track.mediaStreamTrack.id,
+      readyState: track.mediaStreamTrack.readyState,
+      enabled: track.mediaStreamTrack.enabled
+    })
+    if (track.kind === Track.Kind.Video) {
+      publication.setVideoQuality(
+        this.room && this.room.remoteParticipants.size > 1
+          ? VideoQuality.LOW
+          : VideoQuality.HIGH
+      )
+      this.applyRemoteVideoQuality()
+    }
     let stream = this.remoteStreams.get(identity)
     if (!stream) {
       stream = new MediaStream()
       this.remoteStreams.set(identity, stream)
     }
-    stream.addTrack(track.mediaStreamTrack)
+    // A participant can publish a fresh camera track before the browser has
+    // delivered TrackUnsubscribed for the old one. Keep one live track per
+    // media kind so a stale ended track cannot win the preview binding.
+    stream.getTracks().forEach((existing) => {
+      if (existing.kind === track.kind && existing.id !== track.mediaStreamTrack.id) {
+        stream?.removeTrack(existing)
+      }
+    })
+    if (!stream.getTracks().some((existing) => existing.id === track.mediaStreamTrack.id)) {
+      stream.addTrack(track.mediaStreamTrack)
+    }
+    this.cb.onRemoteMute(identity, track.kind === 'audio' ? 'audio' : 'video', false)
     this.cb.onRemoteTrack(identity, stream)
   }
 
@@ -186,6 +245,11 @@ class LiveKitMediaPort implements RtcMediaPort {
     participant: RemoteParticipant
   ) => {
     const identity = participant.identity
+    console.info('[rtc] remote track unsubscribed', {
+      identity,
+      kind: track.kind,
+      trackId: track.mediaStreamTrack.id
+    })
     const stream = this.remoteStreams.get(identity)
     if (!stream) return
     stream.removeTrack(track.mediaStreamTrack)
@@ -204,6 +268,16 @@ class LiveKitMediaPort implements RtcMediaPort {
 
   private onTrackMuted = (publication: TrackPublication, participant: Participant) => {
     if (participant.isLocal) return
+    const currentStream = this.remoteStreams.get(participant.identity)
+    const publicationTrack = publication.track?.mediaStreamTrack
+    if (
+      currentStream &&
+      publicationTrack &&
+      !currentStream.getTracks().some((track) => track.id === publicationTrack.id)
+    ) {
+      // Ignore a late mute event from a camera track that was already replaced.
+      return
+    }
     this.cb.onRemoteMute(
       participant.identity,
       publication.kind === 'audio' ? 'audio' : 'video',
@@ -213,6 +287,15 @@ class LiveKitMediaPort implements RtcMediaPort {
 
   private onTrackUnmuted = (publication: TrackPublication, participant: Participant) => {
     if (participant.isLocal) return
+    const currentStream = this.remoteStreams.get(participant.identity)
+    const publicationTrack = publication.track?.mediaStreamTrack
+    if (
+      currentStream &&
+      publicationTrack &&
+      !currentStream.getTracks().some((track) => track.id === publicationTrack.id)
+    ) {
+      return
+    }
     this.cb.onRemoteMute(
       participant.identity,
       publication.kind === 'audio' ? 'audio' : 'video',
@@ -221,20 +304,94 @@ class LiveKitMediaPort implements RtcMediaPort {
   }
 
   private onActiveSpeakersChanged = (speakers: Participant[]) => {
+    this.applyRemoteVideoQuality(speakers[0]?.identity ?? null)
     this.cb.onActiveSpeaker(speakers[0]?.identity ?? null)
+  }
+
+  /**
+   * Keep group calls audio-first without changing the 1:1 quality baseline.
+   * The full visibility/attach-driven policy belongs to RTC-012; this small
+   * policy is safe with the current MediaStream adapter and reduces SFU egress
+   * as soon as a room has more than one remote participant.
+   */
+  private applyRemoteVideoQuality(activeSpeaker: string | null = null) {
+    const room = this.room
+    if (!room || room.remoteParticipants.size <= 1) return
+    room.remoteParticipants.forEach((participant) => {
+      participant.trackPublications.forEach((publication) => {
+        if (publication.kind !== Track.Kind.Video) return
+        publication.setVideoQuality(
+          participant.identity === activeSpeaker ? VideoQuality.MEDIUM : VideoQuality.LOW
+        )
+      })
+    })
   }
 
   async setMuted(muted: boolean): Promise<void> {
     await this.room?.localParticipant.setMicrophoneEnabled(!muted)
   }
 
-  async setVideoEnabled(enabled: boolean): Promise<void> {
+  async setVideoEnabled(enabled: boolean): Promise<boolean> {
+    const operation = this.cameraOperation
+      .then(() => this.applyVideoEnabled(enabled))
+      .catch((error) => {
+        console.warn('[rtc] camera toggle failed', error)
+        return false
+      })
+    this.cameraOperation = operation
+    return operation
+  }
+
+  private async applyVideoEnabled(enabled: boolean): Promise<boolean> {
     const room = this.room
-    if (!room) return
+    if (!room) return false
     if (enabled) {
-      await this.tryEnableCamera(room.localParticipant)
+      const enabledResult = await this.tryEnableCamera(room.localParticipant)
+      if (!enabledResult) return false
+      const cameraTrack =
+        room.localParticipant.getTrackPublication(Track.Source.Camera)?.track?.mediaStreamTrack ||
+        null
+      if (!cameraTrack || cameraTrack.readyState === 'ended') {
+        console.warn('[rtc] camera enabled without a live media track')
+        return false
+      }
+      this.originalCameraTrack = cameraTrack
+      this.syncLocalTracks(room.localParticipant)
+      return true
     } else {
+      await this.resetBackgroundRemoval()
       await room.localParticipant.setCameraEnabled(false)
+      this.syncLocalTracks(room.localParticipant)
+      return true
+    }
+  }
+
+  async setBackgroundRemoval(enabled: boolean): Promise<boolean> {
+    const room = this.room
+    if (!room) return false
+    const publication = room.localParticipant.getTrackPublication(Track.Source.Camera)
+    const localTrack = publication?.track as LocalVideoTrack | undefined
+    if (!localTrack) return false
+    if (!this.originalCameraTrack) this.originalCameraTrack = localTrack.mediaStreamTrack
+
+    if (!enabled) {
+      if (this.originalCameraTrack) await localTrack.replaceTrack(this.originalCameraTrack)
+      await this.backgroundProcessor.stop()
+      this.processedCameraTrack = null
+      this.syncLocalTracks(room.localParticipant)
+      return true
+    }
+
+    try {
+      this.processedCameraTrack = await this.backgroundProcessor.start(this.originalCameraTrack)
+      await localTrack.replaceTrack(this.processedCameraTrack)
+      this.syncLocalTracks(room.localParticipant)
+      return true
+    } catch (error) {
+      await this.backgroundProcessor.stop()
+      this.processedCameraTrack = null
+      console.warn('[rtc] background removal unavailable', error)
+      return false
     }
   }
 
@@ -260,6 +417,8 @@ class LiveKitMediaPort implements RtcMediaPort {
     const room = this.room
     if (!room) return
     const lp = room.localParticipant
+    const restoreBackgroundRemoval = Boolean(this.processedCameraTrack)
+    if (restoreBackgroundRemoval) await this.resetBackgroundRemoval()
     try {
       const publication = lp.getTrackPublication(Track.Source.Camera)
       const track = publication?.track as LocalVideoTrack | undefined
@@ -269,6 +428,10 @@ class LiveKitMediaPort implements RtcMediaPort {
         await lp.setCameraEnabled(true, { facingMode: facing })
       }
       this.syncLocalTracks(lp)
+      if (restoreBackgroundRemoval) {
+        const enabled = await this.setBackgroundRemoval(true)
+        if (!enabled) console.warn('[rtc] background removal could not be restored after camera switch')
+      }
     } catch (e) {
       console.warn('[rtc] switch camera failed', e)
       await this.tryEnableCamera(lp)
@@ -299,6 +462,7 @@ class LiveKitMediaPort implements RtcMediaPort {
   }
 
   dispose(): void {
+    void this.resetBackgroundRemoval()
     if (this.room) {
       this.intentionalRooms.add(this.room)
       this.room.removeAllListeners()
@@ -309,7 +473,22 @@ class LiveKitMediaPort implements RtcMediaPort {
     this.localTracks.clear()
     setRtOutputApplier(() => this.applyOutputToElements())
   }
+
+  private async resetBackgroundRemoval() {
+    const room = this.room
+    const publication = room?.localParticipant.getTrackPublication(Track.Source.Camera)
+    const localTrack = publication?.track as LocalVideoTrack | undefined
+    if (localTrack && this.originalCameraTrack) {
+      try {
+        await localTrack.replaceTrack(this.originalCameraTrack)
+      } catch {
+        /* camera may already be unpublished while leaving a room */
+      }
+    }
+    await this.backgroundProcessor.stop()
+    this.processedCameraTrack = null
+    this.originalCameraTrack = null
+  }
 }
 
 export const rtcMediaPort: RtcMediaPort = new LiveKitMediaPort()
-export { LIVEKIT_URL }

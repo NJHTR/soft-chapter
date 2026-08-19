@@ -215,6 +215,11 @@ let mounted = false
 let playbackGeneration = 0
 let mediaRecoveryTimer: ReturnType<typeof setTimeout> | null = null
 let mediaRecoveryAttempts = 0
+const presenceSessionId =
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `live-${Date.now()}-${Math.random().toString(36).slice(2)}`
+let presenceTimer: ReturnType<typeof setInterval> | null = null
 
 const visibleComments = computed(() => chatMessages.value.slice(-8))
 
@@ -253,7 +258,7 @@ onMounted(async () => {
   }
 
   try {
-    const joined: any = await joinLive(roomId.value)
+    const joined: any = await joinLive(roomId.value, presenceSessionId)
     if (!mounted || generation !== playbackGeneration) return
     // The join response is authoritative when the detail request raced the
     // broadcaster's transition to LIVE or returned before media was ready.
@@ -278,6 +283,7 @@ onBeforeUnmount(() => {
   mounted = false
   playbackGeneration++
   wsStopped = true
+  stopPresenceHeartbeat()
   if (wsReconnectTimer) {
     clearTimeout(wsReconnectTimer)
     wsReconnectTimer = null
@@ -301,7 +307,7 @@ onBeforeUnmount(() => {
   player = null
   fallbackStop?.()
   fallbackStop = null
-  leaveLive(roomId.value).catch(() => {})
+  leaveLive(roomId.value, presenceSessionId).catch(() => {})
 })
 
 async function initPlayer(generation = ++playbackGeneration) {
@@ -408,11 +414,12 @@ function connectWs() {
   const token = encodeURIComponent(localStorage.getItem('token') || '')
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
   liveWs = new WebSocket(
-    `${protocol}//${location.host}/ws/live/${roomId.value}?role=viewer&token=${token}`
+    `${protocol}//${location.host}/ws/live/${roomId.value}?role=viewer&token=${token}&sessionId=${encodeURIComponent(presenceSessionId)}`
   )
 
   liveWs.onopen = () => {
     reconnectAttempts = 0
+    startPresenceHeartbeat()
   }
   liveWs.onmessage = (e) => {
     try {
@@ -449,11 +456,26 @@ function connectWs() {
     /* close handler owns reconnect */
   }
   liveWs.onclose = () => {
+    stopPresenceHeartbeat()
     if (wsStopped) return
     if (reconnectAttempts < 10) {
       reconnectAttempts++
       wsReconnectTimer = setTimeout(connectWs, 3000)
     }
+  }
+}
+
+function startPresenceHeartbeat() {
+  stopPresenceHeartbeat()
+  presenceTimer = setInterval(() => {
+    if (liveWs?.readyState === WebSocket.OPEN) liveWs.send(JSON.stringify({ type: 'presence' }))
+  }, 15_000)
+}
+
+function stopPresenceHeartbeat() {
+  if (presenceTimer) {
+    clearInterval(presenceTimer)
+    presenceTimer = null
   }
 }
 

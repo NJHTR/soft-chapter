@@ -1,14 +1,34 @@
 <template>
   <Transition name="rtc-fade">
-    <div v-if="store.phase !== 'idle'" class="rtc-panel" @click.stop>
+    <div
+      v-if="store.phase !== 'idle'"
+      class="rtc-panel"
+      :class="{ 'rtc-panel-minimized': store.minimized }"
+      @click.stop
+    >
       <!-- 最小化胶囊(connected 时) -->
       <div
         v-if="store.minimized && store.phase === 'connected'"
         class="rtc-capsule"
-        @click="store.toggleMinimize()"
+        :style="capsuleStyle"
+        @pointerdown="beginCapsuleDrag"
+        @click.stop="restoreFromCapsule"
       >
-        <span class="capsule-name">{{ peerName }}</span>
-        <span class="capsule-time">{{ store.durationText }}</span>
+        <div class="rtc-capsule-media">
+          <video
+            v-if="store.mode === 'video' && peerVideoEnable"
+            class="rtc-capsule-video"
+            :ref="setMinimizedRemoteVideoEl"
+            autoplay
+            playsinline
+            muted
+          />
+          <img v-else :src="peerAvatar || defaultAvatar" alt="" />
+        </div>
+        <div class="rtc-capsule-info">
+          <span class="capsule-name">{{ peerName }}</span>
+          <span class="capsule-time">{{ store.durationText }}</span>
+        </div>
       </div>
 
       <template v-else>
@@ -20,7 +40,11 @@
           <div v-if="store.error" class="rtc-error">{{ store.error }}</div>
           <div class="rtc-actions dialing-actions">
             <div class="rtc-action-btn hangup" @click="store.cancel()">
-              <div class="btn-circle hangup"><img :src="iconCallEnd" alt="" /></div>
+              <div class="btn-circle hangup">
+                <svg class="rtc-svg-icon rtc-hangup-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z" transform="rotate(135 12 12)" />
+                </svg>
+              </div>
               <span>取消</span>
             </div>
           </div>
@@ -41,7 +65,11 @@
           </div>
           <div class="rtc-actions incoming-actions">
             <div class="rtc-action-btn" @click="store.reject()">
-              <div class="btn-circle red"><img :src="iconCallEnd" alt="" /></div>
+              <div class="btn-circle red">
+                <svg class="rtc-svg-icon rtc-hangup-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z" transform="rotate(135 12 12)" />
+                </svg>
+              </div>
               <span>拒绝</span>
             </div>
             <div class="rtc-action-btn" @click="store.accept()">
@@ -59,7 +87,11 @@
           <div v-if="store.error" class="rtc-error">{{ store.error }}</div>
           <div class="rtc-actions dialing-actions">
             <div class="rtc-action-btn hangup" @click="store.hangup()">
-              <div class="btn-circle hangup"><img :src="iconCallEnd" alt="" /></div>
+              <div class="btn-circle hangup">
+                <svg class="rtc-svg-icon rtc-hangup-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z" transform="rotate(135 12 12)" />
+                </svg>
+              </div>
               <span>挂断</span>
             </div>
           </div>
@@ -67,6 +99,25 @@
 
         <!-- ═══ 通话中 ═══ -->
         <div v-else-if="store.phase === 'connected'" class="rtc-connected">
+          <button
+            type="button"
+            class="rtc-minimize-btn"
+            aria-label="最小化通话"
+            title="最小化通话"
+            @click="store.toggleMinimize()"
+          >
+            <svg
+              class="rtc-svg-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
           <!-- 群通话: 多参与者网格 -->
           <template v-if="isGroup">
             <div class="rtc-group-stage">
@@ -108,22 +159,23 @@
                   :class="{ speaking: store.activeSpeaker === entry.identity }"
                 >
                   <video
-                    v-if="store.mode === 'video' && !entry.muted.video && entry.stream"
+                    v-if="store.mode === 'video' && entry.videoEnabled && entry.stream"
                     :ref="(el) => setGroupVideoEl(entry.identity, el as any)"
                     class="rtc-group-tile-video"
                     autoplay
                     playsinline
+                    muted
                   />
                   <audio
-                    v-if="store.mode === 'audio' && entry.stream"
+                    v-if="entry.stream"
                     :ref="(el) => setGroupVideoEl(`aud-${entry.identity}`, el as any)"
                     autoplay
                     playsinline
                     class="rtc-hidden-audio"
                   />
                   <div
-                    v-if="store.mode === 'audio' || entry.muted.video || !entry.stream"
-                    class="rtc-group-tile-off"
+                  v-if="store.mode === 'audio' || !entry.videoEnabled || !entry.stream"
+                  class="rtc-group-tile-off"
                   >
                     <img :src="entry.avatar || defaultAvatar" alt="" />
                   </div>
@@ -145,32 +197,68 @@
             </div>
           </template>
           <template v-else-if="store.mode === 'video'">
-            <div class="rtc-video-stage">
-              <!-- 远端 -->
-              <video
-                v-if="peerVideoEnable"
-                class="rtc-video-remote"
-                :ref="setRemoteVideoEl"
-                autoplay
-                playsinline
-              />
-              <div v-else class="rtc-video-placeholder">
-                <img :src="peerAvatar || defaultAvatar" alt="" />
-                <span>视频已关闭</span>
-              </div>
-              <!-- 本地小窗 -->
-              <div v-if="localVideoEnable" class="rtc-video-local">
+            <div class="rtc-video-stage" :class="{ 'rtc-video-stage-remote-focused': videoLayoutSwapped }">
+              <!-- 本机主画面 -->
+              <div
+                class="rtc-video-self-layer"
+                :class="{ 'is-clickable': videoLayoutSwapped }"
+                :role="videoLayoutSwapped ? 'button' : undefined"
+                :tabindex="videoLayoutSwapped ? 0 : -1"
+                aria-label="切换主画面"
+                @click.stop="videoLayoutSwapped && toggleVideoLayout()"
+                @keydown.enter.prevent="videoLayoutSwapped && toggleVideoLayout()"
+                @keydown.space.prevent="videoLayoutSwapped && toggleVideoLayout()"
+              >
                 <video
+                  v-if="localVideoEnable"
+                  class="rtc-video-self"
                   ref="localVideoEl"
                   autoplay
                   playsinline
                   muted
-                  class="rtc-video-local-stream"
+                  @loadedmetadata="logLocalVideoEvent('loadedmetadata', $event)"
+                  @playing="logLocalVideoEvent('playing', $event)"
+                  @error="logLocalVideoEvent('error', $event)"
                 />
+                <div v-else class="rtc-video-self-placeholder">
+                  <img :src="myAvatar || defaultAvatar" alt="" />
+                  <span>我的摄像头已关闭</span>
+                </div>
               </div>
-              <div v-else-if="store.localStream" class="rtc-video-local rtc-avatar-only">
-                <img :src="myAvatar || defaultAvatar" alt="" />
+              <!-- 对端右上角小窗 -->
+              <div
+                class="rtc-video-remote-preview"
+                :class="{ 'is-clickable': !videoLayoutSwapped }"
+                :role="!videoLayoutSwapped ? 'button' : undefined"
+                :tabindex="!videoLayoutSwapped ? 0 : -1"
+                aria-label="切换主画面"
+                @click.stop="!videoLayoutSwapped && toggleVideoLayout()"
+                @keydown.enter.prevent="!videoLayoutSwapped && toggleVideoLayout()"
+                @keydown.space.prevent="!videoLayoutSwapped && toggleVideoLayout()"
+              >
+                <video
+                  v-if="store.mode === 'video'"
+                  class="rtc-video-remote-preview-stream"
+                  :class="{ 'rtc-video-remote-preview-hidden': !peerVideoEnable }"
+                  :ref="setRemoteVideoEl"
+                  autoplay
+                  playsinline
+                  muted
+                  @loadedmetadata="logRemoteVideoEvent('loadedmetadata', $event)"
+                  @playing="logRemoteVideoEvent('playing', $event)"
+                  @error="logRemoteVideoEvent('error', $event)"
+                />
+                <div v-if="!peerVideoEnable" class="rtc-video-remote-preview-placeholder">
+                  <img :src="peerAvatar || defaultAvatar" alt="" />
+                </div>
               </div>
+              <audio
+                v-if="peerStream"
+                :ref="setRemoteAudioEl"
+                autoplay
+                playsinline
+                class="rtc-hidden-audio"
+              />
               <!-- 顶部信息 -->
               <div class="rtc-top-bar">
                 <span class="rtc-peer-name">{{ peerName }}</span>
@@ -205,60 +293,90 @@
           </template>
 
           <div class="rtc-actions bottom-actions">
-            <div class="rtc-action-btn" @click="store.toggleMute()">
-              <div class="btn-circle" :class="{ off: store.devices.audioMuted }">
-                <svg
-                  v-if="store.devices.audioMuted"
-                  class="rtc-svg-icon"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M1 1l22 22" />
-                  <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-                  <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
-                </svg>
-                <svg
-                  v-else
-                  class="rtc-svg-icon"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" y1="19" x2="12" y2="23" />
-                  <line x1="8" y1="23" x2="16" y2="23" />
-                </svg>
+            <div
+              class="rtc-action-row rtc-primary-row"
+              :class="{ 'audio-primary-row': store.mode !== 'video' }"
+            >
+              <div class="rtc-action-btn" @click="store.toggleMute()">
+                <div class="btn-circle" :class="{ off: store.devices.audioMuted }">
+                  <svg
+                    v-if="store.devices.audioMuted"
+                    class="rtc-svg-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M1 1l22 22" />
+                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+                  </svg>
+                  <svg
+                    v-else
+                    class="rtc-svg-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>
+                </div>
+                <span>{{ store.devices.audioMuted ? '已静音' : '麦克风' }}</span>
               </div>
-              <span>{{ store.devices.audioMuted ? '已静音' : '麦克风' }}</span>
-            </div>
-            <div class="rtc-action-btn" @click="store.toggleSpeaker()">
-              <div class="btn-circle" :class="{ off: !store.devices.speakerOn }">
-                <img :src="store.devices.speakerOn ? iconSpeakerOn : iconSpeakerOff" alt="" />
+              <div class="rtc-action-btn" @click="store.toggleSpeaker()">
+                <div class="btn-circle" :class="{ off: !store.devices.speakerOn }">
+                  <img :src="store.devices.speakerOn ? iconSpeakerOn : iconSpeakerOff" alt="" />
+                </div>
+                <span>扬声器</span>
               </div>
-              <span>扬声器</span>
-            </div>
-            <div class="rtc-action-btn" @click="store.hangup()">
-              <div class="btn-circle hangup">
-                <img :src="iconCallEnd" alt="" />
-              </div>
-              <span>挂断</span>
-            </div>
-            <template v-if="store.mode === 'video'">
-              <div class="rtc-action-btn" @click="store.toggleCamera()">
+              <div v-if="store.mode === 'video'" class="rtc-action-btn" @click="store.toggleCamera()">
                 <div class="btn-circle" :class="{ off: store.devices.videoOff }">
                   <img :src="store.devices.videoOff ? iconCameraOff : iconCameraOn" alt="" />
                 </div>
-                <span>摄像头</span>
+                <span>{{ store.devices.videoOff ? '摄像头已关' : '摄像头' }}</span>
               </div>
-              <div class="rtc-action-btn" @click="store.switchCamera()">
+            </div>
+            <div class="rtc-action-row rtc-secondary-row">
+              <div
+                v-if="store.mode === 'video'"
+                class="rtc-action-btn secondary-background"
+                :class="{ active: store.devices.backgroundRemoved }"
+                @click="store.toggleBackgroundRemoval()"
+              >
+                <div class="btn-circle">
+                  <svg
+                    class="rtc-svg-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M4 4h16v16H4z" />
+                    <path d="m8 15 2.5-3 2 2 2.5-3L19 16" />
+                    <circle cx="9" cy="9" r="1" />
+                  </svg>
+                </div>
+                <span>{{ store.devices.backgroundRemoved ? '已去背景' : '去背景' }}</span>
+              </div>
+              <div class="rtc-action-btn secondary-hangup" @click="store.hangup()">
+                <div class="btn-circle hangup">
+                  <svg class="rtc-svg-icon rtc-hangup-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z" transform="rotate(135 12 12)" />
+                  </svg>
+                </div>
+                <span>挂断</span>
+              </div>
+              <div v-if="store.mode === 'video'" class="rtc-action-btn secondary-flip" @click="store.switchCamera()">
                 <div class="btn-circle">
                   <svg
                     class="rtc-svg-icon"
@@ -271,28 +389,11 @@
                   >
                     <polyline points="23 4 23 10 17 10" />
                     <polyline points="1 20 1 14 7 14" />
-                    <path
-                      d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
-                    />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
                   </svg>
                 </div>
                 <span>翻转</span>
               </div>
-            </template>
-            <div class="rtc-action-btn" @click="store.toggleMinimize()">
-              <div class="btn-circle">
-                <svg
-                  class="rtc-svg-icon"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                >
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              </div>
-              <span>最小化</span>
             </div>
           </div>
         </div>
@@ -327,7 +428,6 @@ import { useBaseStore } from '@/store/pinia'
 import { _checkImgUrl } from '@/utils'
 import defaultAvatar from '@/assets/img/icon/people-gray.png'
 import iconCall from '@/assets/img/icon/message/chat/call.png'
-import iconCallEnd from '@/assets/img/icon/message/chat/call-end.png'
 import iconCameraOn from '@/assets/img/icon/message/chat/able-camera.png'
 import iconCameraOff from '@/assets/img/icon/message/chat/disabled-camera.png'
 import iconSpeakerOn from '@/assets/img/icon/message/chat/able-volume.png'
@@ -340,9 +440,80 @@ const baseStore = useBaseStore()
 const remoteVideoEl = ref<HTMLVideoElement | null>(null)
 const remoteAudioEl = ref<HTMLAudioElement | null>(null)
 const localVideoEl = ref<HTMLVideoElement | null>(null)
+const minimizedRemoteVideoEl = ref<HTMLVideoElement | null>(null)
+const videoLayoutSwapped = ref(false)
+const minimizedPosition = ref({ left: 16, top: 16 })
+const capsuleStyle = computed(() => ({
+  left: `${minimizedPosition.value.left}px`,
+  top: `${minimizedPosition.value.top}px`
+}))
 
+let capsuleDrag: {
+  pointerId: number
+  startX: number
+  startY: number
+  originLeft: number
+  originTop: number
+  moved: boolean
+} | null = null
+let capsuleClickSuppressed = false
+
+function toggleVideoLayout() {
+  videoLayoutSwapped.value = !videoLayoutSwapped.value
+}
+
+function beginCapsuleDrag(event: PointerEvent) {
+  const target = event.currentTarget as HTMLElement | null
+  if (!target) return
+  capsuleDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    originLeft: minimizedPosition.value.left,
+    originTop: minimizedPosition.value.top,
+    moved: false
+  }
+  target.setPointerCapture?.(event.pointerId)
+  window.addEventListener('pointermove', moveCapsule)
+  window.addEventListener('pointerup', endCapsuleDrag, { once: true })
+}
+
+function moveCapsule(event: PointerEvent) {
+  if (!capsuleDrag || event.pointerId !== capsuleDrag.pointerId) return
+  const dx = event.clientX - capsuleDrag.startX
+  const dy = event.clientY - capsuleDrag.startY
+  if (Math.abs(dx) + Math.abs(dy) > 4) capsuleDrag.moved = true
+  if (!capsuleDrag.moved) return
+  const width = 164
+  const height = 104
+  minimizedPosition.value = {
+    left: Math.max(8, Math.min(window.innerWidth - width - 8, capsuleDrag.originLeft + dx)),
+    top: Math.max(8, Math.min(window.innerHeight - height - 8, capsuleDrag.originTop + dy))
+  }
+}
+
+function endCapsuleDrag() {
+  if (capsuleDrag?.moved) capsuleClickSuppressed = true
+  capsuleDrag = null
+  window.removeEventListener('pointermove', moveCapsule)
+}
+
+function restoreFromCapsule() {
+  if (capsuleClickSuppressed) {
+    capsuleClickSuppressed = false
+    return
+  }
+  store.toggleMinimize()
+}
+
+const peerIdentity = computed(() => {
+  const expected = store.peerId
+  if (expected && store.remoteStreams[expected]) return expected
+  const fallback = Object.keys(store.remoteStreams).find((identity) => identity !== store.myId)
+  return fallback || expected
+})
 const peerStream = computed(() => {
-  const id = store.peerId
+  const id = peerIdentity.value
   return id ? (store.remoteStreams[id] ?? null) : null
 })
 const peerName = computed(() => store.outgoingMeta?.name || store.incoming?.name || '对方')
@@ -354,15 +525,33 @@ const peerAvatar = computed(() =>
   resolveAvatar(store.outgoingMeta?.avatar || store.incoming?.avatar)
 )
 const myAvatar = computed(() => resolveAvatar(baseStore.userinfo.avatar_168x168?.url_list?.[0]))
+// MediaStreamTrack.enabled is mutated by the browser and is not reactive by
+// itself. Read the store signal so LiveKit mute/unmute callbacks invalidate
+// this computed value, then derive visibility from the current track.
+const peerVideoMuteSignal = computed(() => store.remoteMuted[peerIdentity.value]?.video ?? false)
 const peerVideoEnable = computed(
-  () =>
-    !!peerStream.value?.getVideoTracks().some((track) => track.readyState !== 'ended') &&
-    !store.remoteMuted[store.peerId]?.video
+  () => {
+    void peerVideoMuteSignal.value
+    return !!peerStream.value?.getVideoTracks().some(
+      (track) => track.readyState !== 'ended' && track.enabled
+    )
+  }
+)
+const peerVideoSignature = computed(() =>
+  peerStream.value?.getVideoTracks().map((track) => `${track.id}:${track.readyState}:${track.enabled}`).join('|') || ''
 )
 const localVideoEnable = computed(
   () =>
-    !!store.localStream?.getVideoTracks().some((track) => track.readyState !== 'ended') &&
+    !!store.localStream?.getVideoTracks().some(
+      (track) => track.readyState !== 'ended' && track.enabled
+    ) &&
     !store.devices.videoOff
+)
+const localVideoSignature = computed(
+  () =>
+    store.localStream?.getVideoTracks()
+      .map((track) => `${track.id}:${track.readyState}:${track.enabled}`)
+      .join('|') || ''
 )
 
 const END_REASON_TEXT: Record<string, string> = {
@@ -384,12 +573,17 @@ const groupDisplayName = computed(() => {
 const remoteParticipantEntries = computed(() =>
   Object.entries(store.remoteStreams).map(([identity, stream]) => {
     const member = store.groupMeta?.members.find((m) => m.userId === identity)
+    const videoMuteSignal = store.remoteMuted[identity]?.video ?? false
+    void videoMuteSignal
     return {
       identity,
       stream,
       name: member?.name || identity,
       avatar: resolveAvatar(member?.avatar),
-      muted: store.remoteMuted[identity] || { audio: false, video: false }
+      muted: store.remoteMuted[identity] || { audio: false, video: false },
+      videoEnabled: stream.getVideoTracks().some(
+        (track) => track.readyState !== 'ended' && track.enabled
+      )
     }
   })
 )
@@ -397,11 +591,13 @@ const groupMediaEls = new Map<string, HTMLVideoElement | HTMLAudioElement>()
 function setGroupVideoEl(key: string, el: HTMLVideoElement | HTMLAudioElement | null) {
   if (el) {
     groupMediaEls.set(key, el)
+    registerRtOutputEl(`group-${key}`, el)
     const identity = key.startsWith('aud-') ? key.slice(4) : key
     const stream = store.remoteStreams[identity]
-    if (stream) bindStream(el as HTMLMediaElement, stream)
+    if (stream) bindStream(el as HTMLMediaElement, stream, key.startsWith('aud-') ? 'audio' : 'video')
   } else {
     groupMediaEls.delete(key)
+    registerRtOutputEl(`group-${key}`, null)
   }
 }
 watch(
@@ -411,9 +607,9 @@ watch(
     await nextTick()
     for (const [identity, stream] of Object.entries(streams)) {
       const videoEl = groupMediaEls.get(identity)
-      if (videoEl) await bindStream(videoEl as HTMLMediaElement, stream)
+      if (videoEl) await bindStream(videoEl as HTMLMediaElement, stream, 'video')
       const audioEl = groupMediaEls.get(`aud-${identity}`)
-      if (audioEl) await bindStream(audioEl as HTMLMediaElement, stream)
+      if (audioEl) await bindStream(audioEl as HTMLMediaElement, stream, 'audio')
     }
   },
   { deep: true }
@@ -427,35 +623,147 @@ function setRemoteAudioEl(el: any) {
   remoteAudioEl.value = el
   registerRtOutputEl('remote-audio', el || null)
 }
+function setMinimizedRemoteVideoEl(el: HTMLVideoElement | null) {
+  minimizedRemoteVideoEl.value = el
+  registerRtOutputEl('remote-video-minimized', el)
+}
 
-async function bindStream(el: HTMLMediaElement | null, stream: MediaStream | null) {
+function logRemoteVideoEvent(name: string, event: Event) {
+  const el = event.currentTarget as HTMLVideoElement | null
+  console.info('[rtc] remote video element', {
+    event: name,
+    videoWidth: el?.videoWidth || 0,
+    videoHeight: el?.videoHeight || 0,
+    readyState: el?.readyState ?? -1,
+    networkState: el?.networkState ?? -1,
+    currentTime: el?.currentTime ?? 0,
+    tracks: (el?.srcObject as MediaStream | null)?.getTracks().map((track) => ({
+      kind: track.kind,
+      readyState: track.readyState,
+      enabled: track.enabled
+    })) || []
+  })
+}
+
+function logLocalVideoEvent(name: string, event: Event) {
+  const el = event.currentTarget as HTMLVideoElement | null
+  console.info('[rtc] local video element', {
+    event: name,
+    videoWidth: el?.videoWidth || 0,
+    videoHeight: el?.videoHeight || 0,
+    readyState: el?.readyState ?? -1,
+    tracks: (el?.srcObject as MediaStream | null)?.getTracks().map((track) => ({
+      kind: track.kind,
+      readyState: track.readyState,
+      enabled: track.enabled
+    })) || []
+  })
+}
+
+async function bindStream(
+  el: HTMLMediaElement | null,
+  stream: MediaStream | null,
+  kind?: 'audio' | 'video'
+) {
   if (!el) return
-  if (el.srcObject !== stream) el.srcObject = stream
-  if (stream) await el.play().catch(() => {})
+  const tracks = stream
+    ? kind === 'video'
+      ? stream.getVideoTracks()
+      : kind === 'audio'
+        ? stream.getAudioTracks()
+        : stream.getTracks()
+    : []
+  const mediaStream = stream && tracks.length > 0 ? new MediaStream(tracks) : null
+  const currentTracks = el.srcObject instanceof MediaStream ? el.srcObject.getTracks() : []
+  const sameTracks =
+    currentTracks.length === tracks.length &&
+    currentTracks.every((track) => tracks.some((nextTrack) => nextTrack.id === track.id))
+  if (!sameTracks) {
+    el.srcObject = mediaStream
+    el.load()
+  }
+  if (mediaStream) {
+    await el.play().catch((error) => {
+      console.warn('[rtc] media element play failed', {
+        kind: kind || (el instanceof HTMLVideoElement ? 'video' : 'audio'),
+        readyState: el.readyState,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
+  }
 }
 
 watch(
-  [peerStream, () => store.mode, () => store.phase],
+  [peerStream, peerVideoSignature, () => store.mode, () => store.phase],
   async () => {
     await nextTick()
-    await bindStream(remoteVideoEl.value, store.mode === 'video' ? peerStream.value : null)
-    await bindStream(remoteAudioEl.value, store.mode === 'audio' ? peerStream.value : null)
+    await bindStream(remoteVideoEl.value, store.mode === 'video' ? peerStream.value : null, 'video')
+    // Video calls still carry a remote Opus track. Keep it on a dedicated
+    // audio element while the video element stays muted to avoid double play.
+    await bindStream(remoteAudioEl.value, peerStream.value, 'audio')
   },
   { immediate: true }
 )
 
 watch(
-  () => store.localStream,
-  async (stream) => {
+  [() => store.localStream, localVideoSignature, () => store.phase, () => store.mode, () => store.devices.videoOff],
+  async ([stream]) => {
     await nextTick()
-    await bindStream(localVideoEl.value, stream)
+    await bindStream(
+      localVideoEl.value,
+      store.mode === 'video' && !store.devices.videoOff ? stream : null,
+      'video'
+    )
+  },
+  { immediate: true }
+)
+
+watch(
+  [peerStream, peerVideoSignature, () => store.minimized],
+  async () => {
+    await nextTick()
+    await bindStream(
+      minimizedRemoteVideoEl.value,
+      store.mode === 'video' && store.minimized ? peerStream.value : null,
+      'video'
+    )
+  },
+  { immediate: true }
+)
+
+watch(
+  () => store.phase,
+  (phase) => {
+    if (phase !== 'connected') videoLayoutSwapped.value = false
+  }
+)
+
+watch(
+  [peerStream, peerVideoSignature, () => store.remoteMuted[peerIdentity.value]?.video],
+  ([stream, signature, muted]) => {
+    console.info('[rtc] remote video state', {
+      peerId: peerIdentity.value,
+      hasStream: !!stream,
+      videoTracks: stream?.getVideoTracks().length || 0,
+      liveVideoTracks:
+        stream?.getVideoTracks().filter((track) => track.readyState !== 'ended').length || 0,
+      enabledVideoTracks:
+        stream?.getVideoTracks().filter((track) => track.readyState !== 'ended' && track.enabled)
+          .length || 0,
+      signature,
+      muted: !!muted
+    })
   },
   { immediate: true }
 )
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pointermove', moveCapsule)
+  window.removeEventListener('pointerup', endCapsuleDrag)
   registerRtOutputEl('remote-video', null)
   registerRtOutputEl('remote-audio', null)
+  registerRtOutputEl('remote-video-minimized', null)
+  for (const key of groupMediaEls.keys()) registerRtOutputEl(`group-${key}`, null)
   groupMediaEls.clear()
 })
 
@@ -477,6 +785,15 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.rtc-panel-minimized {
+  background: transparent;
+  pointer-events: none;
+
+  .rtc-capsule {
+    pointer-events: auto;
+  }
 }
 
 .rtc-center {
@@ -531,7 +848,80 @@ onMounted(() => {
     bottom: 0;
     left: 0;
     right: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16rem;
+    padding: 20rem 16rem 30rem;
+    z-index: 6;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent);
+  }
+
+  .rtc-action-row {
+    width: min(100%, 360rem);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12rem;
+  }
+
+  .rtc-primary-row {
+    .rtc-action-btn .btn-circle {
+      width: 64rem;
+      height: 64rem;
+
+      img,
+      .rtc-svg-icon {
+        width: 30rem;
+        height: 30rem;
+      }
+    }
+  }
+
+  .audio-primary-row {
+    width: min(100%, 240rem);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rtc-secondary-row {
+    width: min(100%, 300rem);
+    min-height: 70rem;
+
+    .rtc-action-btn {
+      .btn-circle {
+        width: 48rem;
+        height: 48rem;
+
+        img,
+        .rtc-svg-icon {
+          width: 24rem;
+          height: 24rem;
+        }
+      }
+
+      .btn-circle.hangup {
+        width: 58rem;
+        height: 58rem;
+      }
+    }
+  }
+
+  .secondary-hangup {
+    grid-column: 2;
+    justify-self: center;
+  }
+
+  .secondary-background {
+    grid-column: 1;
+    justify-self: center;
+
+    &.active .btn-circle {
+      background: rgba(20, 191, 95, 0.72);
+    }
+  }
+
+  .secondary-flip {
+    grid-column: 3;
+    justify-self: center;
   }
 
   .rtc-action-btn {
@@ -577,10 +967,7 @@ onMounted(() => {
         background: #fe2c55;
         width: 62rem;
         height: 62rem;
-        img {
-          width: 30rem;
-          height: 30rem;
-        }
+        box-shadow: none;
       }
     }
 
@@ -592,9 +979,43 @@ onMounted(() => {
   }
 }
 
+.rtc-hangup-icon {
+  width: 32rem;
+  height: 32rem;
+  color: #fff;
+}
+
 .rtc-connected {
   flex: 1;
   position: relative;
+}
+
+.rtc-minimize-btn {
+  position: absolute;
+  top: 16rem;
+  left: 16rem;
+  z-index: 10;
+  width: 42rem;
+  height: 42rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+
+  &:active {
+    transform: scale(0.94);
+  }
+
+  .rtc-svg-icon {
+    width: 22rem;
+    height: 22rem;
+  }
 }
 
 .rtc-video-stage {
@@ -604,14 +1025,23 @@ onMounted(() => {
   right: 0;
   bottom: 0;
 
-  .rtc-video-remote {
+  .rtc-video-self-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    transition: top 0.22s ease, right 0.22s ease, bottom 0.22s ease, left 0.22s ease,
+      width 0.22s ease, height 0.22s ease, border-radius 0.22s ease;
+  }
+
+  .rtc-video-self {
     width: 100%;
     height: 100%;
     object-fit: cover;
     background: #000;
+    transform: scaleX(-1);
   }
 
-  .rtc-video-placeholder {
+  .rtc-video-self-placeholder {
     width: 100%;
     height: 100%;
     display: flex;
@@ -634,35 +1064,91 @@ onMounted(() => {
     }
   }
 
-  .rtc-video-local {
+  .rtc-video-remote-preview {
     position: absolute;
     top: 60rem;
     right: 16rem;
-    width: 100rem;
-    height: 136rem;
+    width: 112rem;
+    height: 150rem;
     border-radius: 12rem;
     overflow: hidden;
     background: rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.2);
     z-index: 2;
+    transition: top 0.22s ease, right 0.22s ease, bottom 0.22s ease, left 0.22s ease,
+      width 0.22s ease, height 0.22s ease, border-radius 0.22s ease;
 
-    .rtc-video-local-stream {
-      width: 100%;
-      height: 100%;
+  }
+
+  .rtc-video-self-layer.is-clickable,
+  .rtc-video-remote-preview.is-clickable {
+    cursor: pointer;
+  }
+
+  .rtc-video-remote-preview-stream {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+
+    &.rtc-video-remote-preview-hidden {
+      display: none;
+    }
+  }
+
+  .rtc-video-remote-preview-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1a1a1a;
+
+    img {
+      width: 56rem;
+      height: 56rem;
+      border-radius: 50%;
       object-fit: cover;
-      transform: scaleX(-1);
+    }
+  }
+
+  &.rtc-video-stage-remote-focused {
+    .rtc-video-remote-preview {
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      width: auto;
+      height: auto;
+      border: 0;
+      border-radius: 0;
+      background: #000;
+      z-index: 1;
     }
 
-    &.rtc-avatar-only {
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .rtc-video-self-layer {
+      top: 60rem;
+      right: 16rem;
+      bottom: auto;
+      left: auto;
+      width: 112rem;
+      height: 150rem;
+      border-radius: 12rem;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      z-index: 2;
+    }
+
+    .rtc-video-self-placeholder {
+      gap: 0;
 
       img {
         width: 56rem;
         height: 56rem;
-        border-radius: 50%;
-        object-fit: cover;
+      }
+
+      span {
+        display: none;
       }
     }
   }
@@ -735,20 +1221,66 @@ onMounted(() => {
 .rtc-capsule {
   position: fixed;
   z-index: 9998;
-  right: 24rem;
-  bottom: 120rem;
+  width: 164px;
+  height: 104px;
+  box-sizing: border-box;
+  left: 16px;
+  top: 16px;
+  right: auto;
+  bottom: auto;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 2rem;
-  padding: 10rem 16rem;
-  border-radius: 14rem;
-  background: rgba(20, 191, 95, 0.92);
+  gap: 8px;
+  padding: 6px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(20, 20, 20, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   box-shadow: 0 4px 16rem rgba(0, 0, 0, 0.4);
+  touch-action: none;
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  .rtc-capsule-media {
+    width: 74px;
+    height: 92px;
+    flex: 0 0 74px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #111;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    img,
+    .rtc-capsule-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    img {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+    }
+  }
+
+  .rtc-capsule-info {
+    min-width: 0;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
 
   .capsule-name {
     font-size: 11rem;
-    max-width: 90rem;
+    max-width: 74px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -757,6 +1289,7 @@ onMounted(() => {
   .capsule-time {
     font-size: 13rem;
     font-weight: 600;
+    color: rgba(255, 255, 255, 0.82);
   }
 }
 

@@ -20,12 +20,20 @@ export function getLiveRooms(params?: { pageNo?: number; pageSize?: number }) {
   return request({ url: '/live/rooms', method: 'get', params })
 }
 
-export function joinLive(id: number) {
-  return request({ url: '/live/' + id + '/join', method: 'post' })
+export function joinLive(id: number, sessionId?: string) {
+  return request({
+    url: '/live/' + id + '/join',
+    method: 'post',
+    data: sessionId ? { sessionId } : undefined
+  })
 }
 
-export function leaveLive(id: number) {
-  return request({ url: '/live/' + id + '/leave', method: 'post' })
+export function leaveLive(id: number, sessionId?: string) {
+  return request({
+    url: '/live/' + id + '/leave',
+    method: 'post',
+    data: sessionId ? { sessionId } : undefined
+  })
 }
 
 export function getFeaturedLive() {

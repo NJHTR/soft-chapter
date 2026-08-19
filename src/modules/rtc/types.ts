@@ -55,6 +55,7 @@ export interface CallDetail {
 export interface DeviceStates {
   audioMuted: boolean
   videoOff: boolean
+  backgroundRemoved: boolean
   speakerOn: boolean
   activeInputId: string | null
   activeOutputId: string | null
