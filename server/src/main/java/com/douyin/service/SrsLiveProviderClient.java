@@ -9,7 +9,9 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 /** SRS HTTP API adapter; it only reads stream liveness, never media bytes. */
@@ -36,6 +38,8 @@ public class SrsLiveProviderClient implements LiveProviderClient {
     public LiveProviderSnapshot snapshot() {
         try {
             Set<String> result = new HashSet<>();
+            Map<String, String> sessions = new HashMap<>();
+            String providerServerId = null;
             for (int page = 0; page < MAX_PAGES; page++) {
                 int start = page * PAGE_SIZE;
                 String body = client.get()
@@ -48,8 +52,14 @@ public class SrsLiveProviderClient implements LiveProviderClient {
                         .body(String.class);
                 Page parsed = parsePage(body);
                 result.addAll(parsed.activeStreams());
+                sessions.putAll(parsed.activeSessions());
+                if (providerServerId == null) {
+                    providerServerId = parsed.providerServerId();
+                } else if (!providerServerId.equals(parsed.providerServerId())) {
+                    throw new IllegalStateException("SRS server generation changed during snapshot");
+                }
                 if (parsed.streamCount() < PAGE_SIZE) {
-                    return new LiveProviderSnapshot(true, result);
+                    return new LiveProviderSnapshot(true, result, sessions, providerServerId);
                 }
             }
             log.warn("SRS reconciliation stream listing exceeded {} pages", MAX_PAGES);
@@ -62,8 +72,10 @@ public class SrsLiveProviderClient implements LiveProviderClient {
 
     private Page parsePage(String body) throws Exception {
         Set<String> result = new HashSet<>();
+        Map<String, String> sessions = new HashMap<>();
         JsonNode root = objectMapper.readTree(body == null ? "{}" : body);
-        if (!root.isObject() || root.path("code").asInt(-1) != 0) {
+        if (!root.isObject() || root.path("code").asInt(-1) != 0
+                || text(root, "server") == null) {
             throw new IllegalStateException("invalid SRS streams response");
         }
         JsonNode streams = root.path("streams");
@@ -76,9 +88,14 @@ public class SrsLiveProviderClient implements LiveProviderClient {
             boolean active = publish.isBoolean() && publish.asBoolean()
                     || publish.isObject() && publish.path("active").isBoolean()
                     && publish.path("active").asBoolean();
-            if (active) result.add(key);
+            if (active) {
+                result.add(key);
+                String cid = scalarText(publish, "cid");
+                if (cid == null) throw new IllegalStateException("missing SRS publish client generation");
+                sessions.put(key, text(root, "server") + ":" + cid);
+            }
         }
-        return new Page(result, streams.size());
+        return new Page(result, sessions, streams.size(), text(root, "server"));
     }
 
     private static String text(JsonNode node, String field) {
@@ -87,11 +104,20 @@ public class SrsLiveProviderClient implements LiveProviderClient {
         return value.asText().trim();
     }
 
+    private static String scalarText(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull() || !value.isValueNode() || value.asText().isBlank()) return null;
+        return value.asText().trim();
+    }
+
     private static String trimTrailingSlash(String value) {
         if (value == null || value.isBlank()) return "http://localhost:1985";
         return value.trim().replaceFirst("/+$", "");
     }
 
-    private record Page(Set<String> activeStreams, int streamCount) {
+    private record Page(Set<String> activeStreams,
+                        Map<String, String> activeSessions,
+                        int streamCount,
+                        String providerServerId) {
     }
 }
