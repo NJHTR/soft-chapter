@@ -104,7 +104,8 @@ class LiveProviderReconciliationJobTest {
         verify(sessions).heartbeat(99L, "srs-1:client-1", "stream-1");
         verify(liveService).providerHeartbeat(99L, "stream-1", "srs-1:client-1");
         verify(liveService, never()).providerUnavailable(99L, "stream-1");
-        verify(sessions, never()).retireActivePublish(99L, "stream-1", "generation_changed");
+        verify(sessions, never()).retirePublishGeneration(
+                99L, "stream-1", "srs-1:client-1", "generation_changed");
     }
 
     @Test
@@ -120,8 +121,9 @@ class LiveProviderReconciliationJobTest {
         new LiveProviderReconciliationJob(liveService, sessions, provider,
                 Clock.fixed(NOW, ZoneOffset.UTC)).reconcileOnce();
 
-        verify(sessions).retireActivePublish(99L, "stream-1", "generation_changed");
-        verify(liveService).providerUnavailable(99L, "stream-1");
+        verify(sessions).retirePublishGeneration(
+                99L, "stream-1", "srs-1:client-1", "generation_changed");
+        verify(liveService).providerDisconnected(99L, "stream-1", "srs-1:client-1");
         verify(sessions, never()).heartbeat(99L, "srs-1:client-1", "stream-1");
         verify(liveService, never()).providerHeartbeat(99L, "stream-1", "srs-1:client-1");
     }
@@ -144,6 +146,25 @@ class LiveProviderReconciliationJobTest {
         verify(liveService, never()).providerDisconnected(99L, "stream-1", null);
         verify(liveService, never()).endProviderRoom(
                 99L, "stream-1", null, "unverified_provider_generation");
+        verify(sessions, never()).heartbeat(99L, null, "stream-1");
+    }
+
+    @Test
+    void legacyRoomWithExpiredGraceEndsOnlyAfterTheBoundedWindow() {
+        LiveService liveService = mock(LiveService.class);
+        LiveProviderSessionService sessions = mock(LiveProviderSessionService.class);
+        LiveProviderClient provider = mock(LiveProviderClient.class);
+        LiveRoom room = room(null);
+        room.setProviderGraceUntil(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
+        when(liveService.listProviderRooms()).thenReturn(List.of(room));
+        when(provider.snapshot()).thenReturn(new LiveProviderClient.LiveProviderSnapshot(
+                true, Set.of("stream-1"), Map.of("stream-1", "srs-1:client-1"), "srs-1"));
+
+        new LiveProviderReconciliationJob(liveService, sessions, provider,
+                Clock.fixed(NOW, ZoneOffset.UTC)).reconcileOnce();
+
+        verify(liveService).endProviderRoom(99L, "stream-1", null, "unverified_provider_generation");
+        verify(liveService, never()).providerHeartbeat(99L, "stream-1", null);
         verify(sessions, never()).heartbeat(99L, null, "stream-1");
     }
 
