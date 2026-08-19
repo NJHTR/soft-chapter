@@ -7,7 +7,7 @@ project:
 baseline:
   observed_at: "2026-08-20"
   branch: dev/full
-  head_commit: 4847328
+  head_commit: 876eb57
   remote_tracking: origin/dev/full
   remote_tracking_commit: 890506ae05bb0a2c52b076370d81546a71c80c51
   worktree_dirty: true
@@ -214,4 +214,4 @@ verification:
     - rtc_qoe_real_weak_network_and_2_4_8_participant_matrix
     - rtc_qoe_server_aggregation_and_sfu_egress_measurement
 last_verified_commit: 876eb57
-last_doc_commit: 4847328
+last_doc_commit: 5354582
