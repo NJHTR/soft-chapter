@@ -57,6 +57,8 @@ SRS 端点由 `LiveMediaProperties` 生成。开发环境通过 Vite `/media/srs
 
 将 `deploy/streaming/srs-auth.conf.example` 中的 callback 段合并到生产 SRS vhost，并把 callback URL 限制在 Spring 控制面内网地址。SRS 只收到控制回调，不会把 SDP、RTP 或编码帧发送给 Spring；`on_publish`/`on_play` 返回非 2xx 时 provider 必须拒绝媒体会话。
 
+provider 会话收敛和重启恢复的详细约束见 [`docs/contracts/live-media-reconciliation.md`](./live-media-reconciliation.md)。那份文档定义了幂等键、`GRACE` 收敛窗口和 reconciliation 的边界；当前仓库只保证契约存在，不代表已落成独立 worker。
+
 ### 本机媒体验收记录（2026-08-17）
 
 在 Docker Desktop/WSL 环境使用 `SRS_RTC_CANDIDATE=172.21.160.1`，通过 `docs/verification/.rtc006_browser_smoke.mjs` 完成真实浏览器链路：

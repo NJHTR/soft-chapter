@@ -255,3 +255,10 @@ pnpm run build-only                         # 只读审查记录为通过
 - 前端适配器在保留 `adaptiveStream=false` 的前提下显式开启 `dynacast` 和 `simulcast`，并对多人房间默认将远端视频限制为 LOW、active speaker 提升到 MEDIUM；1 对 1 质量基线和音频订阅不变。
 - 本次未修改用户已有的后端、部署和 AI 文件；后续代码优化必须按 RTC-012 的 publication/可见性契约测试和可回滚开关推进。
 - 文档提交：`34a35cf docs(RTC-011): define client offload and media scale policy`。由于状态文件、工作日志和适配器含有用户已有暂存修改，本次未将它们混入该提交。
+
+## 2026-08-19：RTC-006 provider 收敛契约补充
+
+- 新增 `docs/contracts/live-media-reconciliation.md`，把 SRS `on_publish/on_play/on_unpublish/on_stop` 的幂等键、`GRACE` 收敛窗口、`last_seen_at`/reconciliation 边界和审计脱敏约束单独固化下来。
+- `docs/contracts/live-media-contract.md` 现在明确引用 provider 收敛契约，避免把“回调授权”误解成“provider session 已有完整恢复 worker”。
+- `PROJECT_STATE.yaml` 基线头部从 `94370b5` 对齐到当前工作区真实 HEAD `ca813ec`；`last_verified_commit` 仍保持为已验证的 `94370b5`，因为本轮没有重新跑浏览器或 Maven 验证。
+- RTC-006 仍保持 `in_progress`：当前已具备回调授权和 TTL presence 骨架，但真实 Docker callback 联调、provider 重启恢复和多实例故障验收仍未补齐。

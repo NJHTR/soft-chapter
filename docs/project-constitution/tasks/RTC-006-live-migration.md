@@ -53,3 +53,4 @@
 3. **生命周期**：不能用 `update_time` 判断媒体存活；当前已移除会误杀 2 分钟静默直播的清理任务，待 provider heartbeat/reconciliation 接入后再自动结束。
 4. **部署**：生产网关必须反代 `/media/srs`、`/media/srs-http`，配置真实 SRS candidate、HTTPS/WSS、Origin allowlist 和 TURN/ICE 策略。
 5. **真实性**：类型检查、构建和 HTTP 端口健康不能替代真实浏览器媒体验证；未验证项必须保持未勾选。
+6. **收敛契约**：`docs/contracts/live-media-reconciliation.md` 只定义幂等、`GRACE` 和 reconciliation 边界，不代表 provider session worker 已完成实现。

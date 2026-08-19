@@ -7,7 +7,7 @@ project:
 baseline:
   observed_at: "2026-08-19"
   branch: dev/full
-  head_commit: 94370b5
+  head_commit: ca813ec
   remote_tracking: origin/dev/full
   worktree_dirty: false
   dirty_worktree_policy: preserve_and_avoid
@@ -194,4 +194,4 @@ verification:
     - rtc_qoe_real_weak_network_and_2_4_8_participant_matrix
     - rtc_qoe_server_aggregation_and_sfu_egress_measurement
 last_verified_commit: 94370b5
-last_doc_commit: 94370b5
+last_doc_commit: ca813ec
