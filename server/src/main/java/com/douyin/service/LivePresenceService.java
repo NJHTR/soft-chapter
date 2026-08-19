@@ -28,6 +28,10 @@ public class LivePresenceService {
 
     /** Touch a session and return true only when it was newly added. */
     public boolean touch(Long roomId, Long userId, String sessionId) {
+        sessionId = normalizeSessionId(sessionId);
+        if (sessionId == null || roomId == null || userId == null) {
+            return false;
+        }
         String member = member(userId, sessionId);
         long now = System.currentTimeMillis();
         try {
@@ -45,6 +49,10 @@ public class LivePresenceService {
 
     /** Remove a session and return true only when it was present. */
     public boolean leave(Long roomId, Long userId, String sessionId) {
+        sessionId = normalizeSessionId(sessionId);
+        if (sessionId == null || roomId == null || userId == null) {
+            return false;
+        }
         String member = member(userId, sessionId);
         try {
             Long removed = redis.opsForZSet().remove(key(roomId), member);
@@ -75,6 +83,12 @@ public class LivePresenceService {
 
     private String member(Long userId, String sessionId) {
         return userId + ":" + sessionId;
+    }
+
+    private String normalizeSessionId(String sessionId) {
+        if (sessionId == null) return null;
+        String normalized = sessionId.trim();
+        return normalized.isEmpty() || normalized.length() > 128 ? null : normalized;
     }
 
     private void warnRedis(Exception e) {

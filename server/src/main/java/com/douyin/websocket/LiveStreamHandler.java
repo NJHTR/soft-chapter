@@ -81,6 +81,16 @@ public class LiveStreamHandler extends TextWebSocketHandler {
             closeSession(session);
             return;
         }
+        String clientSessionId = null;
+        if ("viewer".equals(role)) {
+            clientSessionId = extractPresenceSession(session);
+            if (clientSessionId == null) {
+                log.warn("Rejected live WS viewer without a valid presence session: roomId={}", roomId);
+                closeSession(session);
+                return;
+            }
+        }
+
         sessionRoom.put(session.getId(), roomId);
         sessionRole.put(session.getId(), role != null ? role : "viewer");
 
@@ -90,7 +100,6 @@ public class LiveStreamHandler extends TextWebSocketHandler {
         }
 
         if ("viewer".equals(role) && userId != null) {
-            String clientSessionId = extractPresenceSession(session);
             presenceSession.put(session.getId(), clientSessionId);
             if (livePresenceService.touch(roomId, userId, clientSessionId)) {
                 liveService.joinRoom(roomId);
@@ -281,11 +290,17 @@ public class LiveStreamHandler extends TextWebSocketHandler {
             for (String param : query.split("&")) {
                 String[] kv = param.split("=", 2);
                 if (kv.length == 2 && "sessionId".equals(kv[0]) && !kv[1].isBlank()) {
-                    return java.net.URLDecoder.decode(kv[1], java.nio.charset.StandardCharsets.UTF_8);
+                    try {
+                        String decoded = java.net.URLDecoder.decode(kv[1], java.nio.charset.StandardCharsets.UTF_8);
+                        String normalized = decoded.trim();
+                        return normalized.isEmpty() || normalized.length() > 128 ? null : normalized;
+                    } catch (IllegalArgumentException ignored) {
+                        return null;
+                    }
                 }
             }
         }
-        return "ws-" + UUID.randomUUID();
+        return null;
     }
 
     private int viewerCount(Long roomId) {

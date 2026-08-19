@@ -259,6 +259,7 @@ public class LiveController {
         Long userId = getLoginUserId(req);
         if (userId == null) return Result.fail("请先登录");
         String sessionId = normalizePresenceSession(body == null ? null : body.get("sessionId"));
+        if (sessionId == null) return Result.fail(400, "sessionId不能为空");
         LiveRoom room = liveService.getById(id);
         if (room == null || !"LIVE".equals(room.getStatus())) return Result.fail("直播间未开播或不存在");
         if (livePresenceService.touch(id, userId, sessionId)) {
@@ -280,6 +281,7 @@ public class LiveController {
         Long userId = getLoginUserId(req);
         if (userId == null) return Result.fail("请先登录");
         String sessionId = normalizePresenceSession(body == null ? null : body.get("sessionId"));
+        if (sessionId == null) return Result.fail(400, "sessionId不能为空");
         if (livePresenceService.leave(id, userId, sessionId)) {
             liveService.leaveRoom(id);
         }
@@ -379,8 +381,8 @@ public class LiveController {
     }
 
     private String normalizePresenceSession(String value) {
-        if (value == null || value.isBlank()) return "legacy-" + UUID.randomUUID();
+        if (value == null || value.isBlank()) return null;
         String normalized = value.trim();
-        return normalized.length() <= 128 ? normalized : normalized.substring(0, 128);
+        return normalized.length() <= 128 ? normalized : null;
     }
 }

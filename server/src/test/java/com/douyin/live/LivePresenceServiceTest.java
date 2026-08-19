@@ -16,7 +16,9 @@ import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doAnswer;
@@ -77,5 +79,17 @@ class LivePresenceServiceTest {
         assertFalse(service.touch(200L, 9L, "sess-a"));
         assertEquals(0, service.count(200L));
         assertFalse(service.leave(200L, 9L, "sess-a"));
+    }
+
+    @Test
+    void rejectsMissingOrInvalidSessionIdsBeforeTouchingRedis() {
+        assertFalse(service.touch(300L, 10L, null));
+        assertFalse(service.touch(300L, 10L, "   "));
+        assertFalse(service.touch(300L, 10L, "x".repeat(129)));
+        assertFalse(service.leave(300L, 10L, null));
+        assertFalse(service.leave(300L, 10L, "   "));
+
+        verify(redis, never()).opsForZSet();
+        verifyNoInteractions(zset);
     }
 }
