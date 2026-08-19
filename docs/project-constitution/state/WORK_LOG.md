@@ -8,6 +8,12 @@
 - `adaptiveStream` 继续保持关闭，待真实 `RemoteTrack` attach/detach 与双浏览器验收后再评估开启。
 - 验证：`vue-tsc`、目标 ESLint、`pnpm run build-only`、`git diff --check` 通过；真实双浏览器、弱网矩阵和带宽下降统计尚未完成，RTC-012 仍为未完成任务。
 
+## 2026-08-19：RTC-012 接入群聊面板生命周期
+
+- 群聊视频面板正常显示时向 adapter 提交已知远端参与者集合；最小化或浏览器标签页后台时只保留 active speaker（无 active speaker 时取第一个远端）的视频订阅。
+- 订阅策略通过 Pinia action 暴露，视图不直接依赖 LiveKit 类型；音频订阅始终保持，1 对 1 继续使用全量兼容模式。
+- 验证：`vue-tsc` 和 RTC store/CallPanel ESLint 通过；真实 4/8 人浏览器、后台恢复和 egress 下降数据尚未完成。
+
 ## 2026-08-19：RTC 通话流程验收与忙线并发守卫
 
 - 新增控制面 `BUSY` 错误码：发起者或目标参与者仍处于有效通话时，创建新会话返回 409，不创建第二个 LiveKit 房间。

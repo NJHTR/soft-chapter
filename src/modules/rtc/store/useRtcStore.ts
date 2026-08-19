@@ -738,6 +738,14 @@ export const useRtcStore = defineStore('rtc', {
       else this.devices.activeOutputId = deviceId
       if (this.joined) await rtcMediaPort.setDevice(kind, deviceId)
     },
+    /**
+     * Update remote video visibility without exposing the LiveKit adapter to
+     * view components. Null restores the 1:1/full-subscription compatibility
+     * mode; audio subscriptions are never changed by this action.
+     */
+    setVisibleParticipants(identities: readonly string[] | null) {
+      rtcMediaPort.setVisibleParticipants(identities)
+    },
     toggleMinimize() {
       this.minimized = !this.minimized
     }

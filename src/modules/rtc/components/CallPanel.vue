@@ -587,6 +587,32 @@ const remoteParticipantEntries = computed(() =>
     }
   })
 )
+const knownRemoteIdentities = computed(() => {
+  const ids = new Set<string>()
+  Object.keys(store.remoteStreams).forEach((identity) => ids.add(identity))
+  store.participants.forEach((participant) => {
+    if (participant.userId !== store.myId) ids.add(participant.userId)
+  })
+  store.groupMeta?.members.forEach((member) => {
+    if (member.userId !== store.myId) ids.add(member.userId)
+  })
+  return Array.from(ids)
+})
+const visibleSubscriptionIdentities = computed<string[] | null>(() => {
+  if (!isGroup.value || store.phase !== 'connected' || store.mode !== 'video') return null
+  if (!store.minimized && document.visibilityState === 'visible') {
+    return knownRemoteIdentities.value
+  }
+  const preferred = store.activeSpeaker || knownRemoteIdentities.value[0]
+  return preferred ? [preferred] : []
+})
+function syncSubscriptionVisibility() {
+  store.setVisibleParticipants(visibleSubscriptionIdentities.value)
+}
+function handleDocumentVisibilityChange() {
+  syncSubscriptionVisibility()
+}
+watch(visibleSubscriptionIdentities, syncSubscriptionVisibility, { immediate: true })
 const groupMediaEls = new Map<string, HTMLVideoElement | HTMLAudioElement>()
 function setGroupVideoEl(key: string, el: HTMLVideoElement | HTMLAudioElement | null) {
   if (el) {
@@ -758,6 +784,8 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', handleDocumentVisibilityChange)
+  store.setVisibleParticipants(null)
   window.removeEventListener('pointermove', moveCapsule)
   window.removeEventListener('pointerup', endCapsuleDrag)
   registerRtOutputEl('remote-video', null)
@@ -769,6 +797,8 @@ onBeforeUnmount(() => {
 
 onMounted(() => {
   store.init()
+  document.addEventListener('visibilitychange', handleDocumentVisibilityChange)
+  syncSubscriptionVisibility()
 })
 </script>
 
