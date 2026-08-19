@@ -1,5 +1,28 @@
 # 工作日志
 
+## 2026-08-19：RTC 通话流程验收与忙线并发守卫
+
+- 新增控制面 `BUSY` 错误码：发起者或目标参与者仍处于有效通话时，创建新会话返回 409，不创建第二个 LiveKit 房间。
+- `RtcCallSessionMapper.findActiveByUserId` 同时检查会话状态和参与者状态；群通话中已经 `LEFT/REJECTED/CANCELLED` 的成员不会继续占用忙线。
+- 前端在通话中收到竞态来电时保持当前页面，并回传 `call_busy`；发起方取消未接通会话并提示“对方正在通话中”。
+- 新增 `docs/verification/RTC_CALL_FLOW_ACCEPTANCE.md`，记录 A→B 接听、切换主画面、最小化/恢复、摄像头同步、挂断和 C 并发来电验收矩阵。
+- 新增主叫回铃/被叫来电循环音效与震动，接听、拒绝、挂断、连接成功和超时都会停止；前端 30 秒未接听自动收口，与服务端 ringing TTL 对齐。
+- 验证：RTC 全量测试 105/105 通过，`vue-tsc`、目标 ESLint、OpenAPI lint、`pnpm run build-only`、`git diff --check` 通过；双账号真实浏览器验收仍需附着两个已登录浏览器现场执行。
+
+## 2026-08-18：一对一通话 ACL 改为互相关注
+
+- `RtcAclMapper` 的 direct 权限查询从 `t_friend` 双向确认改为 `t_follow` 双向关注；不再要求好友表记录。
+- 单向关注和未关注创建一对一通话都会返回 `NOT_AUTHORIZED`，互相关注可正常进入 LiveKit 呼叫流程；群聊成员 ACL 保持不变。
+- 新增互关、单向关注、无关注和无好友记录互关的契约测试。
+- 验证：Maven RTC 测试 `100/100` 通过，Maven compile 通过，前端 `vue-tsc` 通过。
+
+## 2026-08-18：RTC-006 presence 与本地联调
+
+- IDEA 后端已监听 `9191`，MySQL 连接成功；启动日志显示 Kafka 客户端尝试连接 `127.0.0.1:9092`，但本机该端口实际未监听，需修正 Kafka advertised/listener 或 IDEA `KAFKA_BOOTSTRAP_SERVERS`。
+- Docker SRS、LiveKit、coturn 全部 healthy；`deploy/streaming/smoke.ps1 -ProfileName webrtc` 8/8 通过。
+- 新增 `LivePresenceService`：Redis ZSET + 45 秒 TTL，REST join/leave 与 `/ws/live` 共享稳定 `sessionId` 幂等成员；LiveWatch/Home LivePage 增加 15 秒 presence 心跳，消除 REST + WS 双计数。
+- 验证：`vue-tsc`、目标 ESLint、`pnpm run build-only`、Maven compile、RTC 测试 98/98 通过。RTC-006 仍保持 `in_progress`，公网 HTTPS/TURN、SRS callback 授权和 provider 故障恢复尚未在真实环境验收。
+
 ## 2026-08-18：RTC-006 最终 Docker/provider smoke
 
 - 恢复并验证 Docker 媒体栈后执行 `powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc`：8/8 全部通过（compose、容器健康、SRS API、LiveKit metrics、coturn、SRS HTTP-FLV、TURN UDP allocate、LiveKit CLI 真实 H.264 发布）。
@@ -193,3 +216,13 @@ pnpm run build-only                         # 只读审查记录为通过
 - 前端补充主播 WHIP 失败/断开后的 5 次有界指数退避重连，并让 WHEP recvonly transceiver 使用 H.264/Opus 偏好。
 - 验证：`pnpm exec vue-tsc --noEmit --pretty false`、`pnpm exec eslint src/pages/live/LiveCreate.vue src/utils/streaming/srs_rtc.ts`、`pnpm run build-only` 均通过；Maven CLI 当前未安装，未重复运行后端测试。
 - 仍未关闭的发布门：短期媒体 token/SRS callback ACL、Redis presence 幂等、provider heartbeat/reconciliation、SRS 重启与公网 HTTPS/WSS/TURN 矩阵。
+
+## 2026-08-19：客户端减载与多人媒体规模设计
+
+- 完成拓扑审计：Spring Boot、Kafka 和聊天 WebSocket 只做控制面；当前单 LiveKit 节点、有限 UDP/TURN 端口池属于开发配置，不能宣称支持生产万人规模。
+- 新增 `docs/adr/ADR-005-CLIENT-OFFLOAD-AND-SCALE.md` 和 `docs/architecture/RTC_SCALE_AND_CLIENT_OFFLOAD.md`，明确 1 对 1 P2P 仅可受控灰度，群聊继续 SFU，万人观看采用 stage + SRS/CDN audience。
+- 在项目状态和任务索引中登记 RTC-011～RTC-015：容量观测、选择性订阅、多节点、stage-audience 和 P2P 实验。
+- 发现实现与设计漂移：`livekitAdapter.ts` 当前 `adaptiveStream/dynacast=false`、`autoSubscribe=true`，且远端轨道先聚合为 `MediaStream`；在完成 publication/元素 attach-detach 契约前，不直接打开 `adaptiveStream`。
+- 前端适配器在保留 `adaptiveStream=false` 的前提下显式开启 `dynacast` 和 `simulcast`，并对多人房间默认将远端视频限制为 LOW、active speaker 提升到 MEDIUM；1 对 1 质量基线和音频订阅不变。
+- 本次未修改用户已有的后端、部署和 AI 文件；后续代码优化必须按 RTC-012 的 publication/可见性契约测试和可回滚开关推进。
+- 文档提交：`34a35cf docs(RTC-011): define client offload and media scale policy`。由于状态文件、工作日志和适配器含有用户已有暂存修改，本次未将它们混入该提交。

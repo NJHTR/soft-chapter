@@ -12,6 +12,7 @@
 | `NOT_AUTHORIZED` | 未登录 / 非成员 / 非发起者 / 一对一双方未互相关注 | 拒绝命令 |
 | `INVALID_ARGUMENT` | 缺参数 / 呼叫自己 / token TTL 越界 | 拒绝 |
 | `SESSION_NOT_FOUND` | call / participant 不存在 | 查询或命令失败 |
+| `BUSY` | 发起者或任一目标仍在另一场通话中 | 建呼返回 409；不创建新的通话会话 |
 | `CALL_EXPIRED` | RINGING/NEGOTIATING 超时窗口外操作 | TTL worker 或命令守卫 |
 | `EVENT_DUPLICATE` | 相同 event_id 重放 | 幂等返回当前状态(不报错) |
 | `PROVIDER_ERROR` | token 签发失败 / provider 依赖错误 | 记录 + 回退状态 |

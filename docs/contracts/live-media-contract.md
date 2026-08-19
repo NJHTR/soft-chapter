@@ -25,13 +25,15 @@ Spring Boot 不接收或转发 SDP、RTP、编码帧和音频帧。`/ws/live` �
 ### `POST /api/live/{roomId}/join`
 
 - 需要登录，并且房间必须处于 `LIVE`。
-- 返回当前计数和观众播放地址。
-- 当前实现使用数据库计数加控制 WS 连接投影；`(room,user,session)` 的 Redis 幂等 presence 尚未完成，不能作为多实例发布门。
+- 请求体应携带稳定的浏览器会话标识：`{"sessionId":"<client-session-id>"}`。
+- 返回 `sessionId`、当前 TTL presence 计数和观众播放地址。
+- Redis ZSET 成员使用 `(room,user,session)`，REST join 与控制 WS 建连共用同一成员；重复 join 不重复增加数据库计数。
 
 ### `POST /api/live/{roomId}/leave`
 
-- 需要登录；重复调用不得把计数减到零以下。
-- 浏览器卸载、网络断开时的自动释放依赖下一项 presence 任务，当前仅由前端卸载钩子尽力调用。
+- 需要登录并携带相同 `sessionId`；重复调用是幂等的，不会把计数减到零以下。
+- 控制 WS 以同一 `sessionId` 每 15 秒发送 `{"type":"presence"}` 心跳；TTL 为 45 秒。
+- WS 断开不立即删除成员，避免旧连接晚于新连接关闭导致误减；正常页面卸载通过 REST leave 显式释放，异常断开由 TTL 清理。
 
 ### `POST /api/live/{roomId}/like`
 
@@ -74,7 +76,7 @@ SRS 端点由 `LiveMediaProperties` 生成。开发环境通过 Vite `/media/srs
 - 握手必须带 JWT；主播 role 还必须匹配房主。
 - 控制消息最大 8 KiB；聊天文本最多 500 字符，点赞 count 为 1-5。
 - 媒体帧和二进制消息不广播。
-- 当前 Origin allowlist、一次性 WS ticket、跨实例 presence 和消息限流仍归 RTC-010/后续 RTC-006 review gate。
+- 当前 Origin allowlist、一次性 WS ticket、Redis 多节点故障转移和消息限流仍归 RTC-010/后续 RTC-006 review gate。
 
 ## 6. 验收矩阵
 

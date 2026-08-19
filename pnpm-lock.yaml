@@ -11,6 +11,9 @@ importers:
       '@jambonn/vue-lazyload':
         specifier: 1.0.9
         version: 1.0.9(vue@3.5.13(typescript@5.3.3))
+      '@mediapipe/selfie_segmentation':
+        specifier: 0.1.1675465747
+        version: 0.1.1675465747
       axios:
         specifier: ^1.15.0
         version: 1.15.0
@@ -692,6 +695,9 @@ packages:
 
   '@livekit/protocol@1.50.4':
     resolution: {integrity: sha512-L1uggNQAqyY21smQY8AllyOYbcv9Me9TaxwuLytL1R8ck9nbYPmQLNwEDi3pOFGAMa5F8I2nUi2Jc59W5awxlA==}
+
+  '@mediapipe/selfie_segmentation@0.1.1675465747':
+    resolution: {integrity: sha512-IxYxNhwE5VwOm52L1yoFWYLP7q9Pd+NJjzOC5tlepfvEGaY3o9hslhUrx9BgseqdfZtKSDtd/4NfCSMjNzQalA==}
 
   '@napi-rs/wasm-runtime@0.2.5':
     resolution: {integrity: sha512-kwUxR7J9WLutBbulqg1dfOrMTwhMdXLdcGUhcbCcGwnPLt3gz19uHVdwH1syKVDbE022ZS2vZxOWflFLS0YTjw==}
@@ -3638,6 +3644,8 @@ snapshots:
   '@livekit/protocol@1.50.4':
     dependencies:
       '@bufbuild/protobuf': 1.10.1
+
+  '@mediapipe/selfie_segmentation@0.1.1675465747': {}
 
   '@napi-rs/wasm-runtime@0.2.5':
     dependencies:

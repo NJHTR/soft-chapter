@@ -39,7 +39,7 @@
 - [x] WHEP/WHIP 异步竞态、断线回调和页面级有限退避恢复已实现；恢复次数有上限，不把控制 WS 重连误当作媒体恢复。
 - [x] 本机 Docker 媒体验收通过：`SRS_RTC_CANDIDATE=172.21.160.1` 时 WHIP `connected`、WHEP 首帧 `640x480`、HLS master/media playlist 与 TS 片段、HTTP-FLV 数据均可读；TS 经 `ffprobe` 确认为 H.264/AAC。
 - [ ] HTTPS/公网 candidate 下的主播重连、跨网络 ICE/TURN 和浏览器矩阵仍待发布环境验收；前端已具备有界恢复逻辑。
-- [ ] viewer presence 以 `(room,user,session)` 幂等，数据库和连接数不双计（当前仍有 REST + WS 双投影风险）。
+- [x] viewer presence 已改为 `(room,user,session)` Redis TTL 成员；REST join/leave 与控制 WS 共用幂等 session，避免数据库和连接数双计。仍需在真实 Redis 多实例和异常断开环境复测。
 - [ ] 主播所有权、短期 ingest/play token、SRS callback、房间状态和 viewer 权限有契约测试。
 - [ ] provider 重启、异常断开、STARTING/DEGRADED/ENDING 状态恢复通过。
 - [ ] 2026-09-30 前完成灰度指标采集，按路线图达成 legacy 退役门槛。
@@ -47,7 +47,7 @@
 ## Review Gate 与剩余风险
 
 1. **媒体授权**：随机 stream key 只是不可预测能力值，不是短期 token；上线前需要 SRS `on_publish/on_play` 或网关签名 URL，并定义撤销和过期错误码。
-2. **presence**：当前 `viewerCount` 的 REST join/leave 与内存 WS roster 仍可能分叉；下一任务必须引入 Redis TTL presence 和唯一 session id。
+2. **presence**：已引入 Redis TTL presence 和唯一 session id；仍需在真实 Redis 多实例、异常断开和数据库重启场景验证 reconciliation。
 3. **生命周期**：不能用 `update_time` 判断媒体存活；当前已移除会误杀 2 分钟静默直播的清理任务，待 provider heartbeat/reconciliation 接入后再自动结束。
 4. **部署**：生产网关必须反代 `/media/srs`、`/media/srs-http`，配置真实 SRS candidate、HTTPS/WSS、Origin allowlist 和 TURN/ICE 策略。
 5. **真实性**：类型检查、构建和 HTTP 端口健康不能替代真实浏览器媒体验证；未验证项必须保持未勾选。

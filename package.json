@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@jambonn/vue-lazyload": "1.0.9",
+    "@mediapipe/selfie_segmentation": "0.1.1675465747",
     "axios": "^1.15.0",
     "core-js": "3.21.1",
     "hls.js": "^1.7.0",

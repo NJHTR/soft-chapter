@@ -26,8 +26,8 @@ paths:
       description: |
         创建 direct 或 group 通话。`client_request_id` 是幂等键；同一发起者
         使用相同幂等键重试时返回原会话。direct 通话要求双方互相关注；group
-        通话则由服务端从群成员快照生成
-        参与者列表，不信任客户端传入的 roster。
+        通话则由服务端从群成员快照生成参与者列表，不信任客户端传入的 roster。
+        发起者或任一目标正在另一场有效通话时返回 `BUSY`/409，不创建新会话。
       operationId: createRtcCall
       security:
         - bearerAuth: []
@@ -184,6 +184,33 @@ paths:
       responses:
         '200':
           description: 已记录加入事件
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallSessionResult'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '403':
+          $ref: '#/components/responses/NotAuthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /rtc/call/{callId}/connected:
+    post:
+      tags: [calls]
+      summary: 客户端媒体连接成功确认
+      description: 参与者的 LiveKit SDK 建立媒体连接后调用，用于在 webhook 延迟或不可达时收敛 NEGOTIATING 到 CONNECTED。
+      operationId: confirmRtcCallConnected
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CallId'
+      requestBody:
+        $ref: '#/components/requestBodies/ActionRequest'
+      responses:
+        '200':
+          description: 通话已接通或已幂等确认
           content:
             application/json:
               schema:

@@ -27,6 +27,9 @@ architecture_decisions:
   p2p_policy: one_to_one_experiment_or_explicit_fallback_only
   browser_codec_baseline: h264_or_vp8_video_plus_opus_audio
   legacy_policy: websocket_media_and_mesh_are_migration_only
+  scale_policy: stage_audience_for_large_viewership_and_multi_node_sfu_for_rooms
+  client_offload_policy: dynacast_simulcast_selective_subscription; no_group_mesh_relay
+  p2p_policy_scope: direct_one_to_one_only; explicit_consent; connecting_phase; sfu_fallback
 current_task:
   id: RTC-006
   status: in_progress
@@ -81,6 +84,26 @@ tasks:
     title: 安全、负载、故障演练和发布门禁
     status: planned
     depends_on: [RTC-007, RTC-008, RTC-009]
+  - id: RTC-011
+    title: SFU/TURN/客户端容量观测、Admission 与压测
+    status: planned
+    depends_on: [RTC-007]
+  - id: RTC-012
+    title: 客户端选择性订阅与媒体减载
+    status: planned
+    depends_on: [RTC-005, RTC-007]
+  - id: RTC-013
+    title: LiveKit 多节点、Redis 路由与 TURN 区域池
+    status: planned
+    depends_on: [RTC-011]
+  - id: RTC-014
+    title: Stage + audience 大规模直播分层
+    status: planned
+    depends_on: [RTC-006, RTC-013]
+  - id: RTC-015
+    title: 受控 1 对 1 P2P 实验与 SFU 回退
+    status: planned
+    depends_on: [RTC-004, RTC-007]
   - id: AI-001
     title: AI 持续学习宪法、架构与安全基线(文档+密钥 env)
     status: completed
@@ -113,7 +136,7 @@ known_blockers:
     description: C++ WebRTCStreamer 无实际库链接，send_packet/connect 为 stub
     owner_task: RTC-009
   - id: B-003
-    description: 媒体帧已被控制 WS 丢弃；控制 envelope、限流、Origin allowlist、分布式 presence 和 provider callback 尚未完成
+    description: 媒体帧已被控制 WS 丢弃；控制 envelope、限流、Origin allowlist 和 provider callback 尚未完成，Redis TTL presence 已实现但未完成多实例故障验收
     owner_task: RTC-006
   - id: B-004
     description: WebCodecs payload copy、getVideoTracks 和 capability await 存在硬错误
@@ -161,4 +184,4 @@ verification:
     - maven_backend_tests_rtc006 (maven executable unavailable in this session)
     - live_presence_idempotency_and_provider_acl (RTC-006 review gate)
 last_verified_commit: 968acff
-last_doc_commit: ba23461
+last_doc_commit: 34a35cf
