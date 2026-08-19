@@ -102,7 +102,7 @@ function Assert-Callback {
     }
 }
 
-Write-Host "SRS callback smoke: $($CallbackBase.TrimEnd('/'))" -ForegroundColor Cyan
+Write-Host "SRS callback smoke" -ForegroundColor Cyan
 Assert-Callback -Name "on_publish accepts signed host token" -Action "on_publish" `
     -ClientId $PublishClientId -Token $PublishToken -Secret $CallbackToken -ShouldAccept $true
 Assert-Callback -Name "on_play accepts signed viewer token" -Action "on_play" `
