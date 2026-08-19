@@ -24,7 +24,9 @@ import {
   setRtOutputApplier,
   type RtcMediaPort,
   type RtcMediaPortCallbacks,
-  type RtcMediaPortJoinOptions
+  type RtcMediaPortJoinOptions,
+  type RtcQoeSnapshot,
+  type RtcQoeTrackSnapshot
 } from './rtcMediaPort'
 import { BackgroundRemovalProcessor } from './backgroundRemoval'
 
@@ -93,6 +95,7 @@ class LiveKitMediaPort implements RtcMediaPort {
   private currentOutputId = ''
   /** 远端参与者 → 其 MediaStream(同 identity 已发布音轨的合集) */
   private remoteStreams = new Map<string, MediaStream>()
+  private remoteTracks = new Map<string, Map<'audio' | 'video', RemoteTrack>>()
   private localTracks = new Map<string, MediaStreamTrack>()
   private intentionalRooms = new WeakSet<Room>()
   private backgroundProcessor = new BackgroundRemovalProcessor()
@@ -146,6 +149,7 @@ class LiveKitMediaPort implements RtcMediaPort {
       this.room = null
     }
     this.remoteStreams.clear()
+    this.remoteTracks.clear()
     this.localTracks.clear()
     this.remoteVideoQuality.clear()
     this.remoteSubscription.clear()
@@ -229,6 +233,9 @@ class LiveKitMediaPort implements RtcMediaPort {
     if (track.kind === Track.Kind.Video) {
       this.applyRemoteSubscriptionPolicy()
     }
+    const kinds = this.remoteTracks.get(identity) ?? new Map<'audio' | 'video', RemoteTrack>()
+    kinds.set(track.kind === Track.Kind.Audio ? 'audio' : 'video', track)
+    this.remoteTracks.set(identity, kinds)
     let stream = this.remoteStreams.get(identity)
     if (!stream) {
       stream = new MediaStream()
@@ -261,6 +268,12 @@ class LiveKitMediaPort implements RtcMediaPort {
       trackId: track.mediaStreamTrack.id
     })
     const stream = this.remoteStreams.get(identity)
+    const kinds = this.remoteTracks.get(identity)
+    const kind = track.kind === Track.Kind.Audio ? 'audio' : 'video'
+    if (kinds?.get(kind)?.mediaStreamTrack.id === track.mediaStreamTrack.id) {
+      kinds.delete(kind)
+      if (kinds.size === 0) this.remoteTracks.delete(identity)
+    }
     if (!stream) return
     stream.removeTrack(track.mediaStreamTrack)
     if (stream.getTracks().length === 0) {
@@ -273,6 +286,7 @@ class LiveKitMediaPort implements RtcMediaPort {
 
   private onParticipantDisconnected = (participant: RemoteParticipant) => {
     this.remoteStreams.delete(participant.identity)
+    this.remoteTracks.delete(participant.identity)
     this.remoteVideoQuality.delete(participant.identity)
     this.remoteSubscription.delete(participant.identity)
     this.cb.onRemoteTrackRemoved(participant.identity)
@@ -382,6 +396,50 @@ class LiveKitMediaPort implements RtcMediaPort {
   setActiveSpeaker(identity: string | null): void {
     this.activeSpeakerId = identity
     this.applyRemoteSubscriptionPolicy()
+  }
+
+  async getQoeSnapshot(): Promise<RtcQoeSnapshot> {
+    const tracks: RtcQoeTrackSnapshot[] = []
+    for (const [identity, kinds] of this.remoteTracks) {
+      for (const [kind, track] of kinds) {
+        const report = await track.getRTCStatsReport()
+        if (!report) continue
+        const aggregate: RtcQoeTrackSnapshot = {
+          identity,
+          kind,
+          packetsLost: 0,
+          packetsReceived: 0,
+          jitterMs: 0,
+          bytesReceived: 0,
+          framesDecoded: 0,
+          framesDropped: 0,
+          framesPerSecond: 0,
+          frameWidth: 0,
+          frameHeight: 0
+        }
+        report.forEach((entry) => {
+          if (entry.type !== 'inbound-rtp') return
+          aggregate.packetsLost += Number(entry.packetsLost || 0)
+          aggregate.packetsReceived += Number(entry.packetsReceived || 0)
+          aggregate.jitterMs = Math.max(aggregate.jitterMs, Number(entry.jitter || 0) * 1000)
+          aggregate.bytesReceived += Number(entry.bytesReceived || 0)
+          aggregate.framesDecoded += Number(entry.framesDecoded || 0)
+          aggregate.framesDropped += Number(entry.framesDropped || 0)
+          aggregate.framesPerSecond = Math.max(
+            aggregate.framesPerSecond,
+            Number(entry.framesPerSecond || 0)
+          )
+          aggregate.frameWidth = Math.max(aggregate.frameWidth, Number(entry.frameWidth || 0))
+          aggregate.frameHeight = Math.max(aggregate.frameHeight, Number(entry.frameHeight || 0))
+        })
+        tracks.push(aggregate)
+      }
+    }
+    return {
+      sampledAt: new Date().toISOString(),
+      connectionState: this.room?.state ?? 'unknown',
+      tracks
+    }
   }
 
   async setMuted(muted: boolean): Promise<void> {
@@ -527,6 +585,7 @@ class LiveKitMediaPort implements RtcMediaPort {
       this.room = null
     }
     this.remoteStreams.clear()
+    this.remoteTracks.clear()
     this.localTracks.clear()
     this.remoteVideoQuality.clear()
     this.remoteSubscription.clear()

@@ -29,12 +29,14 @@ import {
   type OutgoingMeta,
   type RtcParticipant
 } from '@/modules/rtc/types'
+import type { RtcQoeSnapshot } from '@/modules/rtc/adapter/rtcMediaPort'
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let durationTimer: ReturnType<typeof setInterval> | null = null
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let ringingTimer: ReturnType<typeof setTimeout> | null = null
+let qoeTimer: ReturnType<typeof setInterval> | null = null
 let joining = false
 let rejoining = false
 let listenersReady = false
@@ -90,7 +92,8 @@ export const useRtcStore = defineStore('rtc', {
     facing: 'user' as 'user' | 'environment',
     activeSpeaker: null as string | null,
     traceId: null as string | null,
-    groupMeta: null as GroupCallMeta | null
+    groupMeta: null as GroupCallMeta | null,
+    qoeSnapshot: null as RtcQoeSnapshot | null
   }),
   getters: {
     mode(state): CallMode {
@@ -633,10 +636,38 @@ export const useRtcStore = defineStore('rtc', {
       durationTimer = setInterval(() => {
         this.durationSeconds++
       }, 1000)
+      this.startQoeSampling()
     },
     stopDuration() {
       durationTimer = clearTimer(durationTimer)
       this.durationSeconds = 0
+      qoeTimer = clearTimer(qoeTimer)
+      this.qoeSnapshot = null
+    },
+    startQoeSampling() {
+      qoeTimer = clearTimer(qoeTimer)
+      const generation = lifecycleGeneration
+      const sample = async () => {
+        if (generation !== lifecycleGeneration || !this.joined || this.phase === 'ended') return
+        try {
+          const snapshot = await rtcMediaPort.getQoeSnapshot()
+          if (generation !== lifecycleGeneration) return
+          this.qoeSnapshot = snapshot
+          console.debug('[rtc] qoe sample', {
+            state: snapshot.connectionState,
+            tracks: snapshot.tracks.length,
+            packetsLost: snapshot.tracks.reduce((sum, track) => sum + track.packetsLost, 0),
+            packetsReceived: snapshot.tracks.reduce(
+              (sum, track) => sum + track.packetsReceived,
+              0
+            )
+          })
+        } catch (error) {
+          console.debug('[rtc] qoe sample unavailable', error)
+        }
+      }
+      void sample()
+      qoeTimer = setInterval(() => void sample(), 3000)
     },
 
     finishEnded(reason: string | null) {
@@ -688,6 +719,7 @@ export const useRtcStore = defineStore('rtc', {
       this.facing = 'user'
       this.activeSpeaker = null
       this.traceId = null
+      this.qoeSnapshot = null
       this.devices = {
         audioMuted: false,
         videoOff: false,

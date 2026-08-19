@@ -50,6 +50,10 @@ glass_to_glass_ms, cpu_percent, gpu_percent, memory_mb
 
 ## 4.1 指标测量定义
 
+当前 RTC adapter 已提供 provider-neutral `RtcQoeSnapshot`：接通后每 3 秒读取远端
+LiveKit inbound-rtp 统计并保留最近一次快照。采集只做观测，不直接改变编码层或把原始
+stats 写入 Kafka/聊天 WS；后续 RTC-007/011 负责采样聚合、服务端上报和降层门禁。
+
 | SLO | 测量方法 | cohort 与分母 | 失败处置 |
 |---|---|---|---|
 | 接通 P95 < 3 秒 | `call.created` 到 provider `connected` 的单调时钟差 | 每个成功/失败 CallSession，按浏览器和网络分组；P95 分母为该 cohort 的全部尝试 | 超阈值冻结升档，检查 token、TURN、SFU 和 provider webhook |

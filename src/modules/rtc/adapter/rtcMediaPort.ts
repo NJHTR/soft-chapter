@@ -2,6 +2,26 @@
 
 import type { RtcRemoteVideoQuality } from '../quality/subscriptionPolicy'
 
+export interface RtcQoeTrackSnapshot {
+  identity: string
+  kind: 'audio' | 'video'
+  packetsLost: number
+  packetsReceived: number
+  jitterMs: number
+  bytesReceived: number
+  framesDecoded: number
+  framesDropped: number
+  framesPerSecond: number
+  frameWidth: number
+  frameHeight: number
+}
+
+export interface RtcQoeSnapshot {
+  sampledAt: string
+  connectionState: 'connected' | 'reconnecting' | 'disconnected' | 'unknown'
+  tracks: RtcQoeTrackSnapshot[]
+}
+
 export interface RtcMediaPortCallbacks {
   /** 远端参与者发布新音轨(组装进其 MediaStream 后回调;同一 stream 实例会被反复更新) */
   onRemoteTrack(identity: string, stream: MediaStream): void
@@ -46,6 +66,8 @@ export interface RtcMediaPort {
   setVisibleParticipants(identities: ReadonlySet<string> | readonly string[] | null): void
   /** Update the active speaker used by the conservative quality policy. */
   setActiveSpeaker(identity: string | null): void
+  /** Read the latest provider stats without changing media policy. */
+  getQoeSnapshot(): Promise<RtcQoeSnapshot>
   /** 断开房间(保留实例可复用) */
   leave(): void
   /** 断开 + 清理全部监听,不可复用 */
