@@ -36,11 +36,12 @@ let durationTimer: ReturnType<typeof setInterval> | null = null
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let ringingTimer: ReturnType<typeof setTimeout> | null = null
-let qoeTimer: ReturnType<typeof setInterval> | null = null
+let qoeTimer: ReturnType<typeof setTimeout> | null = null
 let joining = false
 let rejoining = false
 let listenersReady = false
 let lifecycleGeneration = 0
+let qoeSamplingGeneration = 0
 
 function extractErr(res: any): string {
   const d = res?.data
@@ -474,7 +475,8 @@ export const useRtcStore = defineStore('rtc', {
           this.error = extractErr(joined)
           return
         }
-        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') return
+        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle')
+          return
         await rtcMediaPort.join({ token, roomName, identity, mode: this.mode })
         if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') {
           rtcMediaPort.dispose()
@@ -550,7 +552,8 @@ export const useRtcStore = defineStore('rtc', {
 
     /** 媒体层已连通时立即确认业务状态，不等待 LiveKit webhook。 */
     async confirmMediaConnected(callId: string, generation: number) {
-      if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') return
+      if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle')
+        return
       try {
         const res = await confirmConnectedCall(callId, {
           event_id: genEventId('connected'),
@@ -560,7 +563,8 @@ export const useRtcStore = defineStore('rtc', {
           console.warn('[rtc] connected confirmation rejected:', extractErr(res))
           return
         }
-        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') return
+        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle')
+          return
         if (res.data) this.session = Object.assign({}, this.session, res.data)
         this.phase = 'connected'
         this.startDuration()
@@ -616,7 +620,8 @@ export const useRtcStore = defineStore('rtc', {
         this.remoteStreams = {}
         this.remoteMuted = {}
         this.localStream = null
-        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') return
+        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle')
+          return
         await rtcMediaPort.join({ token, roomName, identity, mode: this.mode })
         if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') {
           rtcMediaPort.dispose()
@@ -641,33 +646,54 @@ export const useRtcStore = defineStore('rtc', {
     stopDuration() {
       durationTimer = clearTimer(durationTimer)
       this.durationSeconds = 0
+      qoeSamplingGeneration++
       qoeTimer = clearTimer(qoeTimer)
       this.qoeSnapshot = null
     },
     startQoeSampling() {
+      const samplingGeneration = ++qoeSamplingGeneration
       qoeTimer = clearTimer(qoeTimer)
       const generation = lifecycleGeneration
       const sample = async () => {
-        if (generation !== lifecycleGeneration || !this.joined || this.phase === 'ended') return
+        if (
+          generation !== lifecycleGeneration ||
+          samplingGeneration !== qoeSamplingGeneration ||
+          this.phase === 'idle' ||
+          this.phase === 'ended'
+        ) {
+          return
+        }
         try {
+          if (!this.joined) return
           const snapshot = await rtcMediaPort.getQoeSnapshot()
-          if (generation !== lifecycleGeneration) return
+          if (
+            generation !== lifecycleGeneration ||
+            samplingGeneration !== qoeSamplingGeneration ||
+            !this.joined
+          ) {
+            return
+          }
           this.qoeSnapshot = snapshot
           console.debug('[rtc] qoe sample', {
             state: snapshot.connectionState,
             tracks: snapshot.tracks.length,
             packetsLost: snapshot.tracks.reduce((sum, track) => sum + track.packetsLost, 0),
-            packetsReceived: snapshot.tracks.reduce(
-              (sum, track) => sum + track.packetsReceived,
-              0
-            )
+            packetsReceived: snapshot.tracks.reduce((sum, track) => sum + track.packetsReceived, 0)
           })
         } catch (error) {
           console.debug('[rtc] qoe sample unavailable', error)
+        } finally {
+          if (
+            generation === lifecycleGeneration &&
+            samplingGeneration === qoeSamplingGeneration &&
+            this.phase !== 'idle' &&
+            this.phase !== 'ended'
+          ) {
+            qoeTimer = setTimeout(() => void sample(), 3000)
+          }
         }
       }
       void sample()
-      qoeTimer = setInterval(() => void sample(), 3000)
     },
 
     finishEnded(reason: string | null) {

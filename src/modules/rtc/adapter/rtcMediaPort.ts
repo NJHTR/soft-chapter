@@ -3,8 +3,10 @@
 import type { RtcRemoteVideoQuality } from '../quality/subscriptionPolicy'
 
 export interface RtcQoeTrackSnapshot {
+  trackId: string
   identity: string
   kind: 'audio' | 'video'
+  source: 'microphone' | 'camera' | 'screen_share' | 'screen_share_audio' | 'unknown'
   packetsLost: number
   packetsReceived: number
   jitterMs: number
@@ -18,7 +20,7 @@ export interface RtcQoeTrackSnapshot {
 
 export interface RtcQoeSnapshot {
   sampledAt: string
-  connectionState: 'connected' | 'reconnecting' | 'disconnected' | 'unknown'
+  connectionState: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'unknown'
   tracks: RtcQoeTrackSnapshot[]
 }
 

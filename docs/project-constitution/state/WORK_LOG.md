@@ -25,6 +25,7 @@
 - LiveKit adapter 新增 provider-neutral `RtcQoeSnapshot`，读取远端 inbound-rtp 的丢包、jitter、字节、解码帧、分辨率和帧率。
 - 通话接通后每 3 秒采集最近一次快照，挂断或生命周期切换时停止；当前只保存在 store，不改变质量层，也不写入 Kafka/聊天 WS。
 - 验证：`vue-tsc`、RTC adapter/store ESLint 通过；服务端聚合、真实弱网矩阵和 SLO 发布门禁仍未完成。
+- 独立审查修正：QoE 轨道改用 publication `trackSid` 唯一标识并保留 source，摄像头与屏幕共享的统计不再互相覆盖；采样改为串行循环并在重连后恢复，LiveKit `connecting/signalReconnecting` 显式归一化。
 
 ## 2026-08-19：RTC 通话流程验收与忙线并发守卫
 
