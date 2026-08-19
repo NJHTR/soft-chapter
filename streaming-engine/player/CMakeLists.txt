@@ -1,0 +1,3 @@
+add_library(streaming_engine_player INTERFACE)
+target_include_directories(streaming_engine_player INTERFACE ${CMAKE_SOURCE_DIR})
+target_link_libraries(streaming_engine_player INTERFACE streaming_engine_common)

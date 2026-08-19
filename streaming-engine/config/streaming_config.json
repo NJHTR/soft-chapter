@@ -1,0 +1,150 @@
+{
+  "pipeline": {
+    "input_width": 3840,
+    "input_height": 2160,
+    "output_width": 1920,
+    "output_height": 1080,
+    "fps": 60
+  },
+
+  "capture": {
+    "source": "camera",
+    "backend": "auto",
+    "width": 3840,
+    "height": 2160,
+    "fps": 60,
+    "oversample": true,
+    "oversample_factor": 2,
+    "device_path": ""
+  },
+
+  "gpu": {
+    "api": "cuda",
+    "device_id": 0,
+    "memory_pool_size_mb": 512,
+    "enable_zero_copy": true,
+    "queue_depth": 3
+  },
+
+  "denoise": {
+    "enabled": true,
+    "model": "fastdvdnet",
+    "backend": "tensorrt",
+    "model_path": "models/denoise/fastdvdnet_fp16.engine",
+    "input_width": 1920,
+    "input_height": 1080,
+    "fp16": true
+  },
+
+  "beauty": {
+    "enabled": true,
+    "face_detection": "mediapipe",
+    "skin_smoothness": 0.4,
+    "eye_brightness": 0.3,
+    "lip_saturation": 0.2,
+    "face_slim": 0.0,
+    "jaw_width": 0.0,
+    "nose_size": 0.0
+  },
+
+  "super_resolution": {
+    "enabled": true,
+    "model": "realesrgan",
+    "backend": "tensorrt",
+    "model_path": "models/super_res/realesrgan_fp16.engine",
+    "input_width": 1280,
+    "input_height": 720,
+    "output_width": 1920,
+    "output_height": 1080,
+    "scale": 1.5,
+    "fp16": true
+  },
+
+  "color": {
+    "color_space": "bt709",
+    "hdr_mode": "off",
+    "tone_mapping": "aces",
+    "gamma": 2.2,
+    "exposure": 1.0,
+    "lut_path": "",
+    "lut_intensity": 0.0
+  },
+
+  "sharpen": {
+    "enabled": true,
+    "method": "guided_filter",
+    "sharpness": 0.3,
+    "edge_threshold": 0.1,
+    "noise_gate": 0.02
+  },
+
+  "encoder": {
+    "type": "nvenc",
+    "codec": "av1",
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "bitrate": 4000000,
+    "max_bitrate": 8000000,
+    "min_bitrate": 500000,
+    "gop_size": 120,
+    "b_frames": 2,
+    "nvenc_preset": 7,
+    "nvenc_lookahead": true,
+    "nvenc_lookahead_depth": 32,
+    "enable_10bit": false
+  },
+
+  "bitrate_control": {
+    "mode": "dynamic",
+    "initial_bitrate": 4000000,
+    "max_bitrate": 8000000,
+    "min_bitrate": 500000,
+    "up_scale_threshold": 0.75,
+    "down_scale_threshold": 0.90,
+    "scale_up_factor": 1.25,
+    "scale_down_factor": 0.75,
+    "min_duration_ms": 10000,
+    "increase_cooldown_ms": 30000,
+    "quality_tiers": [
+      { "label": "8k",  "bitrate": 8000000, "resolution": "1080P", "fps": 60, "codec": "av1" },
+      { "label": "4k",  "bitrate": 4000000, "resolution": "1080P", "fps": 30, "codec": "av1" },
+      { "label": "2k",  "bitrate": 2000000, "resolution": "720P",  "fps": 60, "codec": "h265" },
+      { "label": "1k",  "bitrate": 1000000, "resolution": "720P",  "fps": 30, "codec": "h265" },
+      { "label": "500k","bitrate": 500000,  "resolution": "480P",  "fps": 30, "codec": "h264" }
+    ]
+  },
+
+  "network": {
+    "protocol": "srt",
+    "server_url": "srt://localhost:9000",
+    "stream_key": "",
+    "srt_latency_ms": 120,
+    "srt_tsbpd_ms": 200,
+    "srt_encryption": false,
+    "stun_server": "stun:stun.l.google.com:19302",
+    "enable_fec": true,
+    "fec_scheme": "reed_solomon",
+    "fec_k": 10,
+    "fec_n": 12
+  },
+
+  "server": {
+    "type": "srs",
+    "srs_api": "http://localhost:1985",
+    "srs_rtmp_port": 1935,
+    "srs_srt_port": 9000,
+    "srs_webrtc_port": 8000,
+    "srs_http_callback": "http://localhost:9191/api/live/engine/srt/auth",
+    "enable_transcoding": true,
+    "enable_abr": true
+  },
+
+  "player": {
+    "backend": "webcodecs",
+    "buffer_ms": 200,
+    "max_buffer_ms": 1000,
+    "enable_hardware_decode": true,
+    "enable_auto_bitrate": true
+  }
+}
