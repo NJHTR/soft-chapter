@@ -74,8 +74,16 @@ public class LiveProviderSessionService {
         return session;
     }
 
-    public int retireActivePublish(Long roomId, String streamKey, String event) {
-        return mapper.retireActivePublish(roomId, streamKey, event, LocalDateTime.now(clock));
+    @Transactional
+    public int retirePublishGeneration(Long roomId, String streamKey, String providerSessionId, String event) {
+        if (providerSessionId == null || providerSessionId.isBlank()) return 0;
+        // Reconciliation may be operating on a snapshot taken before a new
+        // on_publish callback arrived. Lock and target only the generation
+        // observed by that snapshot; never retire whichever session happens
+        // to be active at the time the update reaches the database.
+        mapper.lockLiveRoom(roomId);
+        return mapper.retirePublishGeneration(roomId, streamKey, providerSessionId, event,
+                LocalDateTime.now(clock));
     }
 
     @Transactional

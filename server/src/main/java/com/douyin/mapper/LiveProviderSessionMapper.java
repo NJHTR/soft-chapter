@@ -15,6 +15,9 @@ import java.util.Optional;
 @Mapper
 public interface LiveProviderSessionMapper extends BaseMapper<LiveProviderSession> {
 
+    @Select("SELECT id FROM t_live_room WHERE id=#{roomId} FOR UPDATE")
+    Long lockLiveRoom(@Param("roomId") Long roomId);
+
     @Insert("INSERT INTO live_provider_session "
             + "(room_id, provider, direction, client_id, server_id, provider_session_id, stream_key, user_id, state, last_event, first_seen_at, last_seen_at, ended_at) "
             + "VALUES (#{roomId}, #{provider}, #{direction}, #{clientId}, #{serverId}, #{providerSessionId}, #{streamKey}, #{userId}, #{state}, #{lastEvent}, #{firstSeenAt}, #{lastSeenAt}, #{endedAt}) "
@@ -49,6 +52,17 @@ public interface LiveProviderSessionMapper extends BaseMapper<LiveProviderSessio
                   @Param("streamKey") String streamKey,
                   @Param("event") String event,
                   @Param("now") LocalDateTime now);
+
+    @Update("UPDATE live_provider_session SET state='ENDED', last_event=#{event}, "
+            + "last_seen_at=#{now}, ended_at=#{now} WHERE room_id=#{roomId} "
+            + "AND provider='srs' AND direction='PUBLISH' AND stream_key=#{streamKey} "
+            + "AND provider_session_id=#{providerSessionId} "
+            + "AND state='ACTIVE'")
+    int retirePublishGeneration(@Param("roomId") Long roomId,
+                                @Param("streamKey") String streamKey,
+                                @Param("providerSessionId") String providerSessionId,
+                                @Param("event") String event,
+                                @Param("now") LocalDateTime now);
 
     @Update("UPDATE live_provider_session SET last_seen_at=#{now}, last_event='reconcile' "
             + "WHERE room_id=#{roomId} AND provider='srs' AND direction='PUBLISH' "

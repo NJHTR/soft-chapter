@@ -111,6 +111,22 @@ class LiveProviderSessionServiceTest {
         verify(mapper, never()).upsertActive(any());
     }
 
+    @Test
+    void retiresOnlyTheGenerationSeenByTheReconciliationSnapshot() {
+        LiveProviderSessionMapper mapper = mock(LiveProviderSessionMapper.class);
+        when(mapper.retirePublishGeneration(eq(99L), eq("stream-1"), eq("srs-old:client-1"),
+                eq("generation_changed"), any())).thenReturn(1);
+
+        int retired = service(mapper).retirePublishGeneration(
+                99L, "stream-1", "srs-old:client-1", "generation_changed");
+
+        assertEquals(1, retired);
+        InOrder calls = inOrder(mapper);
+        calls.verify(mapper).lockLiveRoom(99L);
+        calls.verify(mapper).retirePublishGeneration(eq(99L), eq("stream-1"),
+                eq("srs-old:client-1"), eq("generation_changed"), any());
+    }
+
     private static LiveProviderSessionService service(LiveProviderSessionMapper mapper) {
         return new LiveProviderSessionService(mapper, Clock.fixed(NOW, ZoneOffset.UTC));
     }

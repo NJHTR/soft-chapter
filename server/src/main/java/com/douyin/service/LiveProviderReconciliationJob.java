@@ -79,6 +79,22 @@ public class LiveProviderReconciliationJob {
                     }
                     continue;
                 }
+                String observedSession = snapshot.activePublishSessions().get(streamKey);
+                if (observedSession == null) {
+                    sessionService.retirePublishGeneration(
+                            room.getId(), streamKey, room.getProviderSessionId(), "generation_unverified");
+                    // providerDisconnected carries the expected generation as
+                    // a CAS. A new on_publish that wins the race remains
+                    // ACTIVE instead of being degraded by this stale snapshot.
+                    liveService.providerDisconnected(room.getId(), streamKey, room.getProviderSessionId());
+                    continue;
+                }
+                if (!observedSession.equals(room.getProviderSessionId())) {
+                    sessionService.retirePublishGeneration(
+                            room.getId(), streamKey, room.getProviderSessionId(), "generation_changed");
+                    liveService.providerDisconnected(room.getId(), streamKey, room.getProviderSessionId());
+                    continue;
+                }
                 sessionService.heartbeat(room.getId(), room.getProviderSessionId(), streamKey);
                 liveService.providerHeartbeat(room.getId(), streamKey, room.getProviderSessionId());
                 continue;

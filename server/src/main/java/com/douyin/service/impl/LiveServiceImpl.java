@@ -193,10 +193,11 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
         if ("LIVE".equals(room.getStatus())
                 && !isBlank(room.getProviderSessionId())
                 && !sameProviderSession(room.getProviderSessionId(), providerSessionId)) {
-            // A second delayed publish cannot steal an already-active stream.
-            // A reconnect is allowed after DISCONNECTED/DEGRADED, where the
-            // previous generation has entered its bounded recovery path.
-            return null;
+            // A different client on the same SRS server is a concurrent
+            // publisher and must not steal the room. A changed server prefix
+            // identifies an SRS restart; the session projection has already
+            // retired the old generation before this CAS transition.
+            if (sameProviderServer(room.getProviderSessionId(), providerSessionId)) return null;
         }
         LocalDateTime now = LocalDateTime.now();
         LambdaUpdateWrapper<LiveRoom> transition = new LambdaUpdateWrapper<LiveRoom>()
@@ -325,6 +326,13 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
     private static boolean sameProviderSession(String current, String candidate) {
         return !isBlank(current) && !isBlank(candidate)
                 && normalizeProviderId(current).equals(normalizeProviderId(candidate));
+    }
+
+    private static boolean sameProviderServer(String current, String candidate) {
+        int currentSeparator = current == null ? -1 : current.indexOf(':');
+        int candidateSeparator = candidate == null ? -1 : candidate.indexOf(':');
+        return currentSeparator > 0 && candidateSeparator > 0
+                && current.substring(0, currentSeparator).equals(candidate.substring(0, candidateSeparator));
     }
 
     private static boolean isBlank(String value) {
