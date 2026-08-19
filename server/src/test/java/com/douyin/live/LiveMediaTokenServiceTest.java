@@ -43,10 +43,30 @@ class LiveMediaTokenServiceTest {
                 "01234567890123456789012345678901",
                 30,
                 "",
-                Clock.fixed(Instant.ofEpochSecond(1_700_000_031), ZoneOffset.UTC));
+                Clock.fixed(Instant.ofEpochSecond(1_700_000_301), ZoneOffset.UTC));
 
         assertFalse(expired.validate(issued.value(), 1L, "key", LiveMediaTokenService.Purpose.INGEST));
         assertFalse(service.validateCallbackToken("callback-secret"));
+    }
+
+    @Test
+    void canVerifyAnExpiredAdmissionTokenOnlyForAnExactProviderClose() {
+        LiveMediaTokenService issued = service(true, CALLBACK_SECRET);
+        var token = issued.issue(42L, "live-key", 7L, LiveMediaTokenService.Purpose.PLAY).value();
+        LiveMediaTokenService expired = new LiveMediaTokenService(
+                true,
+                "01234567890123456789012345678901",
+                30,
+                CALLBACK_SECRET,
+                Clock.fixed(Instant.ofEpochSecond(1_700_000_301), ZoneOffset.UTC));
+
+        assertFalse(expired.validate(token, 42L, "live-key", LiveMediaTokenService.Purpose.PLAY));
+        assertTrue(expired.validateForProviderClose(
+                token, 42L, "live-key", LiveMediaTokenService.Purpose.PLAY, 7L));
+        assertFalse(expired.validateForProviderClose(
+                token, 42L, "other-key", LiveMediaTokenService.Purpose.PLAY, 7L));
+        assertFalse(expired.validateForProviderClose(
+                token, 42L, "live-key", LiveMediaTokenService.Purpose.INGEST, 7L));
     }
 
     @Test
@@ -59,6 +79,12 @@ class LiveMediaTokenServiceTest {
     @Test
     void rejectsWeakCallbackSecretWhenMediaAuthIsEnabled() {
         assertThrows(IllegalStateException.class, () -> service(true, "too-short"));
+    }
+
+    @Test
+    void rejectsCallbackSecretThatCanBreakTheSrsQueryString() {
+        assertThrows(IllegalStateException.class,
+                () -> service(true, "callback-secret-0123456789012345678901&role=admin"));
     }
 
     private static LiveMediaTokenService service(boolean enabled, String callbackSecret) {

@@ -98,12 +98,10 @@ class SrsCallbackControllerTest {
     void acceptsPlayTokenFromParamQueryAndStopsOnlyTheMatchingPlaySession() {
         String playToken = tokenService.issue(
                 liveRoom.getId(), STREAM_KEY, 7L, LiveMediaTokenService.Purpose.PLAY).value();
-        String publishToken = tokenService.issue(
-                liveRoom.getId(), STREAM_KEY, liveRoom.getHostUserId(), LiveMediaTokenService.Purpose.INGEST).value();
         Map<String, String> playParams = params(null, CALLBACK_SECRET);
         playParams.put("param", "token=" + playToken);
         Map<String, String> stopParams = params(null, CALLBACK_SECRET);
-        stopParams.put("param", "token=" + publishToken);
+        stopParams.put("param", "token=" + playToken);
 
         assertEquals(HttpStatus.OK, controller.onPlay(Map.of(), playParams).getStatusCode());
         assertEquals(HttpStatus.OK, controller.onStop(Map.of(), stopParams)
@@ -131,12 +129,22 @@ class SrsCallbackControllerTest {
 
     @Test
     void unpublishClosesPublishAndStartsBoundedProviderGrace() {
-        Map<String, String> callback = params(null, CALLBACK_SECRET);
+        String publishToken = tokenService.issue(
+                liveRoom.getId(), STREAM_KEY, liveRoom.getHostUserId(), LiveMediaTokenService.Purpose.INGEST).value();
+        Map<String, String> callback = params(publishToken, CALLBACK_SECRET);
 
         assertEquals(HttpStatus.OK, controller.onUnpublish(Map.of(), callback).getStatusCode());
         verify(sessionService).close(99L, "PUBLISH", "client-1", "srs-1", "srs-1:client-1", STREAM_KEY,
                 "on_unpublish");
         verify(liveService).providerDisconnected(99L, STREAM_KEY, "srs-1:client-1");
+    }
+
+    @Test
+    void rejectsCloseCallbackWithoutTheMatchingMediaToken() {
+        assertEquals(HttpStatus.FORBIDDEN, controller.onUnpublish(Map.of(), params(null, CALLBACK_SECRET))
+                .getStatusCode());
+        verify(sessionService, never()).close(any(), any(), any(), any(), any(), any(), any());
+        verify(liveService, never()).providerDisconnected(anyLong(), anyString(), anyString());
     }
 
     @Test

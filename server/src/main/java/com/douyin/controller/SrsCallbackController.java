@@ -196,6 +196,16 @@ public class SrsCallbackController {
         if (streamKey == null) return forbidden("missing stream key");
         LiveRoom room = findRoom(streamKey);
         if (room == null) return ok();
+        LiveMediaTokenService.Purpose purpose = "PUBLISH".equals(direction)
+                ? LiveMediaTokenService.Purpose.INGEST : LiveMediaTokenService.Purpose.PLAY;
+        String token = firstNonBlank(request.token(), queryParameter(request.param(), "token"));
+        Long expectedUserId = purpose == LiveMediaTokenService.Purpose.INGEST
+                ? room.getHostUserId() : null;
+        if (!mediaTokenService.validateForProviderClose(
+                token, room.getId(), streamKey, purpose, expectedUserId)) {
+            log.warn("Rejected SRS {} callback for an unauthorised stream", event);
+            return forbidden("token rejected");
+        }
         String providerSessionId = providerSessionId(request);
         int closed = providerSessionService.close(room.getId(), direction, request.clientId(), request.serverId(),
                 providerSessionId, streamKey, event);

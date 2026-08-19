@@ -35,6 +35,12 @@ public class LiveMediaTokenService {
     }
 
     private static final String HMAC_ALGORITHM = "HmacSHA256";
+    /**
+     * The callback secret is embedded in an SRS query string. Restricting it
+     * to URL-safe characters prevents an ampersand, question mark, or fragment
+     * delimiter from changing the callback URL that SRS actually invokes.
+     */
+    private static final String CALLBACK_TOKEN_PATTERN = "[A-Za-z0-9_-]{32,}";
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
 
@@ -69,6 +75,11 @@ public class LiveMediaTokenService {
         if (enabled && !normalizedCallbackToken.isBlank() && normalizedCallbackToken.length() < 32) {
             throw new IllegalStateException(
                     "SRS_CALLBACK_TOKEN must contain at least 32 characters when media auth is enabled");
+        }
+        if (enabled && !normalizedCallbackToken.isBlank()
+                && !normalizedCallbackToken.matches(CALLBACK_TOKEN_PATTERN)) {
+            throw new IllegalStateException(
+                    "SRS_CALLBACK_TOKEN must contain only URL-safe letters, digits, '-' or '_' when media auth is enabled");
         }
         this.secret = normalizedSecret.getBytes(StandardCharsets.UTF_8);
         this.ttlSeconds = Math.max(30, Math.min(ttlSeconds, 3600));
@@ -112,6 +123,30 @@ public class LiveMediaTokenService {
             Purpose purpose,
             Long expectedUserId) {
         Optional<TokenClaims> claims = parse(token);
+        return matches(claims, roomId, streamKey, purpose, expectedUserId);
+    }
+
+    /**
+     * A provider close event needs to remain verifiable after a long-running
+     * stream's short admission token expires. It still requires a valid
+     * signature, exact room/key/purpose claims, the private callback secret,
+     * and the exact provider generation before it can change state.
+     */
+    public boolean validateForProviderClose(
+            String token,
+            Long roomId,
+            String streamKey,
+            Purpose purpose,
+            Long expectedUserId) {
+        return matches(parse(token, false), roomId, streamKey, purpose, expectedUserId);
+    }
+
+    private static boolean matches(
+            Optional<TokenClaims> claims,
+            Long roomId,
+            String streamKey,
+            Purpose purpose,
+            Long expectedUserId) {
         if (claims.isEmpty() || roomId == null || streamKey == null || purpose == null) return false;
         TokenClaims tokenClaims = claims.get();
         if (!roomId.equals(tokenClaims.roomId())
@@ -123,6 +158,10 @@ public class LiveMediaTokenService {
     }
 
     public Optional<TokenClaims> parse(String token) {
+        return parse(token, true);
+    }
+
+    private Optional<TokenClaims> parse(String token, boolean requireUnexpired) {
         if (!enabled || token == null || token.isBlank()) return Optional.empty();
         try {
             String[] parts = token.split("\\.", 2);
@@ -140,7 +179,7 @@ public class LiveMediaTokenService {
             long userId = Long.parseLong(claims[2]);
             Purpose purpose = Purpose.valueOf(claims[3]);
             long expiresAt = Long.parseLong(claims[4]);
-            if (expiresAt <= Instant.now(clock).getEpochSecond()) return Optional.empty();
+            if (requireUnexpired && expiresAt <= Instant.now(clock).getEpochSecond()) return Optional.empty();
             return Optional.of(new TokenClaims(roomId, claims[1], userId, purpose, expiresAt));
         } catch (RuntimeException e) {
             return Optional.empty();
