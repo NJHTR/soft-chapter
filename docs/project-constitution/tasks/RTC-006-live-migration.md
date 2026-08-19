@@ -25,6 +25,9 @@
 - 列表卡片使用封面，不再为每张卡片建立永远等不到媒体帧的控制 WS。
 - 后端只向登录用户返回媒体地址；房主才获得 WHIP 地址；stream key 每次开播随机生成。
 - viewer/like SQL 增量改为原子更新，直播控制消息有大小、类型和文本边界。
+- SRS `on_publish/on_play/on_unpublish/on_stop` callback 已拆分，具备 callback secret、短期 token、stream key、房间/主播 ACL、provider session 幂等和 bounded reconciliation；实现提交为 `25e440a`。
+- 新增 `server/sql/migration_038_live_provider_session.sql`，036/037 保留给 AI-003/AI-004，不重编号。
+- `3bc701b`、`02fa7b8`、`876eb57` 增加回调事务房间锁、SRS provider generation CAS 和 `on_unpublish/on_stop` 的签名媒体 token 校验；`94d349d` 拒绝缺失/非法 presence session；`9c70437`、`ec3f286` 补齐 generation、分页和 grace 单测。
 
 ## 必查兼容项
 
@@ -41,16 +44,18 @@
 - [x] 本机 Docker 媒体验收通过：`SRS_RTC_CANDIDATE=172.21.160.1` 时 WHIP `connected`、WHEP 首帧 `640x480`、HLS master/media playlist 与 TS 片段、HTTP-FLV 数据均可读；TS 经 `ffprobe` 确认为 H.264/AAC。
 - [ ] HTTPS/公网 candidate 下的主播重连、跨网络 ICE/TURN 和浏览器矩阵仍待发布环境验收；前端已具备有界恢复逻辑。
 - [x] viewer presence 已改为 `(room,user,session)` Redis TTL 成员；REST join/leave 与控制 WS 共用幂等 session，避免数据库和连接数双计。仍需在真实 Redis 多实例和异常断开环境复测。
-- [ ] 主播所有权、短期 ingest/play token、SRS callback、房间状态和 viewer 权限有完整契约测试。
+- [x] 主播所有权、短期 ingest/play token、SRS callback、房间状态和 viewer 权限的 Java/MockMvc 契约测试已覆盖；当前 Maven 全套 `127/127` 通过。
+- [ ] 真实 SRS callback HTTP 运行验收（包括 provider 返回非 2xx、缺失/错误媒体 token 时拒绝媒体会话）。
 - [x] 控制面已增加可开关的 HMAC 短期媒体 token、SRS callback 校验端点和 token 单元测试；默认开发 profile 仍关闭，生产需挂载 `deploy/streaming/srs-auth.conf.example` 的 callback 段并完成真实 provider 验收。
-- [ ] provider 重启、异常断开、STARTING/DEGRADED/ENDING 状态恢复通过。
+- [x] provider session projection、heartbeat/reconciliation、bounded grace 和异常 generation 防护已实现并有单测。
+- [ ] 真实 SRS 重启、主播异常断开、STARTING/DEGRADED/ENDING 状态恢复验收。
 - [ ] 2026-09-30 前完成灰度指标采集，按路线图达成 legacy 退役门槛。
 
 ## Review Gate 与剩余风险
 
-1. **媒体授权**：随机 stream key 只是不可预测能力值，不是短期 token；上线前需要 SRS `on_publish/on_play` 或网关签名 URL，并定义撤销和过期错误码。
-2. **presence**：已引入 Redis TTL presence 和唯一 session id；仍需在真实 Redis 多实例、异常断开和数据库重启场景验证 reconciliation。
-3. **生命周期**：不能用 `update_time` 判断媒体存活；当前已移除会误杀 2 分钟静默直播的清理任务，待 provider heartbeat/reconciliation 接入后再自动结束。
+1. **媒体授权**：callback secret 与短期 ingest/play token 已实现，启用媒体鉴权时 token secret 和 callback secret 均要求至少 32 字符；生产 callback 配置仍需渲染、内网限制和真实 SRS 验收。
+2. **presence**：已引入 Redis TTL presence 和唯一 session id；代码/单测 fail-closed，但仍需真实 Redis 多实例、异常断开和数据库重启场景验证 reconciliation。
+3. **生命周期**：不能用 `update_time` 判断媒体存活；provider heartbeat/reconciliation 和 bounded grace 已实现，真实 SRS restart/断开收敛仍待验收。
 4. **部署**：生产网关必须反代 `/media/srs`、`/media/srs-http`，配置真实 SRS candidate、HTTPS/WSS、Origin allowlist 和 TURN/ICE 策略。
 5. **真实性**：类型检查、构建和 HTTP 端口健康不能替代真实浏览器媒体验证；未验证项必须保持未勾选。
-6. **收敛契约**：`docs/contracts/live-media-reconciliation.md` 只定义幂等、`GRACE` 和 reconciliation 边界，不代表 provider session worker 已完成实现。
+6. **收敛契约**：`docs/contracts/live-media-reconciliation.md` 与 provider session/reconciliation worker 已随 `25e440a` 提交；文档/单测不替代真实 provider runtime 验收。

@@ -9,7 +9,7 @@
 | RTC-003 | RTC 控制面和通话领域 | `completed` | RTC-001 | CallSession、Participant、ACL、幂等事件、token API、webhook |
 | RTC-004 | 1 对 1 LiveKit 适配器 | `completed` | RTC-002、RTC-003 | 设备管理、音频优先、接通/重连、通话记录 |
 | RTC-005 | 群聊音视频 SFU 迁移 | `completed` | RTC-004 | 8 人基线、订阅策略、simulcast、active speaker |
-| RTC-006 | 直播 WHIP/WHEP 迁移 | `in_progress` | RTC-002、RTC-003 | 主播 ingest、观众播放、HLS/HTTP-FLV fallback、单一 presence |
+| RTC-006 | 直播 WHIP/WHEP 迁移 | `in_progress` | RTC-002、RTC-003 | 主播 ingest、观众播放、HLS/HTTP-FLV fallback、单一 presence、SRS callback/session/reconciliation、migration_038 |
 | RTC-007 | QoE、ABR、弱网和恢复 | `planned` | RTC-004、RTC-005、RTC-006 | stats、质量策略、ICE restart、降级/恢复 |
 | RTC-008 | 录制和转码 | `planned` | RTC-005、RTC-006 | Egress/DVR、异步 FFmpeg、对象存储、审计 |
 | RTC-009 | Legacy 退役和 native 收口 | `planned` | RTC-007、RTC-008 | 迁移桥、feature flag、退出报告、C++ 独立验证 |
@@ -51,14 +51,14 @@ RTC-004、RTC-005、RTC-006 按依赖分别联调；通话和直播不共用媒�
 
 RTC-007 到 RTC-010 必须在真实浏览器、TURN、弱网、重连和故障环境中验证，最后才允许删除 legacy 路径。
 
-## 当前执行指针（2026-08-19）
+## 当前执行指针（2026-08-20）
 
 - 当前任务：`RTC-006`。
 - 当前波次：C（SRS WHIP/WHEP 媒体迁移）与 D（浏览器播放、控制 WS 和质量基线）。
 - 已完成的契约：控制面 OpenAPI、LiveKit webhook 事件账本、错误码和 `douyin.realtime.v1` 信令 schema。
 - 尚未满足的发布门禁：真实双浏览器接通、TURN relay、官方 webhook 端到端回调和 QoE 报告。
 - RTC-004/005 的控制面与代码路径已完成，但真实双浏览器/媒体 provider 验收仍记录在对应任务的 review gate 中。
-- RTC-006 在真实 WHIP/WHEP、短期媒体授权、presence 幂等和 provider 故障验证完成前保持 `in_progress`，不得因为前端能编译而标记完成。
+- `25e440a`、`3bc701b`、`94d349d`、`9c70437`、`ec3f286`、`02fa7b8`、`876eb57` 已提交 RTC-006 的短期媒体授权、SRS callback、provider session/reconciliation、generation CAS、presence session 约束、migration_038 和 Java 契约测试；真实 SRS callback、SRS 重启/异常断开、Redis 多实例 presence、浏览器 post-change 验收未完成，RTC-006 保持 `in_progress`。
 - RTC-007 已有本地 QoE 快照与采样生命周期的前置提交 `7859fd7`、`94370b5`，但服务端聚合、ABR、弱网矩阵和 SLO 门禁未完成，状态保持 `planned`。
 - RTC-012 已有订阅端口和群聊可见性策略的前置提交 `8d6939e`、`f1d8bf9`，但 `adaptiveStream`、真实 2/4/8 人浏览器矩阵和 SFU egress 量化未完成，状态保持 `planned`。
 

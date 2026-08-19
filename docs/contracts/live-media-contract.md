@@ -51,13 +51,15 @@ SRS 端点由 `LiveMediaProperties` 生成。开发环境通过 Vite `/media/srs
 - WHEP/WHIP 会话结束时使用响应 `Location` 执行 `DELETE`；代理前缀必须保留。
 - 浏览器端媒体会话必须带 generation/peer identity；组件卸载或新一轮协商使旧操作失效，且在收到 `Location` 后才能登记并清理 provider 会话。
 
-当前 stream key 是每次开播随机生成且不再作为公开 `playUrl` 返回。启用 `LIVE_MEDIA_AUTH_ENABLED=true` 后，控制面为每个已登录主体签发 HMAC 短期 ingest/play token，SRS `on_publish/on_play` callback 使用 `SRS_CALLBACK_TOKEN` 和房间状态校验；房间结束后旧 token 因状态检查立即失效。开发环境默认关闭令牌校验以保留本机 smoke，生产必须同时设置 `LIVE_MEDIA_TOKEN_SECRET`、`SRS_CALLBACK_TOKEN` 并启用 callback 配置。
+当前 stream key 是每次开播随机生成且不再作为公开 `playUrl` 返回。启用 `LIVE_MEDIA_AUTH_ENABLED=true` 后，控制面为每个已登录主体签发 HMAC 短期 ingest/play token，SRS `on_publish/on_play` callback 使用 `SRS_CALLBACK_TOKEN` 和房间状态校验；房间结束后旧 token 因状态检查立即失效。生产 `LIVE_MEDIA_TOKEN_SECRET` 与 `SRS_CALLBACK_TOKEN` 均要求至少 32 字符，并应使用 URL-safe 随机值。开发环境默认关闭令牌校验以保留本机 smoke，生产必须同时设置两个 secret 并启用 callback 配置。
 
 ### SRS callback 配置
 
 将 `deploy/streaming/srs-auth.conf.example` 中的 callback 段合并到生产 SRS vhost，并把 callback URL 限制在 Spring 控制面内网地址。SRS 只收到控制回调，不会把 SDP、RTP 或编码帧发送给 Spring；`on_publish`/`on_play` 返回非 2xx 时 provider 必须拒绝媒体会话。
 
-provider 会话收敛和重启恢复的详细约束见 [`docs/contracts/live-media-reconciliation.md`](./live-media-reconciliation.md)。那份文档定义了幂等键、`GRACE` 收敛窗口和 reconciliation 的边界；当前仓库只保证契约存在，不代表已落成独立 worker。
+provider 会话收敛和重启恢复的详细约束见 [`docs/contracts/live-media-reconciliation.md`](./live-media-reconciliation.md)。`25e440a` 已提交 provider session projection、SRS callback 和 reconciliation worker；后续 `3bc701b`、`9c70437`、`ec3f286`、`02fa7b8` 和 `876eb57` 增加事务房间锁、SRS `server:cid` generation 校验、旧 generation 定向 CAS、presence session 拒绝和关闭回调 token 校验。实现定义了幂等键、`GRACE` 收敛窗口、严格的 SRS stream snapshot 解析和不依赖 `update_time` 的生命周期；真实 SRS callback、重启恢复和 Redis 多实例验收仍是 RTC-006 发布门。
+
+SRS 的 `on_unpublish/on_stop` 也必须携带原始媒体 token（通常位于 callback 的 `param` 查询串）。控制面会以签名验证 token，即使长直播结束时 admission token 已过期，也只允许匹配确切房间、stream key、用途和 provider generation 的关闭事件；缺失或用途不匹配的关闭回调会被拒绝并交给 reconciliation 的 bounded grace 收敛。
 
 ### 本机媒体验收记录（2026-08-17）
 

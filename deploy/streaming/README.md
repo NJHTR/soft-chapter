@@ -95,5 +95,22 @@ KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092
 - 当前 RTC-006 已通过本机 WHIP→WHEP、HLS/HTTP-FLV fallback 和 Docker provider smoke；公网 HTTPS/TURN、provider 重启、SRS callback 授权和多实例 presence 故障验收仍未完成，详见 `docs/contracts/live-media-contract.md` 和任务文件。
 - stream key 目前是随机能力值，不等同短期 ingest/play token。生产启用前必须接入 SRS callback/网关 ACL 和撤销策略，不能直接把 HTTP smoke 当安全验收。
 - 生产媒体授权：设置 `LIVE_MEDIA_AUTH_ENABLED=true`、长度至少 32 的 `LIVE_MEDIA_TOKEN_SECRET` 和长度至少 32 的 `SRS_CALLBACK_TOKEN`，将 `srs-auth.conf.example` 渲染为不含占位符的私有配置后，再合并进 SRS vhost。未配置 callback 时不要宣称短期令牌已保护 provider。
+- `SRS_CALLBACK_TOKEN` 只能使用 URL-safe 随机字符（`A-Z`、`a-z`、`0-9`、`-`、`_`），避免 `&`、`?`、`#` 改写 SRS callback 查询串。反向代理、SRS 和 Spring access log 必须脱敏 `callback_token`、媒体 token 和完整媒体 URL。
 - Windows Docker Desktop 中 SRS 容器回调 IDEA 后端通常使用 `host.docker.internal:9191`；Linux Docker 需要配置 `host-gateway` 或使用同一容器网络内的服务名。`spring-control:9191` 并不属于当前 compose，不能直接使用。
 - 启用 reconciliation 时还要配置 `LIVE_MEDIA_RECONCILIATION_ENABLED=true` 和 `SRS_API_BASE`。SRS API 不可达只会使直播进入 `DEGRADED`，不会自动关播；API 恢复且明确无流后才开始有界 grace period。
+
+### RTC-006 callback 运行验收
+
+先以登录主播创建并开始一个测试直播间，从详情接口取得该房间的短期 `whipUrl` 和以另一登录用户取得的 `whepUrl`，仅从 URL 的 `token` 查询参数提取临时 token。不要将完整 URL 或 token 粘贴到日志、终端历史或提交中。
+
+渲染私有 `http_hooks` 配置、启动 Spring 和 SRS 后，可用以下脚本检查 Spring callback 契约。脚本只输出通过/失败和 HTTP 状态，不回显任何 secret、token 或响应体：
+
+```powershell
+powershell -File deploy/streaming/provider-callback-smoke.ps1 `
+  -CallbackBase http://localhost:9191/api/live/provider/srs `
+  -StreamKey <stream-key>
+```
+
+脚本会用隐藏输入提示 ingest token、play token 和 callback token；自动化环境可以用同名参数传入，但不得将它们写进 CI 输出、命令日志或提交。
+
+随后必须做真实 provider 验收：用 WHIP 发布、用 WHEP 等待首帧、检查 HLS 与 HTTP-FLV fallback；重启 SRS 或中断发布者，确认房间在 grace window 内转为 `DEGRADED`，有效新 `on_publish` 才能恢复，重复旧 callback 不能复活旧 generation。不同 Redis/Spring 实例同时 join/leave 同一 `sessionId` 时，viewer count 必须只变化一次。
