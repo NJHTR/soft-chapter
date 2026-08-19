@@ -44,7 +44,7 @@
 - [x] 本机 Docker 媒体验收通过：`SRS_RTC_CANDIDATE=172.21.160.1` 时 WHIP `connected`、WHEP 首帧 `640x480`、HLS master/media playlist 与 TS 片段、HTTP-FLV 数据均可读；TS 经 `ffprobe` 确认为 H.264/AAC。
 - [ ] HTTPS/公网 candidate 下的主播重连、跨网络 ICE/TURN 和浏览器矩阵仍待发布环境验收；前端已具备有界恢复逻辑。
 - [x] viewer presence 已改为 `(room,user,session)` Redis TTL 成员；REST join/leave 与控制 WS 共用幂等 session，避免数据库和连接数双计。仍需在真实 Redis 多实例和异常断开环境复测。
-- [x] 主播所有权、短期 ingest/play token、SRS callback、房间状态和 viewer 权限的 Java/MockMvc 契约测试已覆盖；当前 Maven 全套 `127/127` 通过。
+- [x] 主播所有权、短期 ingest/play token、SRS callback、房间状态和 viewer 权限的 Java/MockMvc 契约测试已覆盖；当前 Maven 全套 `148/148` 通过。
 - [ ] 真实 SRS callback HTTP 运行验收（包括 provider 返回非 2xx、缺失/错误媒体 token 时拒绝媒体会话）。
 - [x] 控制面已增加可开关的 HMAC 短期媒体 token、SRS callback 校验端点和 token 单元测试；默认开发 profile 仍关闭，生产需挂载 `deploy/streaming/srs-auth.conf.example` 的 callback 段并完成真实 provider 验收。
 - [x] provider session projection、heartbeat/reconciliation、bounded grace 和异常 generation 防护已实现并有单测。
