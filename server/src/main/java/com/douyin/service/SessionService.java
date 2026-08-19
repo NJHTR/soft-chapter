@@ -5,6 +5,7 @@ import com.douyin.entity.LoginHistory;
 import com.douyin.mapper.ActiveSessionMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -184,6 +185,30 @@ public class SessionService {
         else if (h.getRegion() != null && !h.getRegion().isEmpty()) loc.append(h.getRegion());
         else if (h.getCountry() != null && !h.getCountry().isEmpty()) loc.append(h.getCountry());
         return loc.toString();
+    }
+
+    // ==================== 僵尸会话清理 ====================
+
+    /** 每 5 分钟清理一次超时僵尸会话 (超过 30 分钟未活跃) */
+    @Scheduled(fixedRate = 300_000)
+    public void cleanupStaleSessions() {
+        try {
+            LocalDateTime threshold = LocalDateTime.now().minusMinutes(30);
+            int revoked = sessionMapper.revokeStale(threshold);
+            if (revoked > 0) {
+                // 清理内存缓存 — 全量重建 (简单可靠, 数量不大)
+                activeTokenCache.clear();
+                List<ActiveSession> sessions = sessionMapper.findAllActive();
+                for (ActiveSession s : sessions) {
+                    if (s.getTokenHash() != null) {
+                        activeTokenCache.put(s.getTokenHash(), s.getId());
+                    }
+                }
+                log.info("僵尸会话清理: 撤销 {} 个超时会话, 当前活跃缓存 {} 个", revoked, activeTokenCache.size());
+            }
+        } catch (Exception e) {
+            log.warn("僵尸会话清理失败: {}", e.getMessage());
+        }
     }
 
     static String sha256(String input) {

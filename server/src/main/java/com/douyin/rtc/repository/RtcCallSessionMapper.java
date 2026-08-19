@@ -23,6 +23,20 @@ public interface RtcCallSessionMapper extends BaseMapper<CallSession> {
     @Select("SELECT * FROM rtc_call_session WHERE client_request_id = #{clientRequestId}")
     CallSession findByClientRequestId(@Param("clientRequestId") String clientRequestId);
 
+    /**
+     * 查询用户当前仍占用通话能力的会话。
+     *
+     * <p>会话状态和参与者状态同时作为条件，避免群通话中已经离开的成员
+     * 继续被误判为忙线。该查询只用于建呼前的控制面守卫，不承载媒体状态。</p>
+     */
+    @Select("SELECT s.* FROM rtc_call_session s "
+            + "JOIN rtc_call_participant p ON p.call_id = s.call_id "
+            + "WHERE p.user_id = #{userId} "
+            + "AND s.state IN ('RINGING','ACCEPTED','NEGOTIATING','CONNECTED','ENDING') "
+            + "AND p.state IN ('INVITED','RINGING','JOINING','CONNECTED','RECONNECTING') "
+            + "ORDER BY s.update_time DESC LIMIT 1")
+    CallSession findActiveByUserId(@Param("userId") Long userId);
+
     /** TTL worker 扫描: 指定状态且已过期的会话 */
     @Select("SELECT * FROM rtc_call_session WHERE state = #{state} AND expires_at IS NOT NULL AND expires_at <= #{now} LIMIT 200")
     List<CallSession> findExpiredBefore(@Param("state") String state, @Param("now") LocalDateTime now);

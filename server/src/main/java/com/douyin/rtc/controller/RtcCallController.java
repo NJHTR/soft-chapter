@@ -165,6 +165,14 @@ public class RtcCallController {
         return Result.ok(callService.joinCall(callId, loginUserId(req), eventId(body), traceId(body)));
     }
 
+    /** 客户端媒体连接成功确认。仅限通话参与者，用于 webhook 延迟或不可达时收敛状态。 */
+    @PostMapping("/call/{callId}/connected")
+    public Result<CallSession> connected(@PathVariable String callId,
+                                         @RequestBody(required = false) Map<String, Object> body,
+                                         HttpServletRequest req) {
+        return Result.ok(callService.confirmConnected(callId, loginUserId(req), eventId(body), traceId(body)));
+    }
+
     @PostMapping("/call/{callId}/leave")
     public Result<CallSession> leave(@PathVariable String callId, @RequestBody(required = false) Map<String, Object> body,
                                      HttpServletRequest req) {

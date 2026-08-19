@@ -74,6 +74,19 @@ public final class RtcRepoFixture {
         when(sessions.findByCallId(anyString())).thenAnswer(inv -> sessionsByCall.get((String) inv.getArgument(0)));
         when(sessions.findByClientRequestId(anyString()))
                 .thenAnswer(inv -> sessionsByClientRequest.get((String) inv.getArgument(0)));
+        when(sessions.findActiveByUserId(anyLong())).thenAnswer(inv -> {
+            Long userId = inv.getArgument(0);
+            return sessionsByCall.values().stream()
+                    .filter(s -> Set.of("RINGING", "ACCEPTED", "NEGOTIATING", "CONNECTED", "ENDING")
+                            .contains(s.getState()))
+                    .filter(s -> participantsByKey.values().stream().anyMatch(p ->
+                            s.getCallId().equals(p.getCallId())
+                                    && userId.equals(p.getUserId())
+                                    && Set.of("INVITED", "RINGING", "JOINING", "CONNECTED", "RECONNECTING")
+                                    .contains(p.getState())))
+                    .findFirst()
+                    .orElse(null);
+        });
         when(sessions.findExpiredBefore(anyString(), any()))
                 .thenAnswer(inv -> {
                     String state = inv.getArgument(0);

@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ActiveSessionMapper extends BaseMapper<ActiveSession> {
@@ -31,4 +32,8 @@ public interface ActiveSessionMapper extends BaseMapper<ActiveSession> {
     /** 更新最后活跃时间 */
     @Update("UPDATE t_active_session SET last_active_time = NOW() WHERE id = #{id}")
     int touchLastActive(@Param("id") Long id);
+
+    /** 批量撤销超时僵尸会话 (lastActiveTime 超过阈值且未主动登出) */
+    @Update("UPDATE t_active_session SET is_active = 0 WHERE is_active = 1 AND last_active_time < #{threshold}")
+    int revokeStale(@Param("threshold") LocalDateTime threshold);
 }

@@ -13,6 +13,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * LiveKit webhook 签名校验 (rtc-media-adapter)。
@@ -23,6 +24,7 @@ import io.jsonwebtoken.security.Keys;
  * {@code LiveKit-Signature: v0=<hex>} HMAC header；两种格式都 fail-closed。
  */
 @Component
+@Slf4j
 public class WebhookSignatureVerifier {
 
     private static final String PREFIX = "v0=";
@@ -51,16 +53,20 @@ public class WebhookSignatureVerifier {
     }
 
     public boolean verifyAuthorization(String authorizationHeader, byte[] rawBody) {
-        String secret = properties.getLivekitWebhookSecret();
+        String secret = webhookSecret();
         String apiKey = properties.getLivekitApiKey();
         if (secret == null || secret.isBlank() || apiKey == null || apiKey.isBlank() || rawBody == null) {
+            log.warn("[RTC-WEBHOOK] verification unavailable: secret={}, apiKey={}, body={}",
+                    configured(secret), configured(apiKey), rawBody != null ? "present" : "missing");
             return false;
         }
         if (authorizationHeader == null || !authorizationHeader.startsWith(BEARER_PREFIX)) {
+            log.warn("[RTC-WEBHOOK] Authorization header is missing or does not use Bearer");
             return false;
         }
         String token = authorizationHeader.substring(BEARER_PREFIX.length()).trim();
         if (token.isEmpty()) {
+            log.warn("[RTC-WEBHOOK] Authorization Bearer token is empty");
             return false;
         }
         try {
@@ -74,18 +80,26 @@ public class WebhookSignatureVerifier {
             if (provided == null || provided.isBlank()) return false;
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(rawBody);
             byte[] expected = Base64.getEncoder().encode(digest);
-            return MessageDigest.isEqual(provided.getBytes(StandardCharsets.US_ASCII), expected);
+            boolean valid = MessageDigest.isEqual(provided.getBytes(StandardCharsets.US_ASCII), expected);
+            if (!valid) {
+                log.warn("[RTC-WEBHOOK] sha256 claim does not match request body");
+            }
+            return valid;
         } catch (JwtException | IllegalArgumentException | java.security.GeneralSecurityException e) {
+            log.warn("[RTC-WEBHOOK] Authorization JWT rejected: {}", e.getClass().getSimpleName());
             return false;
         }
     }
 
     private boolean verifyLegacyHmac(String signatureHeader, byte[] rawBody) {
-        String secret = properties.getLivekitWebhookSecret();
+        String secret = webhookSecret();
         if (secret == null || secret.isBlank() || rawBody == null) {
+            log.warn("[RTC-WEBHOOK] legacy verification unavailable: secret={}, body={}",
+                    configured(secret), rawBody != null ? "present" : "missing");
             return false;
         }
         if (signatureHeader == null || !signatureHeader.startsWith(PREFIX)) {
+            log.warn("[RTC-WEBHOOK] legacy signature header is missing or malformed");
             return false;
         }
         String provided = signatureHeader.substring(PREFIX.length()).trim();
@@ -93,9 +107,26 @@ public class WebhookSignatureVerifier {
             return false;
         }
         String expected = hmacSha256Hex(secret, rawBody);
-        return MessageDigest.isEqual(
+        boolean valid = MessageDigest.isEqual(
                 provided.toLowerCase().getBytes(StandardCharsets.US_ASCII),
                 expected.getBytes(StandardCharsets.US_ASCII));
+        if (!valid) {
+            log.warn("[RTC-WEBHOOK] legacy HMAC does not match request body");
+        }
+        return valid;
+    }
+
+    /** Use an explicit webhook secret when configured, otherwise the LiveKit API secret. */
+    private String webhookSecret() {
+        String configured = properties.getLivekitWebhookSecret();
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+        return properties.getLivekitApiSecret();
+    }
+
+    private static String configured(String value) {
+        return value == null || value.isBlank() ? "missing" : "configured";
     }
 
     public static String hmacSha256Hex(String secret, byte[] body) {

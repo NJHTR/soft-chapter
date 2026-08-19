@@ -15,6 +15,7 @@ import static com.douyin.rtc.support.CallTestSupport.CALLEE;
 import static com.douyin.rtc.support.CallTestSupport.INITIATOR;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 
 /**
@@ -62,6 +63,8 @@ class IdempotencyTest {
         when(fx.sessions.findByClientRequestId("creq-race-00001"))
                 .thenReturn(null)
                 .thenReturn(first);
+        // 并发窗口下忙线快照也可能早于会话插入读取；唯一键回查仍是最终幂等守卫。
+        when(fx.sessions.findActiveByUserId(anyLong())).thenReturn(null);
 
         CallSession second = CallTestSupport.createDirect(svc, fx, "creq-race-00001", "evt-create-0002");
 

@@ -145,6 +145,48 @@ class ParticipantTest {
     }
 
     @Test
+    void activeParticipantIsBusyForAnotherDirectCall() {
+        CallSession active = CallTestSupport.makeConnected(svc, fx);
+        fx.setMutualFollow(CALLEE, GROUP_MEMBER_3);
+
+        assertThatThrownBy(() -> svc.createCall(CallTestSupport.directCommand(
+                GROUP_MEMBER_3, CALLEE, "creq-busy-target-0001", "evt-busy-target-0001")))
+                .isInstanceOf(CallDomainException.class)
+                .satisfies(t -> assertThat(((CallDomainException) t).getCode())
+                        .isEqualTo(CallErrorCode.BUSY));
+        assertThat(fx.sessionsByCall).containsKey(active.getCallId()).hasSize(1);
+    }
+
+    @Test
+    void initiatorIsBusyForAnotherDirectCall() {
+        CallTestSupport.makeConnected(svc, fx);
+        fx.setMutualFollow(INITIATOR, GROUP_MEMBER_3);
+
+        assertThatThrownBy(() -> svc.createCall(CallTestSupport.directCommand(
+                INITIATOR, GROUP_MEMBER_3, "creq-busy-initiator-0001", "evt-busy-initiator-0001")))
+                .isInstanceOf(CallDomainException.class)
+                .satisfies(t -> assertThat(((CallDomainException) t).getCode())
+                        .isEqualTo(CallErrorCode.BUSY));
+        assertThat(fx.sessionsByCall).hasSize(1);
+    }
+
+    @Test
+    void leftGroupParticipantCanReceiveAnotherCall() {
+        CallSession group = createGroupCall();
+        svc.acceptCall(group.getCallId(), CALLEE, "evt-group-accept-busy-0001", "trace");
+        svc.joinCall(group.getCallId(), INITIATOR, "evt-group-join-busy-0001", "trace");
+        svc.startNegotiation(group.getCallId(), INITIATOR, "evt-group-neg-busy-0001", "trace");
+        svc.confirmConnected(group.getCallId(), INITIATOR, "evt-group-connected-busy-0001", "trace");
+        svc.hangupCall(group.getCallId(), CALLEE, "evt-group-leave-busy-0001", "trace");
+
+        fx.setMutualFollow(CALLEE, STRANGER);
+        CallSession next = svc.createCall(CallTestSupport.directCommand(
+                CALLEE, STRANGER, "creq-after-leave-0001", "evt-after-leave-0001"));
+        assertThat(next).isNotNull();
+        assertThat(fx.sessionsByCall).hasSize(2);
+    }
+
+    @Test
     void directCallRejectsOneWayFollow() {
         // 仅发起方关注目标方，不能发起一对一通话
         fx.setFollow(INITIATOR, CALLEE);

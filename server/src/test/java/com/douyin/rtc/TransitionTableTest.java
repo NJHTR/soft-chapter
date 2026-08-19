@@ -35,6 +35,7 @@ class TransitionTableTest {
                             CallCommand.EXPIRE, CallState.EXPIRED),
                     CallState.ACCEPTED, Map.of(
                             CallCommand.NEGOTIATE_START, CallState.NEGOTIATING,
+                            CallCommand.HANGUP, CallState.ENDED,
                             CallCommand.FAIL, CallState.FAILED),
                     CallState.NEGOTIATING, Map.of(
                             CallCommand.CONNECTED, CallState.CONNECTED,

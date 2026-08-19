@@ -27,6 +27,7 @@ public final class CallStateMachine {
         add(CallState.RINGING, CallCommand.EXPIRE, CallState.EXPIRED);
         // ACCEPTED
         add(CallState.ACCEPTED, CallCommand.NEGOTIATE_START, CallState.NEGOTIATING);
+        add(CallState.ACCEPTED, CallCommand.HANGUP, CallState.ENDED);
         add(CallState.ACCEPTED, CallCommand.FAIL, CallState.FAILED);
         // NEGOTIATING
         add(CallState.NEGOTIATING, CallCommand.CONNECTED, CallState.CONNECTED);

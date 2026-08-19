@@ -159,6 +159,13 @@ public class CallService {
             return existing;
         }
 
+        // 建呼前的忙线守卫。幂等回放在此之前返回，避免同一个请求被自己的
+        // 已有会话误判；真正的新会话则要求发起者和所有目标都可用。
+        assertAvailableForCall(initiator);
+        for (Long target : targets) {
+            assertAvailableForCall(target);
+        }
+
         String callId = UUID.randomUUID().toString().replace("-", "");
         CallSession session = new CallSession();
         session.setCallId(callId);
@@ -412,6 +419,25 @@ public class CallService {
             }
             append(eventId, session, actorId, CallEventKind.CALL_HANGUP, Map.of("mode", session.getMode()), traceId);
             project(session, session.getConnectedAt() != null ? 1 : 2, ledgerService.durationSeconds(session));
+            return session;
+        }
+        if (state == CallState.ACCEPTED) {
+            if (!applySessionTransition(session, CallCommand.HANGUP, CallEndReason.HANGUP.name(), null, null, now)) {
+                return reload(session);
+            }
+            for (CallParticipant participant : participantMapper.listByCall(callId)) {
+                ParticipantState current = ParticipantState.valueOf(participant.getState());
+                if (current == ParticipantState.INVITED || current == ParticipantState.RINGING) {
+                    applyParticipantTransition(session, participant.getUserId(), current,
+                            ParticipantCommand.CANCEL, CallEndReason.HANGUP.name(), null, now);
+                } else if (ParticipantStateMachine.canTransition(current, ParticipantCommand.LEAVE)) {
+                    applyParticipantTransition(session, participant.getUserId(), current,
+                            ParticipantCommand.LEAVE, CallEndReason.HANGUP.name(), null, now);
+                }
+            }
+            append(eventId, session, actorId, CallEventKind.CALL_HANGUP,
+                    Map.of("mode", session.getMode(), "state", "ACCEPTED"), traceId);
+            project(session, 0, 0);
             return session;
         }
         if (state == CallState.CONNECTED) {
@@ -704,6 +730,17 @@ public class CallService {
                 && (eventId.startsWith(SYSTEM_EVENT_PREFIX) || eventId.startsWith(TTL_EVENT_PREFIX))) {
             throw new CallDomainException(CallErrorCode.INVALID_ARGUMENT,
                     "event_id 保留前缀 sys:/ttl:,禁止客户端使用");
+        }
+    }
+
+    private void assertAvailableForCall(Long userId) {
+        if (userId == null) {
+            throw new CallDomainException(CallErrorCode.INVALID_ARGUMENT, "缺少通话参与者");
+        }
+        CallSession active = sessionMapper.findActiveByUserId(userId);
+        if (active != null) {
+            throw new CallDomainException(CallErrorCode.BUSY,
+                    "用户正在通话中,请稍后再试");
         }
     }
 

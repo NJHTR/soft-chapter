@@ -14,6 +14,7 @@ import com.douyin.entity.User;
 import com.douyin.mapper.FollowMapper;
 import com.douyin.mapper.UserMapper;
 import com.douyin.service.LiveService;
+import com.douyin.service.LivePresenceService;
 import com.douyin.utils.JwtUtil;
 import com.douyin.vo.UserVO;
 import com.douyin.websocket.LiveStreamHandler;
@@ -36,12 +37,14 @@ public class LiveController {
     private final StreamingSessionManager sessionManager;
     private final StreamingEngine streamingEngine;
     private final LiveMediaProperties mediaProperties;
+    private final LivePresenceService livePresenceService;
 
     public LiveController(LiveService liveService, UserMapper userMapper,
                           FollowMapper followMapper, JwtUtil jwtUtil,
                           StreamingSessionManager sessionManager,
                           StreamingEngine streamingEngine,
-                          LiveMediaProperties mediaProperties) {
+                          LiveMediaProperties mediaProperties,
+                          LivePresenceService livePresenceService) {
         this.liveService = liveService;
         this.userMapper = userMapper;
         this.followMapper = followMapper;
@@ -49,6 +52,7 @@ public class LiveController {
         this.sessionManager = sessionManager;
         this.streamingEngine = streamingEngine;
         this.mediaProperties = mediaProperties;
+        this.livePresenceService = livePresenceService;
     }
 
     private Long getLoginUserId(HttpServletRequest req) {
@@ -242,21 +246,37 @@ public class LiveController {
     }
 
     @PostMapping("/{id}/join")
-    public Result<?> join(@PathVariable Long id, HttpServletRequest req) {
-        if (getLoginUserId(req) == null) return Result.fail("请先登录");
-        LiveRoom room = liveService.joinRoom(id);
+    public Result<?> join(@PathVariable Long id,
+                          @RequestBody(required = false) Map<String, String> body,
+                          HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        String sessionId = normalizePresenceSession(body == null ? null : body.get("sessionId"));
+        LiveRoom room = liveService.getById(id);
+        if (room == null || !"LIVE".equals(room.getStatus())) return Result.fail("直播间未开播或不存在");
+        if (livePresenceService.touch(id, userId, sessionId)) {
+            liveService.joinRoom(id);
+        }
+        room = liveService.getById(id);
         if (room == null) return Result.fail("直播间未开播或不存在");
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("viewerCount", room.getViewerCount());
-        out.put("media", mediaFor(room, getLoginUserId(req)));
+        out.put("viewerCount", livePresenceService.count(id));
+        out.put("sessionId", sessionId);
+        out.put("media", mediaFor(room, userId));
         return Result.ok(out);
     }
 
     @PostMapping("/{id}/leave")
-    public Result<?> leave(@PathVariable Long id, HttpServletRequest req) {
-        if (getLoginUserId(req) == null) return Result.fail("请先登录");
-        liveService.leaveRoom(id);
-        return Result.ok();
+    public Result<?> leave(@PathVariable Long id,
+                           @RequestBody(required = false) Map<String, String> body,
+                           HttpServletRequest req) {
+        Long userId = getLoginUserId(req);
+        if (userId == null) return Result.fail("请先登录");
+        String sessionId = normalizePresenceSession(body == null ? null : body.get("sessionId"));
+        if (livePresenceService.leave(id, userId, sessionId)) {
+            liveService.leaveRoom(id);
+        }
+        return Result.ok(Map.of("viewerCount", livePresenceService.count(id)));
     }
 
     @PostMapping("/{id}/like")
@@ -338,5 +358,11 @@ public class LiveController {
             media.put("rtmpUrl", mediaProperties.rtmp(key));
         }
         return media;
+    }
+
+    private String normalizePresenceSession(String value) {
+        if (value == null || value.isBlank()) return "legacy-" + UUID.randomUUID();
+        String normalized = value.trim();
+        return normalized.length() <= 128 ? normalized : normalized.substring(0, 128);
     }
 }

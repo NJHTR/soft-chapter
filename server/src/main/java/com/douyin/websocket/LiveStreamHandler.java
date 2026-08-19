@@ -1,6 +1,7 @@
 package com.douyin.websocket;
 
 import com.douyin.service.LiveService;
+import com.douyin.service.LivePresenceService;
 import com.douyin.entity.LiveRoom;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -26,6 +27,7 @@ import java.util.concurrent.*;
 public class LiveStreamHandler extends TextWebSocketHandler {
 
     private final LiveService liveService;
+    private final LivePresenceService livePresenceService;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     /** roomId → Set<WebSocketSession> */
@@ -36,14 +38,17 @@ public class LiveStreamHandler extends TextWebSocketHandler {
     private static final ConcurrentHashMap<String, String> sessionRole = new ConcurrentHashMap<>();
     /** sessionId → userId (for host disconnect cleanup) */
     private static final ConcurrentHashMap<String, Long> sessionUserId = new ConcurrentHashMap<>();
+    /** sessionId → (room,user,client presence session) */
+    private static final ConcurrentHashMap<String, String> presenceSession = new ConcurrentHashMap<>();
     /** roomId → 延迟关播任务（主播断线 30s 后才真正关播，给重连留机会） */
     private final ConcurrentHashMap<Long, ScheduledFuture<?>> pendingEnds = new ConcurrentHashMap<>();
 
     /** 主播断线后延迟关播的秒数 */
     private static final int END_DELAY_SECONDS = 30;
 
-    public LiveStreamHandler(LiveService liveService) {
+    public LiveStreamHandler(LiveService liveService, LivePresenceService livePresenceService) {
         this.liveService = liveService;
+        this.livePresenceService = livePresenceService;
     }
 
     public static int getViewerCount(Long roomId) {
@@ -84,8 +89,16 @@ public class LiveStreamHandler extends TextWebSocketHandler {
             sessionUserId.put(session.getId(), userId);
         }
 
+        if ("viewer".equals(role) && userId != null) {
+            String clientSessionId = extractPresenceSession(session);
+            presenceSession.put(session.getId(), clientSessionId);
+            if (livePresenceService.touch(roomId, userId, clientSessionId)) {
+                liveService.joinRoom(roomId);
+            }
+        }
+
         rooms.computeIfAbsent(roomId, k -> ConcurrentHashMap.newKeySet()).add(session);
-        log.info("Live WS connected: roomId={}, role={}, viewers={}", roomId, role, getViewerCount(roomId));
+        log.info("Live WS connected: roomId={}, role={}, viewers={}", roomId, role, viewerCount(roomId));
 
         // 主播重连 → 取消延迟关播任务
         if ("host".equals(role)) {
@@ -123,6 +136,15 @@ public class LiveStreamHandler extends TextWebSocketHandler {
             // must use SRS WHIP/WHEP; silently dropping legacy frame packets
             // prevents accidental base64/binary media fan-out.
             if ("frame".equals(type) || "media".equals(type)) return;
+            if ("presence".equals(type)) {
+                Long userId = sessionUserId.get(session.getId());
+                String clientSessionId = presenceSession.get(session.getId());
+                if (userId != null && clientSessionId != null) {
+                    livePresenceService.touch(roomId, userId, clientSessionId);
+                    broadcastRoomStatus(roomId);
+                }
+                return;
+            }
             if ("host".equals(role) && !"chat".equals(type)) return;
             if ("viewer".equals(role) && !"chat".equals(type) && !"like".equals(type)) return;
             if ("chat".equals(type)) {
@@ -211,13 +233,16 @@ public class LiveStreamHandler extends TextWebSocketHandler {
                 set.remove(session);
                 if (set.isEmpty()) rooms.remove(roomId);
             }
-            log.info("Live WS disconnected: roomId={}, viewers={}", roomId, getViewerCount(roomId));
+            // Presence is TTL based. Do not delete immediately here: a browser
+            // reconnect may close the old socket after the new one is active.
+            presenceSession.remove(session.getId());
+            log.info("Live WS disconnected: roomId={}, viewers={}", roomId, viewerCount(roomId));
             broadcastRoomStatus(roomId);
         }
     }
 
     private void broadcastRoomStatus(Long roomId) {
-        int count = getViewerCount(roomId);
+        int count = viewerCount(roomId);
         String msg = "{\"type\":\"viewer_count\",\"count\":" + count + "}";
         Set<WebSocketSession> set = rooms.get(roomId);
         if (set != null) {
@@ -248,6 +273,23 @@ public class LiveStreamHandler extends TextWebSocketHandler {
             if (kv.length == 2 && "role".equals(kv[0])) return kv[1];
         }
         return "viewer";
+    }
+
+    private String extractPresenceSession(WebSocketSession session) {
+        String query = session.getUri() != null ? session.getUri().getQuery() : "";
+        if (query != null) {
+            for (String param : query.split("&")) {
+                String[] kv = param.split("=", 2);
+                if (kv.length == 2 && "sessionId".equals(kv[0]) && !kv[1].isBlank()) {
+                    return java.net.URLDecoder.decode(kv[1], java.nio.charset.StandardCharsets.UTF_8);
+                }
+            }
+        }
+        return "ws-" + UUID.randomUUID();
+    }
+
+    private int viewerCount(Long roomId) {
+        return livePresenceService.count(roomId);
     }
 
     private void closeSession(WebSocketSession session) {

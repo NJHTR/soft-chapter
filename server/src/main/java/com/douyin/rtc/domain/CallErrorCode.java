@@ -12,6 +12,8 @@ public enum CallErrorCode {
     SESSION_NOT_FOUND,
     /** client_request_id 幂等键已被其他用户占用 */
     SESSION_ALREADY_EXISTS,
+    /** 发起者或目标参与者已经处于另一场通话中 */
+    BUSY,
     /** 未登录 / 非成员 / 无权操作 */
     NOT_AUTHORIZED,
     /** 仅发起者可执行的命令被他人调用 */

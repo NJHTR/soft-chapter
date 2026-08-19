@@ -22,6 +22,7 @@ public class RtcExceptionHandler {
             Map.entry(CallErrorCode.INVALID_STATE_TRANSITION, 409),
             Map.entry(CallErrorCode.SESSION_NOT_FOUND, 404),
             Map.entry(CallErrorCode.SESSION_ALREADY_EXISTS, 409),
+            Map.entry(CallErrorCode.BUSY, 409),
             Map.entry(CallErrorCode.NOT_AUTHORIZED, 403),
             Map.entry(CallErrorCode.NOT_INITIATOR, 403),
             Map.entry(CallErrorCode.NOT_TARGET, 403),

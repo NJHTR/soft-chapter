@@ -1,6 +1,7 @@
 package com.douyin.admin.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.douyin.admin.service.MetricsQueryService;
 import com.douyin.common.Result;
 import com.douyin.entity.*;
 import com.douyin.mapper.*;
@@ -11,9 +12,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -43,8 +46,10 @@ public class AnalyticsController {
     private final FollowMapper followMapper;
     private final JwtUtil jwtUtil;
     private final ContentFeatureService contentFeatureService;
+    private final MetricsQueryService metricsQueryService;
 
-    public AnalyticsController(UserMapper userMapper, VideoMapper videoMapper,
+    public AnalyticsController(UserMapper userMapper,
+                               VideoMapper videoMapper,
                                SearchHistoryMapper searchHistoryMapper,
                                LoginHistoryMapper loginHistoryMapper,
                                ActiveSessionMapper activeSessionMapper,
@@ -62,7 +67,9 @@ public class AnalyticsController {
                                LiveRoomMapper liveRoomMapper,
                                FollowMapper followMapper,
                                JwtUtil jwtUtil,
-                               ContentFeatureService contentFeatureService) {
+                               ContentFeatureService contentFeatureService,
+                               MetricsQueryService metricsQueryService)
+    {
         this.userMapper = userMapper;
         this.videoMapper = videoMapper;
         this.searchHistoryMapper = searchHistoryMapper;
@@ -83,6 +90,7 @@ public class AnalyticsController {
         this.followMapper = followMapper;
         this.jwtUtil = jwtUtil;
         this.contentFeatureService = contentFeatureService;
+        this.metricsQueryService = metricsQueryService;
     }
 
     private User checkAdmin(HttpServletRequest req) {
@@ -107,9 +115,10 @@ public class AnalyticsController {
 
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
 
-        long onlineUsers = activeSessionMapper.selectCount(
+        long onlineUsers = activeSessionMapper.selectList(
                 new LambdaQueryWrapper<com.douyin.entity.ActiveSession>()
-                        .eq(com.douyin.entity.ActiveSession::getIsActive, 1));
+                        .eq(com.douyin.entity.ActiveSession::getIsActive, 1))
+                .stream().map(ActiveSession::getUserId).distinct().count();
 
         long todayNewVideos = videoMapper.selectCount(
                 new LambdaQueryWrapper<com.douyin.entity.Video>()
@@ -390,15 +399,30 @@ public class AnalyticsController {
                 new LambdaQueryWrapper<com.douyin.entity.ActiveSession>()
                         .eq(com.douyin.entity.ActiveSession::getIsActive, 1));
 
-        long count = sessions.size();
+        // Unique users online
+        Set<Long> uniqueUserIds = sessions.stream().map(ActiveSession::getUserId).collect(Collectors.toSet());
+        long uniqueUserCount = uniqueUserIds.size();
 
-        // Device breakdown
+        // Build user map
+        Map<Long, User> userMap = new HashMap<>();
+        if (!uniqueUserIds.isEmpty()) {
+            userMapper.selectBatchIds(uniqueUserIds).forEach(u -> userMap.put(u.getUid(), u));
+        }
+
+        // Role distribution of online users
+        Map<String, Long> roleDistribution = new LinkedHashMap<>();
+        for (User u : userMap.values()) {
+            String role = u.getRole() != null ? u.getRole() : "USER";
+            roleDistribution.merge(role, 1L, Long::sum);
+        }
+
+        // Device breakdown (by session)
         Map<String, Long> deviceBreakdown = sessions.stream()
                 .collect(Collectors.groupingBy(
                         s -> s.getDeviceOs() != null ? s.getDeviceOs() : "Unknown",
                         Collectors.counting()));
 
-        // City breakdown
+        // City breakdown (by session)
         Map<String, Long> cityBreakdown = sessions.stream()
                 .collect(Collectors.groupingBy(
                         s -> s.getCity() != null ? s.getCity() : "未知",
@@ -416,15 +440,42 @@ public class AnalyticsController {
                     item.put("city", s.getCity());
                     item.put("loginTime", s.getLoginTime());
                     item.put("lastActiveTime", s.getLastActiveTime());
+                    User u = userMap.get(s.getUserId());
+                    if (u != null) {
+                        item.put("nickname", u.getNickname());
+                        item.put("avatarUrl", u.getAvatar168Url() != null ? u.getAvatar168Url() : u.getAvatar300Url());
+                    }
+                    return item;
+                })
+                .collect(Collectors.toList());
+
+        // Top 5 unique recent users for avatar display
+        Set<Long> seenUserIds = new HashSet<>();
+        List<Map<String, Object>> recentUsers = sessions.stream()
+                .sorted(Comparator.comparing(
+                        com.douyin.entity.ActiveSession::getLastActiveTime,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
+                .filter(s -> seenUserIds.add(s.getUserId()))
+                .limit(5)
+                .map(s -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    User u = userMap.get(s.getUserId());
+                    item.put("userId", s.getUserId());
+                    item.put("nickname", u != null ? u.getNickname() : "用户");
+                    item.put("avatarUrl", u != null ? (u.getAvatar168Url() != null ? u.getAvatar168Url() : u.getAvatar300Url()) : null);
+                    item.put("role", u != null ? u.getRole() : "USER");
                     return item;
                 })
                 .collect(Collectors.toList());
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("count", count);
+        result.put("count", uniqueUserCount);
+        result.put("sessionCount", sessions.size());
+        result.put("roleDistribution", roleDistribution);
         result.put("deviceBreakdown", deviceBreakdown);
         result.put("cityBreakdown", cityBreakdown);
         result.put("recentSessions", recentSessions);
+        result.put("recentUsers", recentUsers);
         return Result.ok(result);
     }
 
@@ -757,9 +808,24 @@ public class AnalyticsController {
     // ========== Dashboard Summary (comprehensive overview) ==========
 
     @GetMapping("/dashboard-summary")
-    public Result<Map<String, Object>> dashboardSummary(HttpServletRequest req) {
+    public Result<Map<String, Object>> dashboardSummary(
+            @RequestParam(required = false) String start,
+            @RequestParam(required = false) String end,
+            HttpServletRequest req) {
         if (checkAdmin(req) == null) return Result.fail("No admin permission");
 
+        // Use provided time range or default to today
+        LocalDateTime periodStart;
+        LocalDateTime periodEnd;
+        if (start != null && !start.isEmpty()) {
+            periodStart = parseIsoDateTime(start);
+            periodEnd = (end != null && !end.isEmpty())
+                    ? parseIsoDateTime(end)
+                    : LocalDateTime.now();
+        } else {
+            periodStart = LocalDate.now().atStartOfDay();
+            periodEnd = LocalDateTime.now();
+        }
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
         LocalDateTime yesterdayStart = todayStart.minusDays(1);
 
@@ -768,14 +834,18 @@ public class AnalyticsController {
         // --- Online & Active ---
         long onlineUsers = activeSessionMapper.selectCount(
                 new LambdaQueryWrapper<ActiveSession>().eq(ActiveSession::getIsActive, 1));
-        long todayActiveUsers = watchHistoryMapper.selectCount(
-                new LambdaQueryWrapper<WatchHistory>().ge(WatchHistory::getCreateTime, todayStart));
+        long periodActiveUsers = watchHistoryMapper.selectCount(
+                new LambdaQueryWrapper<WatchHistory>()
+                        .ge(WatchHistory::getCreateTime, periodStart)
+                        .le(WatchHistory::getCreateTime, periodEnd));
         data.put("onlineUsers", onlineUsers);
-        data.put("todayActiveUsers", todayActiveUsers);
+        data.put("todayActiveUsers", periodActiveUsers);
 
         // --- Content ---
-        long todayNewVideos = videoMapper.selectCount(
-                new LambdaQueryWrapper<Video>().ge(Video::getCreateTime, todayStart));
+        long periodNewVideos = videoMapper.selectCount(
+                new LambdaQueryWrapper<Video>()
+                        .ge(Video::getCreateTime, periodStart)
+                        .le(Video::getCreateTime, periodEnd));
         long totalVideos = videoMapper.selectCount(null);
         long totalUsers = userMapper.selectCount(null);
 
@@ -786,7 +856,7 @@ public class AnalyticsController {
             contentTypeBreakdown.put(t, c);
         }
 
-        data.put("todayNewVideos", todayNewVideos);
+        data.put("todayNewVideos", periodNewVideos);
         data.put("totalVideos", totalVideos);
         data.put("totalUsers", totalUsers);
         data.put("contentTypeBreakdown", contentTypeBreakdown);
@@ -805,31 +875,41 @@ public class AnalyticsController {
         reviewPipeline.put("rejected", rejectedVideos);
         data.put("reviewPipeline", reviewPipeline);
 
-        // --- Today's Engagement ---
-        long todayViews = watchHistoryMapper.selectCount(
-                new LambdaQueryWrapper<WatchHistory>().ge(WatchHistory::getCreateTime, todayStart));
-        long todayLikes = likeMapper.selectCount(
-                new LambdaQueryWrapper<Like>().ge(Like::getCreateTime, todayStart));
-        long todayCollects = videoCollectMapper.selectCount(
-                new LambdaQueryWrapper<VideoCollect>().ge(VideoCollect::getCreateTime, todayStart));
-        long todayComments = commentMapper.selectCount(
-                new LambdaQueryWrapper<Comment>().ge(Comment::getCreateTime, todayStart));
-        long todayShares = 0; // shares are embedded in video table, count new videos today
-        long todaySearches = searchHistoryMapper.selectCount(
-                new LambdaQueryWrapper<SearchHistory>().ge(SearchHistory::getCreateTime, todayStart));
+        // --- Period Engagement ---
+        long periodViews = watchHistoryMapper.selectCount(
+                new LambdaQueryWrapper<WatchHistory>()
+                        .ge(WatchHistory::getCreateTime, periodStart)
+                        .le(WatchHistory::getCreateTime, periodEnd));
+        long periodLikes = likeMapper.selectCount(
+                new LambdaQueryWrapper<Like>()
+                        .ge(Like::getCreateTime, periodStart)
+                        .le(Like::getCreateTime, periodEnd));
+        long periodCollects = videoCollectMapper.selectCount(
+                new LambdaQueryWrapper<VideoCollect>()
+                        .ge(VideoCollect::getCreateTime, periodStart)
+                        .le(VideoCollect::getCreateTime, periodEnd));
+        long periodComments = commentMapper.selectCount(
+                new LambdaQueryWrapper<Comment>()
+                        .ge(Comment::getCreateTime, periodStart)
+                        .le(Comment::getCreateTime, periodEnd));
+        long periodShares = 0;
+        long periodSearches = searchHistoryMapper.selectCount(
+                new LambdaQueryWrapper<SearchHistory>()
+                        .ge(SearchHistory::getCreateTime, periodStart)
+                        .le(SearchHistory::getCreateTime, periodEnd));
 
-        // Yesterday comparison
+        // Yesterday comparison (always vs today's yesterday for cmp baseline)
         long yesterdayLikes = likeMapper.selectCount(
                 new LambdaQueryWrapper<Like>().ge(Like::getCreateTime, yesterdayStart).lt(Like::getCreateTime, todayStart));
         long yesterdayViews = watchHistoryMapper.selectCount(
                 new LambdaQueryWrapper<WatchHistory>().ge(WatchHistory::getCreateTime, yesterdayStart).lt(WatchHistory::getCreateTime, todayStart));
 
-        data.put("todayViews", todayViews);
-        data.put("todayLikes", todayLikes);
-        data.put("todayCollects", todayCollects);
-        data.put("todayComments", todayComments);
-        data.put("todayShares", todayShares);
-        data.put("todaySearches", todaySearches);
+        data.put("todayViews", periodViews);
+        data.put("todayLikes", periodLikes);
+        data.put("todayCollects", periodCollects);
+        data.put("todayComments", periodComments);
+        data.put("todayShares", periodShares);
+        data.put("todaySearches", periodSearches);
         data.put("yesterdayLikes", yesterdayLikes);
         data.put("yesterdayViews", yesterdayViews);
 
@@ -844,12 +924,14 @@ public class AnalyticsController {
         // --- Ecommerce Summary ---
         long totalGoods = goodsMapper.selectCount(null);
         long totalOrders = orderMapper.selectCount(null);
-        long todayOrders = orderMapper.selectCount(
-                new LambdaQueryWrapper<Order>().ge(Order::getCreateTime, todayStart));
+        long periodOrders = orderMapper.selectCount(
+                new LambdaQueryWrapper<Order>()
+                        .ge(Order::getCreateTime, periodStart)
+                        .le(Order::getCreateTime, periodEnd));
 
         data.put("totalGoods", totalGoods);
         data.put("totalOrders", totalOrders);
-        data.put("todayOrders", todayOrders);
+        data.put("todayOrders", periodOrders);
 
         // --- Live Rooms ---
         long activeLiveRooms = liveRoomMapper.selectCount(
@@ -869,14 +951,15 @@ public class AnalyticsController {
         data.put("userSegmentDistribution", segmentDist);
         data.put("userTypeDistribution", userTypeDist);
 
-        // --- Top videos today (by views) ---
-        List<Video> topToday = videoMapper.selectList(
+        // --- Top videos in period (by views) ---
+        List<Video> topPeriod = videoMapper.selectList(
                 new LambdaQueryWrapper<Video>()
                         .eq(Video::getStatus, "APPROVED").eq(Video::getIsDelete, 0)
-                        .ge(Video::getCreateTime, todayStart)
+                        .ge(Video::getCreateTime, periodStart)
+                        .le(Video::getCreateTime, periodEnd)
                         .orderByDesc(Video::getPlayCount)
                         .last("LIMIT 5"));
-        data.put("topTodayVideos", topToday.stream().map(v -> {
+        data.put("topTodayVideos", topPeriod.stream().map(v -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", v.getId()); m.put("desc", v.getDesc()); m.put("playCount", v.getPlayCount());
             m.put("likeCount", v.getLikeCount()); m.put("type", v.getType());
@@ -1060,11 +1143,22 @@ public class AnalyticsController {
     // ========== Traffic Sources ==========
 
     @GetMapping("/traffic-sources")
-    public Result<Map<String, Object>> trafficSources(HttpServletRequest req) {
+    public Result<Map<String, Object>> trafficSources(
+            @RequestParam(required = false) String start,
+            @RequestParam(required = false) String end,
+            HttpServletRequest req) {
         if (checkAdmin(req) == null) return Result.fail("No admin permission");
 
-        List<WatchHistory> watches = watchHistoryMapper.selectList(
-                new LambdaQueryWrapper<WatchHistory>().isNotNull(WatchHistory::getTrafficSource));
+        var wrapper = new LambdaQueryWrapper<WatchHistory>().isNotNull(WatchHistory::getTrafficSource);
+        if (start != null && !start.isEmpty()) {
+            LocalDateTime periodStart = parseIsoDateTime(start);
+            wrapper.ge(WatchHistory::getCreateTime, periodStart);
+            if (end != null && !end.isEmpty()) {
+                LocalDateTime periodEnd = parseIsoDateTime(end);
+                wrapper.le(WatchHistory::getCreateTime, periodEnd);
+            }
+        }
+        List<WatchHistory> watches = watchHistoryMapper.selectList(wrapper);
 
         Map<String, Long> sourceDist = watches.stream()
                 .collect(Collectors.groupingBy(
@@ -1130,29 +1224,46 @@ public class AnalyticsController {
     // ========== Ecommerce Overview ==========
 
     @GetMapping("/ecommerce-overview")
-    public Result<Map<String, Object>> ecommerceOverview(HttpServletRequest req) {
+    public Result<Map<String, Object>> ecommerceOverview(
+            @RequestParam(required = false) String start,
+            @RequestParam(required = false) String end,
+            HttpServletRequest req) {
         if (checkAdmin(req) == null) return Result.fail("No admin permission");
 
-        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        LocalDateTime periodStart;
+        LocalDateTime periodEnd;
+        if (start != null && !start.isEmpty()) {
+            periodStart = parseIsoDateTime(start);
+            periodEnd = (end != null && !end.isEmpty())
+                    ? parseIsoDateTime(end)
+                    : LocalDateTime.now();
+        } else {
+            periodStart = LocalDate.now().atStartOfDay();
+            periodEnd = LocalDateTime.now();
+        }
 
         long totalGoods = goodsMapper.selectCount(null);
         long activeGoods = goodsMapper.selectCount(
                 new LambdaQueryWrapper<Goods>().eq(Goods::getStatus, 1));
         long totalOrders = orderMapper.selectCount(null);
-        long todayOrders = orderMapper.selectCount(
-                new LambdaQueryWrapper<Order>().ge(Order::getCreateTime, todayStart));
+        long periodOrders = orderMapper.selectCount(
+                new LambdaQueryWrapper<Order>()
+                        .ge(Order::getCreateTime, periodStart)
+                        .le(Order::getCreateTime, periodEnd));
 
-        // Order status breakdown
+        // Order status breakdown (all time)
         Map<String, Long> orderStatus = new LinkedHashMap<>();
         for (String s : List.of("PENDING", "PAID", "SHIPPED", "RECEIVED", "CANCELLED")) {
             orderStatus.put(s, orderMapper.selectCount(
                     new LambdaQueryWrapper<Order>().eq(Order::getStatus, s)));
         }
 
-        // Revenue from wallet transactions
+        // Revenue in period
         List<WalletTransaction> txns = walletTransactionMapper.selectList(
-                new LambdaQueryWrapper<WalletTransaction>().ge(WalletTransaction::getCreateTime, todayStart));
-        BigDecimal todayRevenue = txns.stream()
+                new LambdaQueryWrapper<WalletTransaction>()
+                        .ge(WalletTransaction::getCreateTime, periodStart)
+                        .le(WalletTransaction::getCreateTime, periodEnd));
+        BigDecimal periodRevenue = txns.stream()
                 .filter(t -> "PAY".equals(t.getType()))
                 .map(WalletTransaction::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -1166,9 +1277,9 @@ public class AnalyticsController {
         data.put("totalGoods", totalGoods);
         data.put("activeGoods", activeGoods);
         data.put("totalOrders", totalOrders);
-        data.put("todayOrders", todayOrders);
+        data.put("todayOrders", periodOrders);
         data.put("orderStatus", orderStatus);
-        data.put("todayRevenue", todayRevenue);
+        data.put("todayRevenue", periodRevenue);
         data.put("topGoods", topGoods.stream().map(g -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", g.getId()); m.put("name", g.getName());
@@ -1229,6 +1340,133 @@ public class AnalyticsController {
         return Result.ok(data);
     }
 
+    // ========== Unified Metrics Query (design.md §2.1) ==========
+
+    @PostMapping("/metrics/query")
+    public Result<Map<String, Object>> metricsQuery(@RequestBody com.douyin.dto.MetricQueryRequest req,
+                                                     HttpServletRequest httpReq) {
+        if (checkAdmin(httpReq) == null) return Result.fail("No admin permission");
+        return Result.ok(metricsQueryService.query(req));
+    }
+
+    // ========== Audit Queue Drill-down (design.md §2.2) ==========
+
+    @GetMapping("/audit-drilldown")
+    public Result<Map<String, Object>> auditDrilldown(
+            @RequestParam(defaultValue = "PENDING") String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            HttpServletRequest req) {
+        if (checkAdmin(req) == null) return Result.fail("No admin permission");
+
+        var wrapper = new LambdaQueryWrapper<Video>()
+                .eq(Video::getStatus, status)
+                .eq(Video::getIsDelete, 0)
+                .orderByDesc(Video::getCreateTime);
+
+        long total = videoMapper.selectCount(wrapper);
+        int offset = (page - 1) * pageSize;
+        List<Video> videos = videoMapper.selectList(wrapper.last("LIMIT " + offset + "," + pageSize));
+
+        // Risk scoring: videos with low play count + high pending time = higher risk
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Video v : videos) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", v.getId());
+            item.put("desc", v.getDesc());
+            item.put("coverUrl", getEffectiveCover(v));
+            item.put("type", v.getType());
+            item.put("authorUserId", v.getAuthorUserId());
+            item.put("createTime", v.getCreateTime());
+            item.put("duration", v.getDuration());
+
+            // Simple risk level
+            long pendingHours = java.time.Duration.between(v.getCreateTime(), LocalDateTime.now()).toHours();
+            String riskLevel = pendingHours > 48 ? "high" : pendingHours > 24 ? "medium" : "low";
+            item.put("riskLevel", riskLevel);
+            item.put("pendingHours", pendingHours);
+            items.add(item);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", total);
+        result.put("page", page);
+        result.put("pageSize", pageSize);
+        result.put("items", items);
+        return Result.ok(result);
+    }
+
+    // ========== Recent Activity Feed ==========
+
+    @GetMapping("/recent-activity")
+    public Result<List<Map<String, Object>>> recentActivity(
+            @RequestParam(defaultValue = "20") int limit,
+            HttpServletRequest req) {
+        if (checkAdmin(req) == null) return Result.fail("No admin permission");
+
+        List<Map<String, Object>> activities = new ArrayList<>();
+
+        // Latest users
+        userMapper.selectList(new LambdaQueryWrapper<User>()
+                .orderByDesc(User::getCreateTime).last("LIMIT " + (limit / 4)))
+                .forEach(u -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("type", "register");
+                    m.put("user", u.getNickname());
+                    m.put("desc", "新用户注册");
+                    m.put("_time", u.getCreateTime());
+                    activities.add(m);
+                });
+
+        // Latest videos
+        videoMapper.selectList(new LambdaQueryWrapper<Video>()
+                .orderByDesc(Video::getCreateTime).last("LIMIT " + (limit / 4)))
+                .forEach(v -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("type", "upload");
+                    m.put("user", "用户" + v.getAuthorUserId());
+                    m.put("desc", "上传 \"" + (v.getDesc() != null && v.getDesc().length() > 20
+                            ? v.getDesc().substring(0, 20) + "…" : v.getDesc()) + "\"");
+                    m.put("_time", v.getCreateTime());
+                    activities.add(m);
+                });
+
+        // Latest orders
+        orderMapper.selectList(new LambdaQueryWrapper<Order>()
+                .orderByDesc(Order::getCreateTime).last("LIMIT " + (limit / 4)))
+                .forEach(o -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("type", "order");
+                    m.put("user", "用户" + o.getUserId());
+                    m.put("desc", "下单 \"" + o.getGoodsName() + "\"");
+                    m.put("_time", o.getCreateTime());
+                    activities.add(m);
+                });
+
+        // Latest live rooms
+        liveRoomMapper.selectList(new LambdaQueryWrapper<LiveRoom>()
+                .eq(LiveRoom::getStatus, "LIVE").orderByDesc(LiveRoom::getCreateTime).last("LIMIT " + (limit / 4)))
+                .forEach(lr -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("type", "live");
+                    m.put("user", "用户" + lr.getHostUserId());
+                    m.put("desc", "开启直播 \"" + lr.getTitle() + "\"");
+                    m.put("_time", lr.getCreateTime());
+                    activities.add(m);
+                });
+
+        // Sort by time desc and limit
+        activities.sort((a, b) -> {
+            LocalDateTime ta = (LocalDateTime) a.remove("_time");
+            LocalDateTime tb = (LocalDateTime) b.remove("_time");
+            return tb.compareTo(ta);
+        });
+        if (activities.size() > limit) {
+            return Result.ok(activities.subList(0, limit));
+        }
+        return Result.ok(activities);
+    }
+
     // ========== Helper ==========
 
     /** coverUrl 为空时回退到 imageUrls 第一张或 videoUrl (图文/文字作品封面即首图) */
@@ -1240,6 +1478,15 @@ public class AnalyticsController {
             if (!urls.isEmpty()) return urls.get(0);
         }
         return v.getVideoUrl();
+    }
+
+    /** Parse ISO 8601 instant string (e.g. "2026-06-26T00:00:00.000Z") to LocalDateTime */
+    private LocalDateTime parseIsoDateTime(String iso) {
+        try {
+            return LocalDateTime.ofInstant(Instant.parse(iso), ZoneId.systemDefault());
+        } catch (Exception e) {
+            return LocalDateTime.parse(iso, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        }
     }
 
     private List<String> parseJsonArray(String json) {

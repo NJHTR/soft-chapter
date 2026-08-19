@@ -46,6 +46,17 @@ class LiveKitWebhookJwtTest {
         assertThat(verifier.verify("Bearer invalid", legacy, BODY)).isFalse();
     }
 
+    @Test
+    void apiSecretIsUsedWhenWebhookSecretIsOmitted() throws Exception {
+        RtcProperties props = new RtcProperties();
+        props.setLivekitApiKey(API_KEY);
+        props.setLivekitApiSecret(SECRET);
+        WebhookSignatureVerifier verifier = new WebhookSignatureVerifier(props);
+        String token = token(BODY, SECRET, API_KEY, System.currentTimeMillis() + 60_000);
+
+        assertThat(verifier.verify("Bearer " + token, null, BODY)).isTrue();
+    }
+
     private static WebhookSignatureVerifier verifier() {
         RtcProperties props = new RtcProperties();
         props.setLivekitApiKey(API_KEY);
