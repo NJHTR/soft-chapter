@@ -85,7 +85,7 @@ async function negotiate(page, endpoint, mode) {
       iceConnectionState: pc.iceConnectionState,
     }
     window.__rtc006 = { pc, media, location }
-    return { ...mediaStats, location }
+    return { ...mediaStats, sessionCreated: Boolean(location) }
   }, { endpoint, mode })
 }
 
