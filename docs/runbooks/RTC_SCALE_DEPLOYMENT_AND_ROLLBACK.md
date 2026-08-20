@@ -39,7 +39,8 @@
 ### 回滚
 
 - 关闭 admission 开关；保留 exporter 和告警以便复盘。
-- 删除未消费的 reservation，不修改已创建 room 的 placement。
+- 仅将已确认没有控制面/provider 资源的 `PENDING` reservation 标为 `RELEASED/EXPIRED`；不得删除
+  尚未被新鲜 provider 快照吸收的 `CONSUMED` reservation，也不修改已创建 room 的 placement。
 - 若容量 registry 不一致，停止新房并人工确认；不要通过放大上限掩盖坏数据。
 
 ### 证据

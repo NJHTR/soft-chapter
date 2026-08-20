@@ -29,7 +29,8 @@
   `docs/contracts/rtc-scale-control-contract.md` 第 2～3 节。
 - 70% 持续 5 分钟是扩容/规划告警，正常目标保留 30% headroom；80% 是紧急硬门禁。
 - 快照 stale、registry/Redis 不可用且没有新鲜缓存时，新房 fail-closed；已有房间继续并告警。
-- 相同 `request_id/call_id` reservation 幂等且有 TTL，不得重复扣减容量。
+- 相同 `request_id/call_id` reservation 幂等且按 `PENDING -> CONSUMED|RELEASED|EXPIRED`
+  以 CAS 收敛；provider 快照吸收资源前继续计入预留，不得重复扣减或产生容量空窗。
 - 决策仅为 `ALLOW|DEGRADE_VIDEO|REJECT_NEW_ROOM`，reason 使用固定低基数枚举。
 
 ## 实现输出
@@ -62,9 +63,11 @@ git diff --check
 - [ ] Prometheus 只使用低基数标签，room/user/call 明细写入受控聚合存储。
 - [ ] LiveKit、TURN、客户端和控制面覆盖房间、pub/sub、egress Mbps、RTP pps、CPU、内存、RTT、
   丢包、重连、NACK/PLI/FIR、首帧、卡顿和 relay 指标。
-- [ ] stale/missing snapshot、Redis 故障、重复 reservation、已有房间、音频降级和 70/80% 边界测试通过。
+- [ ] stale/missing snapshot、Redis 故障、重复 reservation、consume/release/expire/reconcile、已有房间、
+  音频降级和 70/80% 边界测试通过。
 - [ ] 完成 100x2、100x8、1000x2 房间和 stage + audience 压测矩阵并附真实原始证据。
-- [ ] 节点连续 5 分钟超过 70% 告警，任一可靠关键资源超过 80% 阻止新房或明确降级视频。
+- [ ] 受部署清单约束的 Prometheus `instance` 能识别单个热节点；节点连续 5 分钟超过 70% 告警，
+  任一可靠关键资源超过 80% 阻止新房或明确降级视频。
 - [ ] 独立审查确认没有高基数指标、假容量、媒体越界或 ACL 绕过。
 
 ## 回滚与风险
