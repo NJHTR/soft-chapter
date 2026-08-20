@@ -6,9 +6,10 @@
 
 ## 1. 发布前总门禁
 
-1. RTC-006 的 SRS callback、provider restart、Redis 多实例 presence 和浏览器恢复证据已完成。
-2. RTC-007 的 QoE 聚合、ABR、弱网和恢复矩阵已完成。
-3. 本次发布的任务文件已经处于 `review` 或更后状态，提交哈希、配置版本和回滚点明确。
+1. RTC-006 已 `completed`，SRS callback、provider restart、Redis 多实例 presence 和浏览器恢复证据齐全。
+2. RTC-007 已 `completed`，QoE 聚合、ABR、弱网和恢复矩阵证据齐全。
+3. 本次发布任务的所有依赖均已 `completed`；任务自身已经处于 `review` 或更后状态，提交哈希、
+   配置版本和回滚点明确。
 4. 所有 secret 通过环境/secret manager 注入；渲染结果不进入 Git、日志或验收产物。
 5. Spring、Kafka 和聊天 WS 的 payload 检查确认没有 RTP、媒体帧、base64 媒体或完整 stats。
 6. 先在隔离环境执行浏览器/provider/故障验收，再进入小流量 canary；禁止直接把模板用于生产。

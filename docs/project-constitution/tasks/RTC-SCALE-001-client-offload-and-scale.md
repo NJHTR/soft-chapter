@@ -33,9 +33,9 @@
 |---|---|---|
 | A | 本任务契约、状态审计、回滚 | 可立即执行，只改文档/契约/任务记录 |
 | 前置 | RTC-006、RTC-007 | 先关闭 provider recovery、浏览器、QoE/弱网门禁 |
-| B | RTC-011 | RTC-007 达到可审查状态 |
-| C | RTC-012 | RTC-005、RTC-007 达到可审查状态 |
-| D | RTC-013 | RTC-011 完成容量与 admission 契约 |
+| B | RTC-011 | RTC-007 已 `completed` |
+| C | RTC-012 | RTC-005、RTC-007 已 `completed` |
+| D | RTC-013 | RTC-011 已 `completed`，包含容量与 admission 实现证据 |
 | E | RTC-014 | RTC-006、RTC-013 完成 |
 | F | RTC-015 | RTC-004、RTC-007 完成；最后评估 P2P |
 
@@ -76,7 +76,8 @@ git diff --check
 
 - 2026-08-20 基线重新执行 Maven compile、163 项 Maven test、Vue typecheck、RTC ESLint、compose
   config 和 diff check 均通过；这些结果不等于媒体、集群或容量验收。
-- Playwright 未安装；当前未取得双浏览器、TURN NAT、多节点、Stage + Audience 或负载数据。
+- 项目依赖未安装 Playwright，但桌面工作区 bundled Playwright + Chrome 已完成直连 SRS smoke；
+  当前仍没有两个登录态应用客户端 harness，也未取得 TURN NAT、多节点、Stage + Audience 或负载数据。
 - RTC-004/005 在索引中为 `completed`，但各自任务文件仍保留真实浏览器门禁，状态文档需后续统一。
 - `CallPanel.vue` 的用户 UI 修改与 RTC-012 视图区域重叠；在用户改动独立提交前，RTC-012 不拥有
   该文件。
