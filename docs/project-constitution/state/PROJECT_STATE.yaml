@@ -349,5 +349,6 @@ verification:
     - rtc_scale_p2p_dual_browser_nat_ipv6_turn_matrix (受控 P2P 控制面已提交;真实双浏览器 1 对 1/NAT/IPv6/企业网/TURN 不可用矩阵未执行)
     - rtc_scale_p2p_real_success_fallback_relay_rates (真实 P2P 成功率/回退率/relay 比例、CPU/电量/SFU egress 实测未执行)
     - rtc_scale_p2p_multi_instance_store (P2pStateStore/信令邮箱为单实例内存,多实例拓扑与共享密钥未执行)
+    - rtc_scale_final_report (docs/verification/rtc_scale_wave_verification.md 输出最终验证矩阵;双浏览器/负载/真服务矩阵仍未执行)
 last_verified_commit: 3d6d592
 last_doc_commit: 3d6d592
