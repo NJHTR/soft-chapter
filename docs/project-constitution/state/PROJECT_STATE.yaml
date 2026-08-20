@@ -54,7 +54,7 @@ scale_objective:
   started_at: "2026-08-20"
   branch: dev/full
   current_wave: A_contracts_completed_and_independently_audited
-  implementation_gate: RTC-006 and RTC-007 remain incomplete; RTC-011 through RTC-015 remain planned
+  implementation_gate: RTC-004, RTC-005, RTC-006 and RTC-007 remain incomplete; RTC-011 through RTC-015 remain planned
   contract: docs/contracts/rtc-scale-control-contract.md
   runbook: docs/runbooks/RTC_SCALE_DEPLOYMENT_AND_ROLLBACK.md
   evidence_commits:
@@ -96,12 +96,14 @@ tasks:
     depends_on: [RTC-001]
   - id: RTC-004
     title: 接入 1 对 1 LiveKit 媒体适配器和客户端
-    status: completed
+    status: in_progress
     depends_on: [RTC-002, RTC-003]
+    evidence_scope: control and adapter code exists; cross-browser, TURN relay, real webhook and QoE DoD remain open
   - id: RTC-005
     title: 迁移群聊音视频到 SFU
-    status: completed
+    status: in_progress
     depends_on: [RTC-004]
+    evidence_scope: group control path exists; frontend roster/track UI and real 2/4/8 participant DoD remain open
   - id: RTC-006
     title: 迁移直播到 WHIP/WHEP 与 HLS/HTTP-FLV fallback
     status: in_progress

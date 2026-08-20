@@ -8,8 +8,8 @@
 | RTC-001 | 宪法、现状基线、模块边界、契约和路线图 | `completed` | 无 | `docs/project-constitution`、架构文档、ADR、schema、测试计划 |
 | RTC-002 | LiveKit/coturn/SRS provider bootstrap 环境 | `completed` | RTC-001 | 配置、端口、健康检查、provider CLI smoke test；不依赖业务 token API |
 | RTC-003 | RTC 控制面和通话领域 | `completed` | RTC-001 | CallSession、Participant、ACL、幂等事件、token API、webhook |
-| RTC-004 | 1 对 1 LiveKit 适配器 | `completed` | RTC-002、RTC-003 | 设备管理、音频优先、接通/重连、通话记录 |
-| RTC-005 | 群聊音视频 SFU 迁移 | `completed` | RTC-004 | 8 人基线、订阅策略、simulcast、active speaker |
+| RTC-004 | 1 对 1 LiveKit 适配器 | `in_progress` | RTC-002、RTC-003 | 设备管理、音频优先、接通/重连、通话记录；真实浏览器/TURN/webhook/QoE 门禁未完成 |
+| RTC-005 | 群聊音视频 SFU 迁移 | `in_progress` | RTC-004 | 群控制面已实现；前端 roster/轨道与真实 2/4/8 人门禁未完成 |
 | RTC-006 | 直播 WHIP/WHEP 迁移 | `in_progress` | RTC-002、RTC-003 | 主播 ingest、观众播放、HLS/HTTP-FLV fallback、单一 presence、SRS callback/session/reconciliation、migration_038 |
 | RTC-007 | QoE、ABR、弱网和恢复 | `planned` | RTC-004、RTC-005、RTC-006 | stats、质量策略、ICE restart、降级/恢复 |
 | RTC-008 | 录制和转码 | `planned` | RTC-005、RTC-006 | Egress/DVR、异步 FFmpeg、对象存储、审计 |
@@ -60,7 +60,8 @@ RTC-007 到 RTC-010 必须在真实浏览器、TURN、弱网、重连和故障�
 - 当前波次：C（SRS WHIP/WHEP 媒体迁移）与 D（浏览器播放、控制 WS 和质量基线）。
 - 已完成的契约：控制面 OpenAPI、LiveKit webhook 事件账本、错误码和 `douyin.realtime.v1` 信令 schema。
 - 尚未满足的发布门禁：真实双浏览器接通、TURN relay、官方 webhook 端到端回调和 QoE 报告。
-- RTC-004/005 的控制面与代码路径已完成，但真实双浏览器/媒体 provider 验收仍记录在对应任务的 review gate 中。
+- RTC-004/005 的控制面与代码路径已有前置实现，但任务文件 DoD 仍缺真实双浏览器、TURN/webhook、
+  QoE 和 2/4/8 人媒体验收，因此 state/index/task 统一保持 `in_progress`。
 - `25e440a`、`3bc701b`、`94d349d`、`9c70437`、`ec3f286`、`02fa7b8`、`876eb57`、`2c2ef00`、`a54c83d`、`99acc27` 已提交 RTC-006 的短期媒体授权、SRS callback、provider session/reconciliation、generation CAS、原子缺流过渡、旧 generation 迁移、Redis Lua TTL presence、SRS API 超时和 malformed callback fail-closed；Java 测试及单实例 Redis 语义验证已通过。真实 SRS callback、SRS 重启/异常断开、Redis 多实例 presence 和登录态应用浏览器验收未完成，RTC-006 保持 `in_progress`。
 - `597c041` 后本机 Chrome/Playwright 直连 SRS 的 WHIP、WHEP 首帧、HLS/HTTP-FLV 已重跑通过且
   session URL/token 不再输出；两个登录态应用客户端、真实 callback、SRS restart 和 Redis 多实例

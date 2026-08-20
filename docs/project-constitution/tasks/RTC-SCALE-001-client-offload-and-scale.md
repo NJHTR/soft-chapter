@@ -39,6 +39,10 @@
 | E | RTC-014 | RTC-006、RTC-013 完成 |
 | F | RTC-015 | RTC-004、RTC-007 完成；最后评估 P2P |
 
+表中“已 completed/完成”只有在任务文件、`TASK_INDEX.md` 和 `PROJECT_STATE.yaml` 状态一致，且任务
+DoD 的真实证据与提交哈希齐全时才满足；不得只读取 index/state 的单一字段。当前 RTC-004、
+RTC-005 均因任务 DoD 未关闭保持 `in_progress`，因此 RTC-012/015 的直接依赖门也未满足。
+
 ## 对外契约
 
 - 统一契约：`docs/contracts/rtc-scale-control-contract.md`
@@ -78,7 +82,8 @@ git diff --check
   config 和 diff check 均通过；这些结果不等于媒体、集群或容量验收。
 - 项目依赖未安装 Playwright，但桌面工作区 bundled Playwright + Chrome 已完成直连 SRS smoke；
   当前仍没有两个登录态应用客户端 harness，也未取得 TURN NAT、多节点、Stage + Audience 或负载数据。
-- RTC-004/005 在索引中为 `completed`，但各自任务文件仍保留真实浏览器门禁，状态文档需后续统一。
+- RTC-004/005 已按各自任务文件和未完成真实浏览器门禁统一回退为 `in_progress`；控制面/代码前置
+  实现不等于任务 DoD 完成。
 - `CallPanel.vue` 的用户 UI 修改与 RTC-012 视图区域重叠；在用户改动独立提交前，RTC-012 不拥有
   该文件。
 
