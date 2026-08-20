@@ -27,6 +27,8 @@ export interface RtcParticipant {
   userId: string
   role: string
   state: string
+  displayName: string
+  avatar: string
 }
 
 /** 后端 detail.participants 的原始 snake_case 结构 */
@@ -36,6 +38,7 @@ export interface RtcParticipantRaw {
   state?: string
   joined_at?: string | null
   left_at?: string | null
+  profile_snapshot?: string | Record<string, unknown> | null
   [key: string]: any
 }
 

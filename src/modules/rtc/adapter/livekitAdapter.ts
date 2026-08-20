@@ -95,10 +95,12 @@ class LiveKitMediaPort implements RtcMediaPort {
   private currentOutputId = ''
   /** 远端参与者 → 其 MediaStream(同 identity 已发布音轨的合集) */
   private remoteStreams = new Map<string, MediaStream>()
+  /** 远端发布 registry：复合键 (participant_id, source)；同源新发布替换旧 entry */
   private remoteTracks = new Map<
     string,
     {
       identity: string
+      publicationId: string
       kind: 'audio' | 'video'
       source: RtcQoeTrackSnapshot['source']
       track: RemoteTrack
@@ -117,6 +119,18 @@ class LiveKitMediaPort implements RtcMediaPort {
   >()
   private visibleParticipants: ReadonlySet<string> | null = null
   private activeSpeakerId: string | null = null
+  private mediaAttention: { hidden: boolean; minimized: boolean } = {
+    hidden: false,
+    minimized: false
+  }
+  /**
+   * 已下发到 provider 的订阅/质量状态（按 publication sid）。
+   * 只有期望值变化时才调用 setSubscribed / setVideoQuality，避免重复信令。
+   */
+  private lastApplied = new Map<string, { subscribed: boolean; quality: VideoQuality | null }>()
+  private joinScope: RtcMediaPortJoinOptions['scope'] | null = null
+  private roomConnectionStateHandlers = new WeakMap<Room, (state: ConnectionState) => void>()
+  private roomDisconnectedHandlers = new WeakMap<Room, () => void>()
 
   constructor() {
     setRtOutputApplier(() => this.applyOutputToElements())
@@ -128,6 +142,7 @@ class LiveKitMediaPort implements RtcMediaPort {
 
   async join(opts: RtcMediaPortJoinOptions): Promise<void> {
     this.ensureFreshRoom()
+    this.joinScope = opts.scope
     const room = this.room!
     await room.connect(getLiveKitUrl(), opts.token, { autoSubscribe: true })
     const lp = room.localParticipant
@@ -152,9 +167,10 @@ class LiveKitMediaPort implements RtcMediaPort {
 
   private ensureFreshRoom() {
     if (this.room) {
-      this.intentionalRooms.add(this.room)
-      this.room.removeAllListeners()
-      this.room.disconnect()
+      const previousRoom = this.room
+      this.intentionalRooms.add(previousRoom)
+      this.unwireEvents(previousRoom)
+      previousRoom.disconnect()
       this.room = null
     }
     this.remoteStreams.clear()
@@ -162,8 +178,11 @@ class LiveKitMediaPort implements RtcMediaPort {
     this.localTracks.clear()
     this.remoteVideoQuality.clear()
     this.remoteSubscription.clear()
+    this.lastApplied.clear()
     this.visibleParticipants = null
     this.activeSpeakerId = null
+    this.mediaAttention = { hidden: false, minimized: false }
+    this.joinScope = null
     void this.resetBackgroundRemoval()
     const room = new Room(ROOM_OPTIONS)
     this.room = room
@@ -171,20 +190,26 @@ class LiveKitMediaPort implements RtcMediaPort {
   }
 
   private wireEvents(room: Room) {
-    room.on(RoomEvent.ConnectionStateChanged, (state: ConnectionState) => {
+    const onConnectionStateChanged = (state: ConnectionState) => {
       if (this.intentionalRooms.has(room)) return
       if (state === 'connected') this.cb.onConnectionState('connected')
       else if (state === 'reconnecting' || state === 'signalReconnecting') {
         this.cb.onConnectionState('reconnecting')
       } else if (state === 'disconnected') this.cb.onConnectionState('disconnected')
-    })
-
-    room.on(RoomEvent.Disconnected, () => {
+    }
+    const onDisconnected = () => {
       if (!this.intentionalRooms.has(room)) this.cb.onClose()
-    })
+    }
+    this.roomConnectionStateHandlers.set(room, onConnectionStateChanged)
+    this.roomDisconnectedHandlers.set(room, onDisconnected)
+    room.on(RoomEvent.ConnectionStateChanged, onConnectionStateChanged)
+
+    room.on(RoomEvent.Disconnected, onDisconnected)
 
     room.on(RoomEvent.TrackSubscribed, this.onTrackSubscribed)
     room.on(RoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed)
+    room.on(RoomEvent.TrackPublished, this.onTrackPublished)
+    room.on(RoomEvent.TrackUnpublished, this.onTrackUnpublished)
     room.on(RoomEvent.TrackMuted, this.onTrackMuted)
     room.on(RoomEvent.TrackUnmuted, this.onTrackUnmuted)
     room.on(RoomEvent.ParticipantDisconnected, this.onParticipantDisconnected)
@@ -192,6 +217,29 @@ class LiveKitMediaPort implements RtcMediaPort {
 
     room.localParticipant.on(ParticipantEvent.LocalTrackPublished, this.onLocalTrackPublished)
     room.localParticipant.on(ParticipantEvent.LocalTrackUnpublished, this.onLocalTrackUnpublished)
+  }
+
+  private unwireEvents(room: Room) {
+    const onConnectionStateChanged = this.roomConnectionStateHandlers.get(room)
+    if (onConnectionStateChanged) {
+      room.off(RoomEvent.ConnectionStateChanged, onConnectionStateChanged)
+      this.roomConnectionStateHandlers.delete(room)
+    }
+    const onDisconnected = this.roomDisconnectedHandlers.get(room)
+    if (onDisconnected) {
+      room.off(RoomEvent.Disconnected, onDisconnected)
+      this.roomDisconnectedHandlers.delete(room)
+    }
+    room.off(RoomEvent.TrackSubscribed, this.onTrackSubscribed)
+    room.off(RoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed)
+    room.off(RoomEvent.TrackPublished, this.onTrackPublished)
+    room.off(RoomEvent.TrackUnpublished, this.onTrackUnpublished)
+    room.off(RoomEvent.TrackMuted, this.onTrackMuted)
+    room.off(RoomEvent.TrackUnmuted, this.onTrackUnmuted)
+    room.off(RoomEvent.ParticipantDisconnected, this.onParticipantDisconnected)
+    room.off(RoomEvent.ActiveSpeakersChanged, this.onActiveSpeakersChanged)
+    room.localParticipant.off(ParticipantEvent.LocalTrackPublished, this.onLocalTrackPublished)
+    room.localParticipant.off(ParticipantEvent.LocalTrackUnpublished, this.onLocalTrackUnpublished)
   }
 
   private onLocalTrackPublished = (pub: LocalTrackPublication) => {
@@ -233,49 +281,34 @@ class LiveKitMediaPort implements RtcMediaPort {
     participant: RemoteParticipant
   ) => {
     const identity = participant.identity
+    const source = this.toQoeTrackSource(publication.source)
+    const kind = track.kind === Track.Kind.Audio ? 'audio' : 'video'
     console.info('[rtc] remote track subscribed', {
       identity,
-      kind: track.kind,
+      kind,
+      source,
       trackId: track.mediaStreamTrack.id,
       readyState: track.mediaStreamTrack.readyState,
       enabled: track.mediaStreamTrack.enabled
     })
-    if (track.kind === Track.Kind.Video) {
+    if (kind === 'video') {
       this.applyRemoteSubscriptionPolicy()
     }
-    const source = this.toQoeTrackSource(publication.source)
-    this.remoteTracks.forEach((entry, trackId) => {
-      if (
-        entry.identity === identity &&
-        entry.source === source &&
-        entry.track.mediaStreamTrack.id !== track.mediaStreamTrack.id
-      ) {
-        this.remoteTracks.delete(trackId)
-      }
-    })
-    this.remoteTracks.set(publication.trackSid || track.mediaStreamTrack.id, {
+    const key = trackKey(identity, source)
+    const existing = this.remoteTracks.get(key)
+    // 同源新发布（摄像头重开/screen share 恢复）：旧 ended track 不得覆盖新轨道
+    if (existing && existing.track.mediaStreamTrack.id !== track.mediaStreamTrack.id) {
+      this.lastApplied.delete(existing.publicationId)
+    }
+    this.remoteTracks.set(key, {
       identity,
-      kind: track.kind === Track.Kind.Audio ? 'audio' : 'video',
+      publicationId: publication.trackSid || `pub-${track.mediaStreamTrack.id}`,
+      kind,
       source,
       track
     })
-    let stream = this.remoteStreams.get(identity)
-    if (!stream) {
-      stream = new MediaStream()
-      this.remoteStreams.set(identity, stream)
-    }
-    // A participant can publish a fresh camera track before the browser has
-    // delivered TrackUnsubscribed for the old one. Keep one live track per
-    // media kind so a stale ended track cannot win the preview binding.
-    stream.getTracks().forEach((existing) => {
-      if (existing.kind === track.kind && existing.id !== track.mediaStreamTrack.id) {
-        stream?.removeTrack(existing)
-      }
-    })
-    if (!stream.getTracks().some((existing) => existing.id === track.mediaStreamTrack.id)) {
-      stream.addTrack(track.mediaStreamTrack)
-    }
-    this.cb.onRemoteMute(identity, track.kind === 'audio' ? 'audio' : 'video', false)
+    const stream = this.rebuildRemoteStream(identity)
+    this.cb.onRemoteMute(identity, kind, false)
     this.cb.onRemoteTrack(identity, stream)
   }
 
@@ -290,20 +323,70 @@ class LiveKitMediaPort implements RtcMediaPort {
       kind: track.kind,
       trackId: track.mediaStreamTrack.id
     })
-    const stream = this.remoteStreams.get(identity)
-    const trackKey = publication.trackSid || track.mediaStreamTrack.id
-    const tracked = this.remoteTracks.get(trackKey)
-    if (tracked?.track.mediaStreamTrack.id === track.mediaStreamTrack.id) {
-      this.remoteTracks.delete(trackKey)
+    const key = trackKey(identity, this.toQoeTrackSource(publication.source))
+    const tracked = this.remoteTracks.get(key)
+    if (tracked && tracked.track.mediaStreamTrack.id === track.mediaStreamTrack.id) {
+      this.remoteTracks.delete(key)
+      this.lastApplied.delete(tracked.publicationId)
     } else if (!tracked) {
+      // 迟到 unsubscribe（track id 对不上）：按复合键幂等清理
       this.remoteTracks.forEach((entry, candidateKey) => {
-        if (entry.track.mediaStreamTrack.id === track.mediaStreamTrack.id) {
+        if (
+          entry.identity === identity &&
+          entry.track.mediaStreamTrack.id === track.mediaStreamTrack.id
+        ) {
           this.remoteTracks.delete(candidateKey)
         }
       })
     }
+    const stream = this.remoteStreams.get(identity)
     if (!stream) return
     stream.removeTrack(track.mediaStreamTrack)
+    if (stream.getTracks().length === 0) {
+      this.remoteStreams.delete(identity)
+      this.cb.onRemoteTrackRemoved(identity)
+    } else {
+      this.cb.onRemoteTrack(identity, stream)
+    }
+  }
+
+  private onTrackPublished = (
+    publication: RemoteTrackPublication,
+    participant: RemoteParticipant
+  ) => {
+    if (participant.isLocal) return
+    console.info('[rtc] remote publication declared', {
+      identity: participant.identity,
+      source: publication.source,
+      trackSid: publication.trackSid
+    })
+  }
+
+  private onTrackUnpublished = (
+    publication: RemoteTrackPublication,
+    participant: RemoteParticipant
+  ) => {
+    if (participant.isLocal) return
+    const identity = participant.identity
+    console.info('[rtc] remote publication removed', {
+      identity,
+      source: publication.source,
+      trackSid: publication.trackSid
+    })
+    if (publication.trackSid) this.lastApplied.delete(publication.trackSid)
+    let removed = false
+    this.remoteTracks.forEach((entry, key) => {
+      if (
+        entry.identity === identity &&
+        (entry.publicationId === publication.trackSid ||
+          entry.source === this.toQoeTrackSource(publication.source))
+      ) {
+        this.remoteTracks.delete(key)
+        removed = true
+      }
+    })
+    if (!removed) return
+    const stream = this.rebuildRemoteStream(identity)
     if (stream.getTracks().length === 0) {
       this.remoteStreams.delete(identity)
       this.cb.onRemoteTrackRemoved(identity)
@@ -315,11 +398,37 @@ class LiveKitMediaPort implements RtcMediaPort {
   private onParticipantDisconnected = (participant: RemoteParticipant) => {
     this.remoteStreams.delete(participant.identity)
     this.remoteTracks.forEach((entry, trackId) => {
-      if (entry.identity === participant.identity) this.remoteTracks.delete(trackId)
+      if (entry.identity === participant.identity) {
+        this.remoteTracks.delete(trackId)
+        this.lastApplied.delete(entry.publicationId)
+      }
     })
     this.remoteVideoQuality.delete(participant.identity)
     this.remoteSubscription.delete(participant.identity)
     this.cb.onRemoteTrackRemoved(participant.identity)
+  }
+
+  /** 按 registry 重建某参与者的 MediaStream（同一实例反复更新，杜绝旧 ended track 覆盖新轨道）。 */
+  private rebuildRemoteStream(identity: string): MediaStream {
+    let stream = this.remoteStreams.get(identity)
+    if (!stream) {
+      stream = new MediaStream()
+      this.remoteStreams.set(identity, stream)
+    }
+    const wanted = Array.from(this.remoteTracks.values())
+      .filter((entry) => entry.identity === identity)
+      .map((entry) => entry.track.mediaStreamTrack)
+    stream.getTracks().forEach((existing) => {
+      if (!wanted.some((wantedTrack) => wantedTrack.id === existing.id)) {
+        stream?.removeTrack(existing)
+      }
+    })
+    wanted.forEach((wantedTrack) => {
+      if (!stream.getTracks().some((existing) => existing.id === wantedTrack.id)) {
+        stream.addTrack(wantedTrack)
+      }
+    })
+    return stream
   }
 
   private onTrackMuted = (publication: TrackPublication, participant: Participant) => {
@@ -365,35 +474,73 @@ class LiveKitMediaPort implements RtcMediaPort {
   }
 
   /**
-   * Keep group calls audio-first without changing the 1:1 quality baseline.
-   * The full visibility/attach-driven policy belongs to RTC-012; this small
-   * policy is safe with the current MediaStream adapter and reduces SFU egress
-   * as soon as a room has more than one remote participant.
+   * 群聊按选择性订阅策略分级；1 对 1 保持 null 可见集合（全订阅兼容）。
+   * 注意力上下文（隐藏/最小化）只保留 active speaker 与屏幕共享的视频，
+   * 音频对所有已订阅参与者保持。
    */
   private applyRemoteSubscriptionPolicy() {
     const room = this.room
     if (!room) return
+    const paused = this.mediaAttention.hidden || this.mediaAttention.minimized
+    const effectiveVisible: ReadonlySet<string> | null | undefined = paused
+      ? this.activeSpeakerId
+        ? new Set<string>([this.activeSpeakerId])
+        : new Set<string>()
+      : room.remoteParticipants.size <= 1
+        ? null
+        : this.visibleParticipants
     room.remoteParticipants.forEach((participant) => {
       participant.trackPublications.forEach((publication) => {
         const requested = this.remoteSubscription.get(participant.identity) ?? {}
         if (publication.kind === Track.Kind.Audio) {
-          publication.setSubscribed(requested.audio ?? true)
+          this.applySubscribed(publication, requested.audio ?? true)
           return
         }
         if (publication.kind !== Track.Kind.Video) return
         const decision = resolveSubscriptionPolicy({
           participantId: participant.identity,
-          visibleParticipantIds:
-            room.remoteParticipants.size <= 1 ? null : this.visibleParticipants,
+          visibleParticipantIds: effectiveVisible,
           activeSpeakerId: this.activeSpeakerId,
           screenShare: publication.source === Track.Source.ScreenShare,
           requestedVideoQuality:
             requested.quality ?? this.remoteVideoQuality.get(participant.identity),
           requestedVideo: requested.video
         })
-        publication.setSubscribed(decision.video)
-        publication.setVideoQuality(this.toLiveKitVideoQuality(decision.quality))
+        this.applySubscribed(publication, decision.video)
+        this.applyVideoQuality(publication, this.toLiveKitVideoQuality(decision.quality))
       })
+    })
+  }
+
+  /** 只有期望订阅变化时才调用 provider setSubscribed（避免重复信令）。 */
+  private applySubscribed(publication: RemoteTrackPublication, subscribed: boolean) {
+    const sid = publication.trackSid
+    if (!sid) {
+      publication.setSubscribed(subscribed)
+      return
+    }
+    const applied = this.lastApplied.get(sid)
+    if (applied && applied.subscribed === subscribed) return
+    publication.setSubscribed(subscribed)
+    this.lastApplied.set(sid, {
+      subscribed,
+      quality: applied?.quality ?? null
+    })
+  }
+
+  /** 只有期望质量层变化时才调用 provider setVideoQuality。 */
+  private applyVideoQuality(publication: RemoteTrackPublication, quality: VideoQuality) {
+    const sid = publication.trackSid
+    if (!sid) {
+      publication.setVideoQuality(quality)
+      return
+    }
+    const applied = this.lastApplied.get(sid)
+    if (applied && applied.quality === quality) return
+    publication.setVideoQuality(quality)
+    this.lastApplied.set(sid, {
+      subscribed: applied?.subscribed ?? true,
+      quality
     })
   }
 
@@ -422,6 +569,14 @@ class LiveKitMediaPort implements RtcMediaPort {
     this.applyRemoteSubscriptionPolicy()
   }
 
+  setMediaAttention(attention: { hidden: boolean; minimized: boolean }): void {
+    this.mediaAttention = {
+      hidden: Boolean(attention.hidden),
+      minimized: Boolean(attention.minimized)
+    }
+    this.applyRemoteSubscriptionPolicy()
+  }
+
   setActiveSpeaker(identity: string | null): void {
     this.activeSpeakerId = identity
     this.applyRemoteSubscriptionPolicy()
@@ -429,11 +584,11 @@ class LiveKitMediaPort implements RtcMediaPort {
 
   async getQoeSnapshot(): Promise<RtcQoeSnapshot> {
     const tracks: RtcQoeTrackSnapshot[] = []
-    for (const [trackId, entry] of Array.from(this.remoteTracks.entries())) {
+    for (const entry of Array.from(this.remoteTracks.values())) {
       const report = await entry.track.getRTCStatsReport()
       if (!report) continue
       const aggregate: RtcQoeTrackSnapshot = {
-        trackId,
+        trackId: entry.publicationId,
         identity: entry.identity,
         kind: entry.kind,
         source: entry.source,
@@ -467,6 +622,7 @@ class LiveKitMediaPort implements RtcMediaPort {
     return {
       sampledAt: new Date().toISOString(),
       connectionState: this.toQoeConnectionState(this.room?.state),
+      topology: this.joinScope ?? 'unknown',
       tracks
     }
   }
@@ -489,6 +645,20 @@ class LiveKitMediaPort implements RtcMediaPort {
 
   async setMuted(muted: boolean): Promise<void> {
     await this.room?.localParticipant.setMicrophoneEnabled(!muted)
+  }
+
+  async setScreenShareEnabled(enabled: boolean): Promise<boolean> {
+    const room = this.room
+    if (!room) return false
+    try {
+      await room.localParticipant.setScreenShareEnabled(enabled)
+      this.syncLocalTracks(room.localParticipant)
+      return enabled
+    } catch (error) {
+      console.warn('[rtc] screen share toggle failed', error)
+      this.syncLocalTracks(room.localParticipant)
+      return false
+    }
   }
 
   async setVideoEnabled(enabled: boolean): Promise<boolean> {
@@ -635,8 +805,11 @@ class LiveKitMediaPort implements RtcMediaPort {
     this.localTracks.clear()
     this.remoteVideoQuality.clear()
     this.remoteSubscription.clear()
+    this.lastApplied.clear()
     this.visibleParticipants = null
     this.activeSpeakerId = null
+    this.mediaAttention = { hidden: false, minimized: false }
+    this.joinScope = null
     setRtOutputApplier(() => this.applyOutputToElements())
   }
 
@@ -658,3 +831,8 @@ class LiveKitMediaPort implements RtcMediaPort {
 }
 
 export const rtcMediaPort: RtcMediaPort = new LiveKitMediaPort()
+
+/** registry 复合键：(participant_id, source)。 */
+function trackKey(identity: string, source: RtcQoeTrackSnapshot['source']): string {
+  return `${identity}|${source}`
+}

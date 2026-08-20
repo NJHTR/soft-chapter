@@ -21,6 +21,8 @@ export interface RtcQoeTrackSnapshot {
 export interface RtcQoeSnapshot {
   sampledAt: string
   connectionState: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'unknown'
+  /** join 时显式声明的拓扑（direct | group | stage） */
+  topology: 'direct' | 'group' | 'stage' | 'unknown'
   tracks: RtcQoeTrackSnapshot[]
 }
 
@@ -43,6 +45,8 @@ export interface RtcMediaPortJoinOptions {
   roomName: string
   identity: string
   mode: 'audio' | 'video'
+  /** 显式拓扑：direct | group | stage（不得用当前远端人数猜测） */
+  scope: 'direct' | 'group' | 'stage'
 }
 
 export interface RtcMediaPort {
@@ -51,6 +55,8 @@ export interface RtcMediaPort {
   join(opts: RtcMediaPortJoinOptions): Promise<void>
   setMuted(muted: boolean): Promise<void>
   setVideoEnabled(enabled: boolean): Promise<boolean>
+  /** Start or stop a LiveKit screen-share publication without exposing SDK types. */
+  setScreenShareEnabled(enabled: boolean): Promise<boolean>
   /** Toggle local video background removal before publishing to LiveKit. */
   setBackgroundRemoval(enabled: boolean): Promise<boolean>
   /** 免提开关:作用于已注册的 audio/video 元素的输出设备 */
@@ -66,6 +72,11 @@ export interface RtcMediaPort {
   ): void
   /** A null visibility set keeps the legacy full-subscription behavior. */
   setVisibleParticipants(identities: ReadonlySet<string> | readonly string[] | null): void
+  /**
+   * 页面注意力上下文：隐藏标签页/最小化时暂停普通摄像头视频并保持音频
+   * （active speaker 与屏幕共享除外），可见时按策略恢复。
+   */
+  setMediaAttention(attention: { hidden: boolean; minimized: boolean }): void
   /** Update the active speaker used by the conservative quality policy. */
   setActiveSpeaker(identity: string | null): void
   /** Read the latest provider stats without changing media policy. */

@@ -65,6 +65,27 @@ function genTraceId(): string {
   return `rtc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+/** 解析详情接口里的 profile_snapshot（string JSON 或对象），提供面板展示姓名/头像。 */
+function parseProfileSnapshot(snapshot?: string | Record<string, unknown> | null): {
+  displayName: string
+  avatar: string
+} {
+  let raw: Record<string, unknown> | null = null
+  if (typeof snapshot === 'string') {
+    try {
+      raw = JSON.parse(snapshot) as Record<string, unknown>
+    } catch {
+      raw = null
+    }
+  } else if (snapshot && typeof snapshot === 'object') {
+    raw = snapshot
+  }
+  return {
+    displayName: raw ? String(raw.nickname ?? raw.name ?? raw.displayName ?? '') : '',
+    avatar: raw ? String(raw.avatar ?? raw.avatar_url ?? '') : ''
+  }
+}
+
 export const useRtcStore = defineStore('rtc', {
   state: () => ({
     phase: 'idle' as CallPhase,
@@ -475,10 +496,15 @@ export const useRtcStore = defineStore('rtc', {
           this.error = extractErr(joined)
           return
         }
-        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle')
-          return
-        await rtcMediaPort.join({ token, roomName, identity, mode: this.mode })
-        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') {
+        if (generation !== lifecycleGeneration || ['ended', 'idle'].includes(this.phase)) return
+        await rtcMediaPort.join({
+          token,
+          roomName,
+          identity,
+          mode: this.mode,
+          scope: this.joinScope()
+        })
+        if (generation !== lifecycleGeneration || ['ended', 'idle'].includes(this.phase)) {
           rtcMediaPort.dispose()
           return
         }
@@ -511,11 +537,16 @@ export const useRtcStore = defineStore('rtc', {
       const call = detail.call
       if (String(call.state).toUpperCase() !== 'RINGING') this.stopRinging()
       this.session = Object.assign({}, this.session, call)
-      this.participants = (detail.participants || []).map((p) => ({
-        userId: String(p.user_id ?? ''),
-        role: p.role || '',
-        state: p.state || ''
-      }))
+      this.participants = (detail.participants || []).map((p) => {
+        const profile = parseProfileSnapshot(p.profile_snapshot)
+        return {
+          userId: String(p.user_id ?? ''),
+          role: p.role || '',
+          state: p.state || '',
+          displayName: profile.displayName,
+          avatar: profile.avatar
+        }
+      })
       const myId = this.myId
       const peer = (detail.participants || []).find((p) => String(p.user_id ?? '') !== myId)
       if (peer && String(peer.state || '').toUpperCase() === 'LEFT') this.peerLeft = true
@@ -552,8 +583,7 @@ export const useRtcStore = defineStore('rtc', {
 
     /** 媒体层已连通时立即确认业务状态，不等待 LiveKit webhook。 */
     async confirmMediaConnected(callId: string, generation: number) {
-      if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle')
-        return
+      if (generation !== lifecycleGeneration || ['ended', 'idle'].includes(this.phase)) return
       try {
         const res = await confirmConnectedCall(callId, {
           event_id: genEventId('connected'),
@@ -563,8 +593,7 @@ export const useRtcStore = defineStore('rtc', {
           console.warn('[rtc] connected confirmation rejected:', extractErr(res))
           return
         }
-        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle')
-          return
+        if (generation !== lifecycleGeneration || ['ended', 'idle'].includes(this.phase)) return
         if (res.data) this.session = Object.assign({}, this.session, res.data)
         this.phase = 'connected'
         this.startDuration()
@@ -584,6 +613,7 @@ export const useRtcStore = defineStore('rtc', {
     },
 
     onVisibilityChange() {
+      this.syncMediaAttention()
       if (document.visibilityState !== 'visible' || this.phase !== 'reconnecting') return
       reconnectTimer = clearTimer(reconnectTimer)
       this.tryRejoin()
@@ -620,10 +650,15 @@ export const useRtcStore = defineStore('rtc', {
         this.remoteStreams = {}
         this.remoteMuted = {}
         this.localStream = null
-        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle')
-          return
-        await rtcMediaPort.join({ token, roomName, identity, mode: this.mode })
-        if (generation !== lifecycleGeneration || this.phase === 'ended' || this.phase === 'idle') {
+        if (generation !== lifecycleGeneration || ['ended', 'idle'].includes(this.phase)) return
+        await rtcMediaPort.join({
+          token,
+          roomName,
+          identity,
+          mode: this.mode,
+          scope: this.joinScope()
+        })
+        if (generation !== lifecycleGeneration || ['ended', 'idle'].includes(this.phase)) {
           rtcMediaPort.dispose()
           return
         }
@@ -658,8 +693,7 @@ export const useRtcStore = defineStore('rtc', {
         if (
           generation !== lifecycleGeneration ||
           samplingGeneration !== qoeSamplingGeneration ||
-          this.phase === 'idle' ||
-          this.phase === 'ended'
+          ['ended', 'idle'].includes(this.phase)
         ) {
           return
         }
@@ -686,8 +720,7 @@ export const useRtcStore = defineStore('rtc', {
           if (
             generation === lifecycleGeneration &&
             samplingGeneration === qoeSamplingGeneration &&
-            this.phase !== 'idle' &&
-            this.phase !== 'ended'
+            !['ended', 'idle'].includes(this.phase)
           ) {
             qoeTimer = setTimeout(() => void sample(), 3000)
           }
@@ -803,9 +836,25 @@ export const useRtcStore = defineStore('rtc', {
      */
     setVisibleParticipants(identities: readonly string[] | null) {
       rtcMediaPort.setVisibleParticipants(identities)
+      this.syncMediaAttention()
+    },
+    /**
+     * 隐藏标签页/最小化时暂停普通摄像头视频并保持音频；
+     * 恢复可见时按可见集合与 active speaker 策略恢复。
+     */
+    syncMediaAttention() {
+      rtcMediaPort.setMediaAttention({
+        hidden: document.visibilityState !== 'visible',
+        minimized: this.minimized
+      })
+    },
+    /** 拓扑只来自会话显式 scope，绝不用当前远端人数猜测。 */
+    joinScope(): 'direct' | 'group' | 'stage' {
+      return this.session?.scope === 'group' ? 'group' : 'direct'
     },
     toggleMinimize() {
       this.minimized = !this.minimized
+      this.syncMediaAttention()
     }
   }
 })
