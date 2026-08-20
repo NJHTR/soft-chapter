@@ -1,5 +1,16 @@
 # 工作日志
 
+## 2026-08-20：RTC-SCALE-001 实现波次全部提交，最终验证报告收口
+
+- Wave B~F 全部实现提交完毕（`826333a`/`43a87c5`+`dd7d4b6`/`a934d8f`/`49b5692`+`b3566d1`/
+  `3d6d592`），状态回填 `4f00b84`/`8764d4c`/`46d2b9d`。
+- 最终验证报告：`docs/verification/rtc_scale_wave_verification.md`（波次/提交哈希/测试结果/not_run
+  门禁/回滚开关表）。全量 `mvn test` 282/282、stage 27/27、p2p 38/38、stageMachine 8/8、p2p 8/8。
+- 未执行门禁如实记录：真实浏览器 stage/P2P/NAT/IPv6/TURN 矩阵、LiveKit Egress 真服务、10k audience、
+  多实例 store、permission 实际撤销调用、100×2/100×8/1000×2 负载。RTC-014/015 保持 `in_progress`，
+  生产开关 `RTC_STAGE_ENABLED=false` / `RTC_P2P_ENABLED=false` 必须保持 fail-closed。
+- CallPanel.vue 用户改动与用户提示词 md 全程未触碰、未入库。
+
 ## 2026-08-20：RTC-SCALE-001 实现波次 F（RTC-015 受控 P2P）提交
 
 - Wave F `3d6d592`：后端 `com.douyin.rtc.p2p`——拓扑严格状态机（`DISABLED→ELIGIBLE→CONSENTED→
