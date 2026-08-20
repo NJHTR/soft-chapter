@@ -155,8 +155,9 @@ API，避免 active speaker 更新造成重复信令。
    registry 重放策略。
 5. `direct` 默认保持完整订阅和高质量基线。
 
-Adapter 按 `publication_id/source` 维护 registry，由 registry 重建 MediaStream。摄像头重开、屏幕
-共享开始/结束、迟到 mute/unsubscribe 和 participant leave 都不得让旧 ended track 覆盖新轨道。
+Adapter 始终按 `(participant_id, publication_id, source)` 维护 registry，由同一复合键重建
+MediaStream。摄像头重开、屏幕共享开始/结束、迟到 mute/unsubscribe 和 participant leave 都不得
+让旧 ended track 覆盖新轨道。
 Room/local participant/document 监听器必须按 generation 显式解绑。
 
 `adaptiveStream` 在真实 `RemoteTrack.attach()/detach()` 或等价可见性契约、2/4/8 人浏览器矩阵
