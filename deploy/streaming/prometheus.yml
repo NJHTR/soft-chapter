@@ -1,6 +1,8 @@
 # Prometheus 抓取配置(RTC-002 bootstrap,monitoring profile)
 global:
   scrape_interval: 15s
+rule_files:
+  - rules/rtc-scale-rules.yml
 scrape_configs:
   - job_name: srs
     static_configs:
@@ -11,3 +13,8 @@ scrape_configs:
   - job_name: coturn
     static_configs:
       - targets: ["coturn:9641"]
+  # RTC-011：控制面容量/QoE 指标端点。当前镜像未集成 actuator/prometheus
+  # registry，接入时启用 micrometer-registry-prometheus 后放开以下 job。
+  # - job_name: douyin-server
+  #   static_configs:
+  #     - targets: ["server:8080"]

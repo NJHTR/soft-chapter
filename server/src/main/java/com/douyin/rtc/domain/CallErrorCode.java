@@ -31,5 +31,7 @@ public enum CallErrorCode {
     /** 触发限流 */
     RATE_LIMITED,
     /** provider 或依赖服务错误 */
-    PROVIDER_ERROR
+    PROVIDER_ERROR,
+    /** RTC-011 容量门禁拒绝（超限或容量服务不可用） */
+    CAPACITY_REJECTED
 }

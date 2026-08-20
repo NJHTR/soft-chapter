@@ -116,6 +116,12 @@
             <artifactId>spring-kafka</artifactId>
         </dependency>
 
+        <!-- Micrometer 指标（RTC-011 容量/QoE 低基数指标；未配置 registry 时降级 no-op） -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

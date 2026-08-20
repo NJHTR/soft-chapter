@@ -13,6 +13,12 @@ import com.douyin.rtc.domain.CallStateMachine;
 import com.douyin.rtc.domain.ParticipantCommand;
 import com.douyin.rtc.domain.ParticipantState;
 import com.douyin.rtc.domain.ParticipantStateMachine;
+import com.douyin.rtc.capacity.AdmissionDecision;
+import com.douyin.rtc.capacity.AdmissionService;
+import com.douyin.rtc.capacity.CapacityDimension;
+import com.douyin.rtc.capacity.CapacityNodeConfig;
+import com.douyin.rtc.capacity.CapacityReservation;
+import com.douyin.rtc.capacity.CapacityReservationStore;
 import com.douyin.rtc.repository.RtcCallEventMapper;
 import com.douyin.rtc.repository.RtcCallParticipantMapper;
 import com.douyin.rtc.repository.RtcCallSessionMapper;
@@ -20,13 +26,16 @@ import com.douyin.service.RedisCacheService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,6 +75,7 @@ public class CallService {
     private final RedisCacheService redisCacheService;
     private final Duration ringingTtl;
     private final Duration negotiatingTtl;
+    private final AdmissionService admissionService;
 
     public CallService(RtcCallSessionMapper sessionMapper,
                        RtcCallParticipantMapper participantMapper,
@@ -75,6 +85,21 @@ public class CallService {
                        RedisCacheService redisCacheService,
                        @Value("${rtc.call.ringing-ttl:30s}") Duration ringingTtl,
                        @Value("${rtc.call.negotiating-ttl:5m}") Duration negotiatingTtl) {
+        this(sessionMapper, participantMapper, eventMapper, aclService, ledgerService,
+                redisCacheService, ringingTtl, negotiatingTtl, null);
+    }
+
+    /** 可选容量 admission hook（RTC-011）：null 表示本地/兼容模式不决策。 */
+    @Autowired
+    public CallService(RtcCallSessionMapper sessionMapper,
+                       RtcCallParticipantMapper participantMapper,
+                       RtcCallEventMapper eventMapper,
+                       AclService aclService,
+                       CallLedgerService ledgerService,
+                       RedisCacheService redisCacheService,
+                       @Value("${rtc.call.ringing-ttl:30s}") Duration ringingTtl,
+                       @Value("${rtc.call.negotiating-ttl:5m}") Duration negotiatingTtl,
+                       @Autowired(required = false) AdmissionService admissionService) {
         this.sessionMapper = sessionMapper;
         this.participantMapper = participantMapper;
         this.eventMapper = eventMapper;
@@ -83,6 +108,7 @@ public class CallService {
         this.redisCacheService = redisCacheService;
         this.ringingTtl = ringingTtl;
         this.negotiatingTtl = negotiatingTtl;
+        this.admissionService = admissionService;
     }
 
     // ==================== 创建 ====================
@@ -176,6 +202,36 @@ public class CallService {
         session.setState(CallState.CREATED.name());
         session.setClientRequestId(cmd.clientRequestId());
         session.setTraceId(cmd.traceId());
+
+        // RTC-011 新房 admission：开关关闭或未配置节点时不决策。
+        // reservation 以 client_request_id 为幂等键，按
+        // PENDING -> CONSUMED -> ABSORBED | RELEASED | EXPIRED CAS 收敛；
+        // create 结果不明确时保守保留（计入 remaining），不静默迁移已有房间。
+        String capacityRequestId = "create:" + cmd.clientRequestId();
+        CapacityNodeConfig capacityNode = capacityNode();
+        boolean capacityGate = admissionService != null
+                && admissionService.properties().isAdmissionEnabled()
+                && capacityNode != null;
+        if (capacityGate) {
+            long capacityEpoch = admissionService.registry().epoch(capacityNode.getNodeId());
+            try {
+                AdmissionDecision decision = admissionService.evaluate(
+                        capacityNode.getNodeId(), capacityEpoch, callId, capacityRequestId);
+                if (!decision.allowed()) {
+                    log.info("[CALL] capacity rejected callId={} decision={} reason={}",
+                            callId, decision.decision(), decision.reason());
+                    throw new CallDomainException(CallErrorCode.CAPACITY_REJECTED,
+                            "媒体容量已满，请稍后重试");
+                }
+                admissionService.reserve(capacityRequestId, callId, capacityNode.getNodeId(),
+                        capacityEpoch, defaultReservationVector(), Instant.now());
+            } catch (CapacityReservationStore.CapacityStoreUnavailable e) {
+                // registry/Redis 不可用且无新鲜缓存 → fail-closed（停止新房）
+                log.warn("[CALL] capacity registry unavailable, rejecting new room: {}", e.getMessage());
+                throw new CallDomainException(CallErrorCode.CAPACITY_REJECTED,
+                        "媒体容量服务暂不可用，请稍后重试");
+            }
+        }
         try {
             sessionMapper.insert(session);
         } catch (DuplicateKeyException e) {
@@ -190,6 +246,11 @@ public class CallService {
             }
             log.info("[CALL] create 唯一冲突回查: callId={} clientRequestId={}", raced.getCallId(), cmd.clientRequestId());
             return raced;
+        } catch (RuntimeException e) {
+            if (capacityGate) {
+                admissionService.release(capacityRequestId);
+            }
+            throw e;
         }
 
         // CREATED -> RINGING (转移表第一行),RINGING TTL 开始计时
@@ -1006,5 +1067,26 @@ public class CallService {
     private static final class CallScopeCodes {
         private static final String DIRECT = "direct";
         private static final String GROUP = "group";
+    }
+
+    // ==================== RTC-011 容量门禁辅助 ====================
+
+    /** 配置的首个容量节点；未配置则返回 null（不做决策）。 */
+    private CapacityNodeConfig capacityNode() {
+        if (admissionService == null) return null;
+        List<CapacityNodeConfig> nodes = admissionService.properties().getNodes();
+        return nodes == null || nodes.isEmpty() ? null : nodes.get(0);
+    }
+
+    /**
+     * 新房默认预留向量：1 房间 + 1 发布者（发起者）+ 1 连接。
+     * create 结果不明确时的保守预留，媒体成员确认后再逐维吸收。
+     */
+    private Map<CapacityDimension, Double> defaultReservationVector() {
+        Map<CapacityDimension, Double> vector = new EnumMap<>(CapacityDimension.class);
+        vector.put(CapacityDimension.ROOMS, 1.0);
+        vector.put(CapacityDimension.PUBLISHERS, 1.0);
+        vector.put(CapacityDimension.CONNECTIONS, 1.0);
+        return vector;
     }
 }

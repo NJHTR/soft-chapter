@@ -89,3 +89,34 @@ minio:
   secret-key: ${MINIO_SECRET_KEY:}
   bucket-video: ${MINIO_BUCKET_VIDEO:douyin-video}
   bucket-image: ${MINIO_BUCKET_IMAGE:douyin-image}
+
+# RTC 容量门禁与 QoE（RTC-011）。默认关闭；开启后只影响新房/首次媒体 token，
+# 已有房间不动。硬门禁 0.8 / 告警 0.7，快照超时与容量服务不可用时 fail-closed。
+rtc:
+  capacity:
+    admission-enabled: ${RTC_CAPACITY_ADMISSION_ENABLED:false}
+    snapshot-stale-after-ms: ${RTC_CAPACITY_SNAPSHOT_STALE_MS:15000}
+    reservation-ttl-ms: ${RTC_CAPACITY_RESERVATION_TTL_MS:60000}
+    warn-threshold: ${RTC_CAPACITY_WARN_THRESHOLD:0.7}
+    hard-threshold: ${RTC_CAPACITY_HARD_THRESHOLD:0.8}
+    redis-reservation-enabled: ${RTC_CAPACITY_REDIS_RESERVATION:false}
+    # 节点容量登记（部署时按实际节点填写；无真实集群时仅作模板）
+    nodes:
+      - node-id: ${RTC_NODE_ID:local}
+        region: default
+        zone: default
+        advertised-ip: ""
+        version: ""
+        limits:
+          rooms: 1000
+          publishers: 2000
+          subscribers: 8000
+          subscribed_tracks: 16000
+          connections: 10000
+          egress_mbps: 1000
+          rtp_pps: 100000
+          cpu_percent: 80
+          memory_percent: 85
+          turn_relay_mbps: 500
+  qoe:
+    retention: ${RTC_QOE_RETENTION:15m}

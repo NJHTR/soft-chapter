@@ -1,0 +1,36 @@
+# RTC-011 容量告警与 recording rules
+# 契约：70% 持续 5 分钟 = 扩容/规划告警（保留 30% headroom）；
+# 80% = 紧急硬门禁（服务器端同时拒绝新房 / 降级视频）。
+# 标签仅低基数（node/dimension）；room/user/call 不进 Prometheus。
+groups:
+  - name: rtc-scale-capacity
+    rules:
+      - record: job:rtc_capacity_ratio:max
+        expr: max by (node, dimension) (rtc_capacity_ratio)
+
+      - alert: RtcCapacityPlanLimit
+        expr: max by (node, dimension) (rtc_capacity_ratio) >= 0.7
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RTC 节点 {{ $labels.node }} 维度 {{ $labels.dimension }} 达到规划阈值 70%"
+          description: "持续 5 分钟超过 70%，请规划扩容以保留 30% headroom。ratio={{ $value }}"
+
+      - alert: RtcCapacityHardGate
+        expr: max by (node, dimension) (rtc_capacity_ratio) >= 0.8
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RTC 节点 {{ $labels.node }} 维度 {{ $labels.dimension }} 触发 80% 硬门禁"
+          description: "新房已被拒绝或视频降级；已有房间保持不变。ratio={{ $value }}"
+
+      - alert: RtcCapacityNoFreshSnapshot
+        expr: absent(rtc_capacity_ratio{node!=""})
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "缺少容量观测（registry 无新鲜快照）"
+          description: "admission 已 fail-closed，新房被拒；请检查观测采集链路。"
