@@ -1,5 +1,42 @@
 # 工作日志
 
+## 2026-08-20：RTC-SCALE-001 Wave A 契约、基线修复与真实 smoke
+
+- 基线：分支 `dev/full`，输入 HEAD `415bae2`。RTC-006 在 task/index/state 中均为
+  `in_progress`；callback/session/reconciliation 没有 Git 可见的未提交修改。用户修改
+  `src/modules/rtc/components/CallPanel.vue` 和未跟踪的任务提示文档全程保留、未暂存、未提交。
+- Wave A 只交付契约和审计：`3cd38fb`（`douyin.rtc.scale.v1`、RTC-SCALE-001、部署/验收/回滚
+  手册）、`9c47755`（RTC-011 容量/admission）、`484b747`（RTC-012 publication 生命周期）、
+  `8a50dcf`（RTC-013 Redis routing/TURN pool）、`d4a74ce`（RTC-014 Stage + Audience）、
+  `95fa8f5`（RTC-015 默认关闭的受控 P2P）。各子任务仍为 `planned`，这些提交不证明实现或容量。
+- 真实 smoke 首次暴露 Windows UDP 保留范围问题：默认 coturn relay `49160-49180` 落在系统排除
+  段 `49152-49251`，provider smoke 为 5/8。`5d70da7` 将默认值改为可配置的
+  `52000-52020` 并同步 compose/coturn/env/README；重建后 coturn healthy、TCP 3478 和 REST
+  临时凭据 UDP allocate 均通过，完整 provider smoke 8/8，含 LiveKit CLI 真实媒体发布。
+- Chrome + Playwright runtime 重跑现有 RTC-006 浏览器 smoke：WHIP `connected`，WHEP 解码首帧
+  `640x480`，HLS master/media/TS 和 HTTP-FLV 有真实字节。首次运行发现输出含 SRS session
+  `Location`/token；`597c041` 改为 `sessionCreated` 布尔值，修复后重跑同样通过且输出脱敏；
+  `1f83efc` 将证据写回 RTC-006 任务。
+- 构建验证：Maven 不在 PATH，使用本机 Maven 3.9.14 绝对路径；`-DskipTests compile` 通过，
+  全套 `163/163` 通过。`pnpm exec vue-tsc --noEmit --pretty false`、
+  `pnpm exec eslint src/modules/rtc`、compose example config 和 diff check 通过。系统 Node 22 的首次
+  `pnpm run build-only` 以 Windows `C000001D` 退出；切换桌面工作区 Node 24 后同一命令通过，
+  保留既有 libarchive externalization、circular chunk 和 vendor 体积警告。
+- 未执行且不宣称通过：两个登录态客户端的 LiveKit 通话 UI、2/4/8 人选择性订阅、后台/最小化/
+  摄像头重开矩阵、TURN NAT/TCP/TLS、SRS callback 鉴权和 restart convergence、Redis 多实例
+  presence、100x2/100x8/1000x2、LiveKit 多节点 routing、Stage + 10k Audience/CDN、P2P、
+  SFU egress、TURN relay 比例、客户端 CPU/网络和故障回滚数据。
+- 状态结论：RTC-006 继续 `in_progress`，RTC-007 和 RTC-011～015 继续 `planned`；
+  RTC-SCALE-001 只完成 Wave A，不能进入 `verified/completed`。
+
+### Wave A 智能体交付
+
+| 智能体 | 目标/输入 | 输出与目录边界 | 依赖/验证/DoD | 提交与遗留风险 |
+|---|---|---|---|---|
+| `wave_a_protocols` | 读取宪法、协议、state/log/index、RTC-006/011～015、ADR/架构和 Git 基线 | 只读输出状态、依赖、提交协议和最小顺序；负责 docs 审计，禁止修改任何文件 | 依赖 RTC-006；使用 Git/rg/Get-Content；事实状态与矛盾清单完成 | commit N/A，tests N/A；RTC-004/005 状态文档矛盾、RTC-006 真实门禁仍在 |
+| `frontend_audit` | 读取 media port、LiveKit adapter、policy、store、CallPanel 和测试能力 | 只读确认真实 `setSubscribed/setVideoQuality`，列出 publication/source、visibility、screen share、camera reopen 和 listener 风险；禁止编辑用户 CallPanel | 依赖 RTC-006/007；typecheck、RTC ESLint、diff check 通过；前端契约审查完成 | commit N/A；无 Vitest/应用双浏览器/2/4/8/egress/CPU 数据 |
+| `backend_deploy_audit` | 读取 RTC 控制面、直播控制面、compose、LiveKit/coturn/SRS/Prometheus | 只读输出控制/媒体边界和 RTC-011/013/014 最小实现面；禁止代码/配置修改 | 依赖 RTC-006/007/011；compose config/diff 检查；部署缺口审查完成 | commit N/A；无 Micrometer/admission、多节点 Redis、TURN pool、Stage/Egress/CDN |
+
 ## 2026-08-20：RTC-006 可靠性审查收口（代码与契约）
 
 - 提交：`2c2ef00`（兼容旧 `provider_session_id=''` 并新增 `migration_039_normalize_provider_session_id.sql`）、`a54c83d`（provider 缺流/代际变化/GRACE 到期统一进入事务化精确 generation transition）、`99acc27`（Redis presence 原子 Lua 生命周期、SRS API connect/read timeout、畸形 callback 参数 fail-closed）。

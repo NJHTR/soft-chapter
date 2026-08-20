@@ -4,6 +4,7 @@
 
 | ID | 任务 | 状态 | 依赖 | 主要交付物 |
 |---|---|---|---|---|
+| RTC-SCALE-001 | 客户端减载、多人通话扩容与万人直播分层统筹 | `in_progress`（仅 Wave A） | 子任务依赖门见任务文件 | 统一控制契约、任务边界、部署/回滚手册和真实验收索引 |
 | RTC-001 | 宪法、现状基线、模块边界、契约和路线图 | `completed` | 无 | `docs/project-constitution`、架构文档、ADR、schema、测试计划 |
 | RTC-002 | LiveKit/coturn/SRS provider bootstrap 环境 | `completed` | RTC-001 | 配置、端口、健康检查、provider CLI smoke test；不依赖业务 token API |
 | RTC-003 | RTC 控制面和通话领域 | `completed` | RTC-001 | CallSession、Participant、ACL、幂等事件、token API、webhook |
@@ -54,13 +55,22 @@ RTC-007 到 RTC-010 必须在真实浏览器、TURN、弱网、重连和故障�
 ## 当前执行指针（2026-08-20）
 
 - 当前任务：`RTC-006`。
+- 并行统筹目标：`RTC-SCALE-001` 的 Wave A 契约与审计已提交；实现波次尚未启动，RTC-011～015
+  继续保持 `planned`，不得绕过 RTC-006/007 依赖门。
 - 当前波次：C（SRS WHIP/WHEP 媒体迁移）与 D（浏览器播放、控制 WS 和质量基线）。
 - 已完成的契约：控制面 OpenAPI、LiveKit webhook 事件账本、错误码和 `douyin.realtime.v1` 信令 schema。
 - 尚未满足的发布门禁：真实双浏览器接通、TURN relay、官方 webhook 端到端回调和 QoE 报告。
 - RTC-004/005 的控制面与代码路径已完成，但真实双浏览器/媒体 provider 验收仍记录在对应任务的 review gate 中。
-- `25e440a`、`3bc701b`、`94d349d`、`9c70437`、`ec3f286`、`02fa7b8`、`876eb57`、`2c2ef00`、`a54c83d`、`99acc27` 已提交 RTC-006 的短期媒体授权、SRS callback、provider session/reconciliation、generation CAS、原子缺流过渡、旧 generation 迁移、Redis Lua TTL presence、SRS API 超时和 malformed callback fail-closed；Java 测试及单实例 Redis 语义验证已通过。真实 SRS callback、SRS 重启/异常断开、Redis 多实例 presence、浏览器 post-change 验收未完成，RTC-006 保持 `in_progress`。
+- `25e440a`、`3bc701b`、`94d349d`、`9c70437`、`ec3f286`、`02fa7b8`、`876eb57`、`2c2ef00`、`a54c83d`、`99acc27` 已提交 RTC-006 的短期媒体授权、SRS callback、provider session/reconciliation、generation CAS、原子缺流过渡、旧 generation 迁移、Redis Lua TTL presence、SRS API 超时和 malformed callback fail-closed；Java 测试及单实例 Redis 语义验证已通过。真实 SRS callback、SRS 重启/异常断开、Redis 多实例 presence 和登录态应用浏览器验收未完成，RTC-006 保持 `in_progress`。
+- `597c041` 后本机 Chrome/Playwright 直连 SRS 的 WHIP、WHEP 首帧、HLS/HTTP-FLV 已重跑通过且
+  session URL/token 不再输出；两个登录态应用客户端、真实 callback、SRS restart 和 Redis 多实例
+  仍未执行，因此 RTC-006 状态不变。
 - RTC-007 已有本地 QoE 快照与采样生命周期的前置提交 `7859fd7`、`94370b5`，但服务端聚合、ABR、弱网矩阵和 SLO 门禁未完成，状态保持 `planned`。
 - RTC-012 已有订阅端口和群聊可见性策略的前置提交 `8d6939e`、`f1d8bf9`，但 `adaptiveStream`、真实 2/4/8 人浏览器矩阵和 SFU egress 量化未完成，状态保持 `planned`。
+- RTC-SCALE-001 Wave A 提交：`3cd38fb`（统一控制契约、统筹任务和部署/回滚）、`9c47755`
+  （RTC-011）、`484b747`（RTC-012）、`8a50dcf`（RTC-013）、`d4a74ce`（RTC-014）、
+  `95fa8f5`（RTC-015）。这些提交只形成实现边界和验收约束，不证明容量、多节点、Stage、P2P
+  或万人直播能力。
 
 ---
 

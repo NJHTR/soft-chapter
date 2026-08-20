@@ -7,7 +7,7 @@ project:
 baseline:
   observed_at: "2026-08-20"
   branch: dev/full
-  head_commit: 99acc27
+  head_commit: 1f83efc
   remote_tracking: origin/dev/full
   remote_tracking_commit: 890506ae05bb0a2c52b076370d81546a71c80c51
   worktree_dirty: true
@@ -15,6 +15,7 @@ baseline:
   known_user_changes:
     - src/modules/rtc/components/CallPanel.vue (user UI change; preserved and not included in RTC-006 commit)
     - server/src/main/resources/application.yml (ignored local runtime configuration; preserved and not included)
+    - docs/Douyin RTC 高并发呼叫生命周期、故障韧性与媒体扩容总任务提示词.md (untracked user prompt; preserved and not included)
 architecture_decisions:
   rtc_provider: livekit_sfu
   live_provider: srs_for_broadcast_with_whep_and_hls_fallback
@@ -44,9 +45,35 @@ current_task:
     - SRS callback、provider session/reconciliation 和 bounded grace
     - server/sql/migration_038_live_provider_session.sql (036/037 reserved by AI tasks)
     - server/sql/migration_039_normalize_provider_session_id.sql
-  evidence_commits: [25e440a, 3bc701b, 94d349d, 9c70437, ec3f286, 02fa7b8, 876eb57, 2c2ef00, a54c83d, 99acc27]
-  evidence_scope: callback/session/reconciliation implementation, atomic generation transitions, legacy sentinel migration, Redis Lua TTL lifecycle, bounded SRS API timeouts and malformed callback fail-closed behavior are covered by Java tests and local Redis verification; real callback runtime, Redis multi-instance, browser and SRS restart gates remain open
+  evidence_commits: [25e440a, 3bc701b, 94d349d, 9c70437, ec3f286, 02fa7b8, 876eb57, 2c2ef00, a54c83d, 99acc27, 597c041]
+  evidence_scope: callback/session/reconciliation implementation, atomic generation transitions, legacy sentinel migration, Redis Lua TTL lifecycle, bounded SRS API timeouts and malformed callback fail-closed behavior are covered by Java tests and local Redis verification; direct SRS WHIP/WHEP browser smoke passed after redacting session URLs, while authenticated application clients, real callback runtime, Redis multi-instance and SRS restart gates remain open
+scale_objective:
+  id: RTC-SCALE-001
+  status: in_progress
+  owner: /root
+  started_at: "2026-08-20"
+  branch: dev/full
+  current_wave: A_contracts_completed
+  implementation_gate: RTC-006 and RTC-007 remain incomplete; RTC-011 through RTC-015 remain planned
+  contract: docs/contracts/rtc-scale-control-contract.md
+  runbook: docs/runbooks/RTC_SCALE_DEPLOYMENT_AND_ROLLBACK.md
+  evidence_commits:
+    - 3cd38fb48c4b4393bee83d11de4e7d14a659d5b1
+    - 9c47755d20eeaa8b2461cc62e412b83b6a22e5c1
+    - 484b747fbb7892d6143170ae5e3fa6a2bfb091c6
+    - 8a50dcf6570770b1e69554d5082e6d789b5b19d4
+    - d4a74ce3645e8711d6cf25b07ee22b8d0f54950a
+    - 95fa8f5d28a87f2fa1a88cbbebbf50b84bdfcc16
+  prerequisite_evidence_commits:
+    - 5d70da7
+    - 597c041
+  evidence_scope: Wave A architecture, control contracts, task boundaries, rollback and not-run acceptance matrix only; no capacity, multi-node, stage, P2P or authenticated multi-client scale browser claim
 tasks:
+  - id: RTC-SCALE-001
+    title: 客户端减载、多人通话扩容与万人直播分层
+    status: in_progress
+    depends_on: []
+    components: [RTC-006, RTC-007, RTC-011, RTC-012, RTC-013, RTC-014, RTC-015]
   - id: RTC-001
     title: 建立实时媒体宪法、基线和架构契约
     status: completed
@@ -174,6 +201,8 @@ verification:
       result: passed_on_2026-08-20
     - command: pnpm run build-only
       result: passed_on_2026-08-20_with_existing_chunk_warnings
+    - command: pnpm run build-only (RTC-SCALE Wave A verification)
+      result: system_Node_22_failed_with_Windows_C000001D; rerun_with_workspace_Node_24_passed_on_2026-08-20_with_existing_libarchive_circular_chunk_and_vendor_size_warnings
     - command: docker compose -f docker-compose.streaming.yml --env-file deploy/streaming/.env.example config --quiet
       result: passed_in_current_worktree
     - command: powershell parser deploy/streaming/provider-callback-smoke.ps1
@@ -184,6 +213,10 @@ verification:
       result: passed_8_of_8 (compose config / containers healthy / srs api / livekit metrics / coturn 3478 / srs flv 8080 / TURN UDP allocate via REST creds / livekit-cli publish-demo real media)
     - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc (post-change)
       result: passed_7_of_8; coturn TCP 3478 host probe failed while container health and TURN UDP allocate passed; investigate host Docker TCP probe before production claim
+    - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc (RTC-SCALE baseline pre-fix)
+      result: failed_5_of_8_on_2026-08-20; Windows excluded UDP range 49152-49251 prevented coturn binding 49160-49180; SRS, LiveKit metrics and LiveKit CLI media passed
+    - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc (after 5d70da7)
+      result: passed_8_of_8_on_2026-08-20; containers healthy, SRS API, LiveKit metrics, coturn TCP, SRS HTTP-FLV, TURN UDP allocate and LiveKit CLI real media passed
     - command: mvn -f server/pom.xml -Dtest=com.douyin.service.LiveProviderReconciliationJobTest,com.douyin.service.LiveProviderReconciliationTransitionServiceTest,com.douyin.service.LiveProviderSessionServiceTest,com.douyin.service.SrsLiveProviderClientTest,com.douyin.service.impl.LiveServiceImplProviderGenerationTest test
       result: passed_33_of_33_on_2026-08-20
     - command: local Redis 6379 LivePresenceService jshell verification
@@ -194,6 +227,8 @@ verification:
       result: passed (OpenAPI valid, 0 warnings)
     - command: node docs/verification/.rtc006_browser_smoke.mjs
       result: passed (SRS_RTC_CANDIDATE=172.21.160.1; WHIP connected; WHEP decoded first frame 640x480; HLS master/media/TS and HTTP-FLV bytes)
+    - command: bundled Node 24 + Playwright runtime docs/verification/.rtc006_browser_smoke.mjs (after 597c041)
+      result: passed_on_2026-08-20 (WHIP connected; WHEP decoded first frame 640x480; HLS master/media/TS and HTTP-FLV bytes; session URLs/tokens redacted)
     - command: ffprobe HLS TS segment
       result: passed (H.264 video 640x480 + AAC audio)
     - command: pnpm exec eslint src/pages/live/LiveCreate.vue src/utils/streaming/srs_rtc.ts
@@ -217,8 +252,13 @@ verification:
     - srs_whip_whep_browser_media_smoke (passed locally; requires host-reachable candidate and Playwright/Chromium in repeatable CI)
     - live_presence_redis_multi_instance_and_abnormal_disconnect (RTC-006 review gate; only single local Redis touch/count/leave was executed)
     - live_provider_callback_runtime_and_restart_recovery (RTC-006 review gate; Spring backend was not running)
-    - browser_post_change_whip_whep_and_dual_browser_media (RTC-006 review gate; Playwright package is not installed in this workspace)
+    - browser_post_change_dual_authenticated_app_media (direct SRS WHIP/WHEP browser smoke passed; two logged-in application clients and LiveKit call UI were not executed)
     - rtc_qoe_real_weak_network_and_2_4_8_participant_matrix
     - rtc_qoe_server_aggregation_and_sfu_egress_measurement
-last_verified_commit: 99acc27
-last_doc_commit: 5354582
+    - rtc_scale_dual_browser_p2p_and_sfu_fallback (P2P is not implemented and no authenticated dual-client application harness was executed)
+    - rtc_scale_selective_subscription_2_4_8_egress_cpu_matrix (no multi-browser participants or SFU egress/CPU capture)
+    - rtc_scale_100x2_100x8_1000x2_load_matrix (no load harness or multi-node cluster)
+    - rtc_scale_livekit_redis_multinode_and_turn_region_failover (only single-node development templates exist)
+    - rtc_scale_stage_10k_audience_and_cdn (Stage, egress and CDN environment do not exist)
+last_verified_commit: 597c041
+last_doc_commit: 1f83efc

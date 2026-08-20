@@ -83,6 +83,12 @@ git diff --check
 
 ## 提交与审查记录
 
-- Wave A 提交：待本轮提交后由状态/工作日志记录真实哈希。
-- 测试结果：以本轮工作日志的实际命令为准。
+- Wave A 提交：`3cd38fb48c4b4393bee83d11de4e7d14a659d5b1`（统筹契约与回滚）、
+  `9c47755d20eeaa8b2461cc62e412b83b6a22e5c1`（RTC-011）、
+  `484b747fbb7892d6143170ae5e3fa6a2bfb091c6`（RTC-012）、
+  `8a50dcf6570770b1e69554d5082e6d789b5b19d4`（RTC-013）、
+  `d4a74ce3645e8711d6cf25b07ee22b8d0f54950a`（RTC-014）、
+  `95fa8f5d28a87f2fa1a88cbbebbf50b84bdfcc16`（RTC-015）。
+- 测试结果：Maven compile、163 项测试、Vue typecheck、RTC ESLint、compose config 和 diff check
+  在 2026-08-20 通过；生产 build 和本轮最终 Git 审计以工作日志为准。
 - 遗留风险：所有未勾选 DoD；不得因本文件存在而降低发布门禁。
