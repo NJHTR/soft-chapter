@@ -35,7 +35,8 @@
 LiveKit、coturn、SRS/CDN adapter 每 5～15 秒登记低基数节点快照。快照包含：
 
 ```text
-schema_version, node_id, provider, region, zone, version,
+schema_version, snapshot_id, node_id, node_epoch, snapshot_seq,
+provider, region, zone, version,
 observed_at, expires_at, draining, healthy,
 rooms, participants, connections, publishers, subscribers, tracks,
 egress_mbps, rtp_pps, relay_allocations, relay_ingress_mbps, relay_egress_mbps,
@@ -46,6 +47,9 @@ rtt_ms_p95, packet_loss_ratio_p95, nack_rate, pli_rate, fir_rate
 - `node_id` 只进入容量登记和明细存储，不由应用作为任意 Prometheus label 写入。每节点告警使用
   Prometheus scrape target 生成、受部署清单约束的 `instance`；业务聚合标签只允许
   `provider/region/zone/version/codec/media_kind/reason`。
+- `node_epoch` 在 provider 进程重启时变化，`snapshot_seq` 在同一 epoch 内严格递增；
+  `snapshot_id=(node_id,node_epoch,snapshot_seq)`。Adapter 在受控明细存储中以同一 `snapshot_id`
+  写入 provider resource membership（例如 LiveKit room），但 membership 不进入 Prometheus/Kafka。
 - 每个计数或速率同时声明配置上限。没有可验证上限的维度只可告警，不能伪造利用率。
 - 快照过期后不得用于新房 placement。Redis/registry 不可用且没有新鲜本地快照时，新房默认
   fail-closed；已有房间继续运行并告警，不得被静默迁移或踢出。
@@ -73,16 +77,26 @@ existing_room, requested_at
 `effective_video_quality` 和 `expires_at`。相同 `request_id` 使用 TTL reservation 幂等返回；
 reservation 不得因客户端重试重复占用容量。
 
-Reservation 使用 `PENDING -> CONSUMED|RELEASED|EXPIRED` 生命周期：
+Reservation 使用以下生命周期；`PENDING` 和 `CONSUMED` 计入尚未被快照吸收的容量，`ABSORBED`
+不再额外计数：
+
+```text
+PENDING -> CONSUMED -> ABSORBED
+PENDING|CONSUMED -> RELEASED
+PENDING -> EXPIRED
+```
 
 - admission 必须以原子操作同时检查新鲜快照、未被 provider 快照吸收的 reservation 和阈值，再创建
-  `PENDING`；同一 `request_id` 返回原记录。
-- provider 接受创建/首次 admission 后进入 `CONSUMED`。在新鲜 provider 快照已包含该 room 前，
-  `CONSUMED` 继续计入预留，避免控制面提交与 provider 观测之间出现容量空窗。
+  `PENDING`；同一 `request_id` 返回原记录。记录至少包含 `assigned_node_id/node_epoch` 和 admission
+  使用的 `snapshot_seq_floor`。
+- provider 接受创建/首次 admission 后记录稳定 `provider_resource_id` 并进入 `CONSUMED`。只有同一
+  `node_id/node_epoch` 上 `snapshot_seq > snapshot_seq_floor` 的 membership 明细明确包含该 resource，
+  才能 CAS 为 `ABSORBED`；对应 aggregate snapshot 此时接管计数，避免双计或容量空窗。
 - provider 拒绝或控制面创建失败必须显式 `RELEASED`。`PENDING` lease 到期只能在控制面和 provider
   均确认资源不存在后进入 `EXPIRED`；不确定时保持占用并告警。
-- reconciler 按 `decision_id + call_id/room_id` 收敛孤儿 reservation；状态变化使用 CAS，重复
-  consume/release 不得重复增减容量。
+- reconciler 按 `decision_id + call_id/room_id` 收敛孤儿 reservation；若 `PENDING` 对应的 provider
+  resource 已存在，必须补写实际 node/epoch/resource id 并进入 `CONSUMED`，再等待明确 membership
+  absorption。状态变化使用 CAS，重复 consume/absorb/release 不得重复增减容量。
 
 - 规划阈值：任一可靠维度达到 70% 持续 5 分钟，告警并扩容，目标保留 30% headroom。
 - 硬门禁：任一可靠维度达到 80%，停止新房或只允许音频/低层视频。80% 是紧急保护线，

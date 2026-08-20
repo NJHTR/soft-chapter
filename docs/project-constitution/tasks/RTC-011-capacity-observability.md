@@ -29,14 +29,16 @@
   `docs/contracts/rtc-scale-control-contract.md` 第 2～3 节。
 - 70% 持续 5 分钟是扩容/规划告警，正常目标保留 30% headroom；80% 是紧急硬门禁。
 - 快照 stale、registry/Redis 不可用且没有新鲜缓存时，新房 fail-closed；已有房间继续并告警。
-- 相同 `request_id/call_id` reservation 幂等且按 `PENDING -> CONSUMED|RELEASED|EXPIRED`
-  以 CAS 收敛；provider 快照吸收资源前继续计入预留，不得重复扣减或产生容量空窗。
+- 相同 `request_id/call_id` reservation 幂等，按 `PENDING -> CONSUMED -> ABSORBED` 或
+  `RELEASED/EXPIRED` 以 CAS 收敛；只有同 node/epoch 的 post-accept snapshot membership 明确包含
+  provider resource 后才停止额外计数，不得靠 aggregate 增量猜测吸收。
 - 决策仅为 `ALLOW|DEGRADE_VIDEO|REJECT_NEW_ROOM`，reason 使用固定低基数枚举。
 
 ## 实现输出
 
 1. LiveKit、coturn、客户端 QoE 和控制面容量指标与低基数 recording rules。
-2. 新房和首次媒体 token 的 admission service、容量 reservation 与降级策略。
+2. 新房和首次媒体 token 的 admission service、容量 reservation、provider membership absorption
+   明细与降级策略。
 3. 认证、限流、ACL 校验的 2～5 秒客户端 QoE 摘要 API 和聚合存储端口。
 4. Prometheus rules、固定版本监控配置和可重复的 load/acceptance harness。
 5. 容量报告模板只引用真实运行产物，未运行矩阵保持 `not_run`。
@@ -63,8 +65,8 @@ git diff --check
 - [ ] Prometheus 只使用低基数标签，room/user/call 明细写入受控聚合存储。
 - [ ] LiveKit、TURN、客户端和控制面覆盖房间、pub/sub、egress Mbps、RTP pps、CPU、内存、RTT、
   丢包、重连、NACK/PLI/FIR、首帧、卡顿和 relay 指标。
-- [ ] stale/missing snapshot、Redis 故障、重复 reservation、consume/release/expire/reconcile、已有房间、
-  音频降级和 70/80% 边界测试通过。
+- [ ] stale/missing snapshot、Redis 故障、重复 reservation、consume/absorb/release/expire/reconcile、
+  provider restart epoch、PENDING 对应既有 room、已有房间、音频降级和 70/80% 边界测试通过。
 - [ ] 完成 100x2、100x8、1000x2 房间和 stage + audience 压测矩阵并附真实原始证据。
 - [ ] 受部署清单约束的 Prometheus `instance` 能识别单个热节点；节点连续 5 分钟超过 70% 告警，
   任一可靠关键资源超过 80% 阻止新房或明确降级视频。
