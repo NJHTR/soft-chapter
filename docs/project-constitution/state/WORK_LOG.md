@@ -1,5 +1,28 @@
 # 工作日志
 
+## 2026-08-20：RTC-SCALE-001 实现波次 B/C/D 提交与真实验收
+
+- Wave B（RTC-011）`826333a`：capacity/observability/admission（CapacityRegistry/AdmissionService/
+  RedisCapacityReservationStore/RtcQoeSummaryController/CallService hook/`CAPACITY_REJECTED`/
+  micrometer/prometheus rules）。`mvn test` 217/217 通过（COM 前基线 163→217）。
+- Wave C（RTC-012）`43a87c5`（vitest runner）+`dd7d4b6`（选择性订阅）：subscriptionPolicy 可见性/
+  质量策略、livekitAdapter 复合键 publication registry + change-only `setSubscribed`/`setVideoQuality`
+  + TrackPublished/Unpublished/ParticipantDisconnected 幂等清理 + mediaAttention（hidden/minimized 只留
+  speaker+screen 视频、音频保留）+ joinScope 必填。vitest 14/14 通过；RTC 模块 vue-tsc 零错误；
+  `pnpm run build-only` 通过。`adaptiveStream` 保持关闭（待 attach/detach 契约测试）。
+- Wave D（RTC-013）`a934d8f`：`docker-compose.rtc-cluster.yml` + `deploy/rtc/cluster/`（双 LiveKit
+  节点共享 Redis、TURN 区域池 cn-east-1/2、sticky 负载入口模板、runbook、validate.ps1）+ bounded-start
+  coturn validator。实测发现 livekit-cli 为无 shell 镜像且 `join-room` 为长驻命令，validator 改为
+  `docker run -d` 后台驱动 + metrics 轮询 + 强制删除。`validate.ps1 -Runtime` 全绿：双节点 metrics
+  就绪 → Redis `nodes` 哈希含 2 个唯一 `ND_*` node_id + advertised IP(172.31.10.10/.11) + region
+  (cn-east-1/2) → join 放置于 node-a → `stop redis` 新房失败（fail-closed）→ 恢复后新房成功 →
+  有界停止。真实指标：`livekit_participant_join_total{state="rtc_success"}`、join latency 27-38ms、
+  node RSS ~57-62MB。
+- 未执行项如实记录：真实 2/4/8 浏览器矩阵、100×2/100×8/1000×2 负载、SFU egress、TURN TCP/TLS(5349)、
+  节点 drain、DNS/LB 回滚、跨区 RTT。RTC-011/012/013 保持 `in_progress`（DoD 未全闭不得 completed）。
+- 状态文件（PROJECT_STATE.yaml / TASK_INDEX.md / RTC-011/012/013 任务文件）已写入真实提交哈希与
+  证据条目；CallPanel.vue 用户改动与用户提示词 md 全程未触碰、未入库。
+
 ## 2026-08-20：RTC-SCALE-001 Wave A 二次语义审查收口
 
 - 二次审查没有接受“已大幅修正”作为结束条件，又识别出 reservation aggregate absorption、共享

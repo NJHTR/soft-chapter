@@ -2,9 +2,9 @@
 
 ## 状态与边界
 
-- 状态：`planned`
-- 负责人：未认领
-- 分支/开始时间：未分配
+- 状态：`in_progress`（实现已提交 `43a87c5`/`dd7d4b6`；DoD 中真实 2/4/8 浏览器矩阵、adaptiveStream、SFU egress 量化未执行，不得标记 completed）
+- 负责人：主智能体（Wave C）
+- 分支/开始时间：`dev/full` / 2026-08-20
 - 波次：C
 - 依赖：RTC-005、RTC-007
 - 前置证据：`8d6939e`、`f1d8bf9` 仅实现基础端口和面板策略，不代表任务完成
@@ -78,6 +78,17 @@ git diff --check
 
 ## 交付记录
 
-- 提交哈希：前置 `8d6939e`、`f1d8bf9`；正式实现未提交
-- 测试结果：静态 typecheck/ESLint 历史通过；真实浏览器/egress/CPU 未执行
-- 遗留风险：RTC-007 未完成，CallPanel 用户修改尚未隔离
+- 提交哈希：
+  - `43a87c5 feat(RTC-012): introduce pinned vitest runner and config`
+  - `dd7d4b6 feat(RTC-012): selective subscription, explicit join scope and publication registry`
+    （subscriptionPolicy.ts 可见性/质量策略、livekitAdapter.ts 复合键 publication registry + change-only
+    `setSubscribed`/`setVideoQuality` + TrackPublished/Unpublished/ParticipantDisconnected 幂等清理 +
+    mediaAttention 暂停逻辑 + joinScope/topology、rtcMediaPort `scope` 必填、useRtcStore 状态同步）
+- 测试结果：
+  - `pnpm test`（vitest 3.2.4）：14/14 通过（subscriptionPolicy 8 + livekitAdapter 5 + 原有 1）
+  - RTC 模块 `vue-tsc --noEmit` 无错误；`pnpm run build-only` 通过（53.68s）
+  - eslint src/modules/rtc 通过
+- 已验收：provider-neutral 订阅端口、quality 层变更、摄像头重开替换/忽略静音、attention 暂停、
+  1:1 全订阅兼容；全部通过真实 LiveKit SDK 方法 mock 桩验证。
+- 未执行：真实 2/4/8 人浏览器矩阵、隐藏 tile/最小化/后台 tab 真实带宽与客户端 CPU 变化、SFU egress 实测。
+- 遗留风险：`adaptiveStream` 保持关闭（需 attach/detach 契约测试通过后开启）；CallPanel 用户改动未纳入本任务。

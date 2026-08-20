@@ -15,9 +15,9 @@
 | RTC-008 | 录制和转码 | `planned` | RTC-005、RTC-006 | Egress/DVR、异步 FFmpeg、对象存储、审计 |
 | RTC-009 | Legacy 退役和 native 收口 | `planned` | RTC-007、RTC-008 | 迁移桥、feature flag、退出报告、C++ 独立验证 |
 | RTC-010 | 安全、负载、故障演练和发布 | `planned` | RTC-007、RTC-008、RTC-009 | NAT/弱网/长通话/负载/回滚门禁 |
-| RTC-011 | SFU/TURN/客户端容量观测、Admission 与压测 | `planned` | RTC-007 | QoE 基线、容量报告、room admission、压测 harness |
-| RTC-012 | 客户端选择性订阅与媒体减载 | `planned` | RTC-005、RTC-007 | publication 生命周期、simulcast/dynacast、可见性、音频优先 |
-| RTC-013 | LiveKit 多节点、Redis 路由与 TURN 区域池 | `planned` | RTC-011 | room placement、节点 drain、扩容和故障演练 |
+| RTC-011 | SFU/TURN/客户端容量观测、Admission 与压测 | `in_progress`（实现 `826333a`） | RTC-007 | 容量/观测/admission 已实现，Java 217 测试通过；压测 harness/真实浏览器 QoE 未完成 |
+| RTC-012 | 客户端选择性订阅与媒体减载 | `in_progress`（实现 `dd7d4b6`+`43a87c5`） | RTC-005、RTC-007 | 订阅端口/registry/注意力策略已实现，14 vitest 通过；真实 2/4/8 浏览器矩阵/egress 未完成 |
+| RTC-013 | LiveKit 多节点、Redis 路由与 TURN 区域池 | `in_progress`（实现 `a934d8f`） | RTC-011 | 双节点 Redis 路由/注册/故障注入已真实验收；房间负载/TURN TLS/drain/LB 回滚未完成 |
 | RTC-014 | Stage + audience 大规模直播分层 | `planned` | RTC-006、RTC-013 | SRS/CDN audience、上麦、breakout room |
 | RTC-015 | 受控 1 对 1 P2P 实验与 SFU 回退 | `planned` | RTC-004、RTC-007 | 独立信令、ICE 探测、灰度、质量和隐私验收 |
 
@@ -76,7 +76,13 @@ RTC-007 到 RTC-010 必须在真实浏览器、TURN、弱网、重连和故障�
   TURN/browser 基线修正为 `db93cdf`、`1d48b45`。依赖门仍未关闭，任务状态不变。
 - 二次语义审查修正：`6283d90`、`67c4467`、`197fdbc`；`da68dc1` 将 RTC-004/005 与任务文件
   统一为 `in_progress`，`fefff70` 同步 RTC-006 当前证据，`a94e75e` 补齐 RTC-011 逐维 reservation
-  absorption/rebind 契约。RTC-011～015 仍未启动实现。
+  absorption/rebind 契约。
+- 实现波次推进（2026-08-20）：`826333a`（RTC-011 容量/观测/admission，mvn 217 通过）、
+  `43a87c5`+`dd7d4b6`（RTC-012 选择性订阅/registry/注意力，vitest 14 通过，build 通过）、
+  `a934d8f`（RTC-013 双节点 Redis 路由/注册/TURN 区域池，validate.ps1 -Runtime 真实验收：
+  双节点注册、join 放置、Redis 故障 fail-closed、恢复成功）。RTC-011/012/013 状态更新为
+  `in_progress`：真实 2/4/8 浏览器矩阵、100×2/100×8/1000×2 负载、SFU egress、TURN TLS/drain/
+  LB 回滚未执行，不得标记 completed。RTC-014（Stage+Audience）为下一波次。
 
 ---
 

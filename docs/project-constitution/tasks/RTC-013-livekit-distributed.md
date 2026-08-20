@@ -2,9 +2,9 @@
 
 ## 状态与边界
 
-- 状态：`planned`
-- 负责人：未认领
-- 分支/开始时间：未分配
+- 状态：`in_progress`（实现已提交 `a934d8f`；DoD 中 100/1000 房间载、跨区 RTT、TURN TLS、drain、浏览器矩阵未执行，不得标记 completed）
+- 负责人：主智能体（Wave D）
+- 分支/开始时间：`dev/full` / 2026-08-20
 - 波次：D
 - 依赖：RTC-011
 - 负责目录：`deploy/streaming/`、`deploy/rtc/`、独立 cluster/Helm 模板、运维配置和部署文档
@@ -72,6 +72,23 @@ Redis/TURN/LiveKit secret。
 
 ## 交付记录
 
-- 提交哈希：未实现
-- 测试结果：当前只有单节点 compose config 历史证据；多节点/故障注入未执行
-- 遗留风险：RTC-011 尚未实现；当前 LiveKit 无 Redis、coturn 单区域且 TLS 未验收
+- 提交哈希：`a934d8f feat(RTC-013): add LiveKit distributed routing, Redis registry and TURN region pool`
+  （`docker-compose.rtc-cluster.yml`、`deploy/rtc/cluster/`(livekit-node-a/b.yaml、redis.conf、turnserver-region-a/b.conf、
+  turn-regions.yml、nginx-livekit.conf、.env.example、README、validate.ps1)、`deploy/rtc/validate-coturn-startup.ps1`、
+  `docs/runbooks/rtc-cluster-ops.md`、`.gitignore` +=cluster .env）
+- 验证命令（全部真实执行，2026-08-20）：
+  - `docker compose -f docker-compose.streaming.yml --env-file deploy/streaming/.env.example config --quiet`：通过
+  - `docker compose -f docker-compose.rtc-cluster.yml --env-file deploy/rtc/cluster/.env config --quiet`：通过
+  - 双节点 `livekit-server --config <a/b>.yaml ports`：解析通过（UDP 51000-51050 / 51100-51150）
+  - TURN region-a bounded-start validator：通过（relay ports init、prometheus :9641 监听，有界停止）
+  - `validate.ps1 -Runtime` 全绿：双节点 metrics 就绪 → Redis `nodes` 哈希含 2 个唯一
+    `node_id=ND_*` + 唯一 advertised IP(172.31.10.10/172.31.10.11) + region(cn-east-1/2) →
+    livekit-cli join 真实放置于 node-a → `docker compose stop redis` 后新房失败(fail-closed) →
+    redis 恢复后新房成功 → 有界停止集群
+  - 真实证据：node-a/node-b `livekit_participant_join_total{state="rtc_success"}`、
+    `livekit_session_join_latency_ms`、`livekit_room_total`、process CPU/RSS 采样。
+- DoD 已满足：双节点共享 Redis routing、node_id/region/advertised IP/UDP 唯一、Redis 故障新房 fail-closed、
+  已有房间不迁移、TURN 凭据经 env 隔离（仓库无 secret）、可执行验收脚本已提交。
+- 未执行（如实记录）：100/1000 房间载、跨区 RTT、TURN TCP/TLS(5349) 切换、节点 drain 演练、
+  DNS/LB 回滚演练、L7 sticky 负载入口实流量、Redis TLS(6380)。
+- 遗留风险：跨 region 会话 relay 依赖 PSRPC over Redis；Redis split-brain 无仲裁；`.env` 需在目标机重新生成随机密钥。

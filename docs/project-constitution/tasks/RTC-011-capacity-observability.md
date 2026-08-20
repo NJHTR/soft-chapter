@@ -2,9 +2,9 @@
 
 ## 状态与边界
 
-- 状态：`planned`
-- 负责人：未认领
-- 分支/开始时间：未分配
+- 状态：`in_progress`（实现已提交 `826333a`；DoD 中的真实浏览器/100×2 等负载项未执行，不得标记 completed）
+- 负责人：主智能体（Wave B）
+- 分支/开始时间：`dev/full` / 2026-08-20
 - 波次：B
 - 依赖：RTC-007
 - 负责目录：`deploy/streaming/`、监控配置、`src/modules/rtc/quality/`、
@@ -82,6 +82,13 @@ git diff --check
 
 ## 交付记录
 
-- 提交哈希：未实现
-- 测试结果：未执行
-- 遗留风险：RTC-007 未完成，真实 LiveKit/coturn/浏览器负载环境未提供
+- 提交哈希：实现 `826333a feat(RTC-011): node capacity snapshot, admission decisions and QoE summary service`
+  （14 个 capacity/observability 文件、RtcQoeSummaryController、CallService admission hook、
+  `CAPACITY_REJECTED`、micrometer、`deploy/streaming/rules/rtc-scale-rules.yml`、prometheus.yml）
+- 测试结果：
+  - `mvn -f server/pom.xml test`：217/217 通过（2026-08-20）
+  - `docker compose -f docker-compose.streaming.yml --env-file deploy/streaming/.env.example config --quiet`：通过
+  - RTC 模块 vue-tsc 无错误；仓库其余 TS 错误为预先存在
+- 已验收：AdmissionService 单测、容器观测单测、QoE 摘要服务单测、Prometheus rules 静态校验。
+- 未执行（如实记录，不伪证）：真实浏览器 QoE、Weak network 矩阵、100×2/100×8/1000×2 压测、SFU egress 实测。
+- 遗留风险：admission 决策依赖 provider 指标命名（v1.13.5 实测 `livekit_node_packet_total`/`livekit_participant_total`）；Kafka/存储积压未压测。

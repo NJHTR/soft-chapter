@@ -53,8 +53,8 @@ scale_objective:
   owner: /root
   started_at: "2026-08-20"
   branch: dev/full
-  current_wave: A_contracts_completed_and_independently_audited
-  implementation_gate: RTC-004, RTC-005, RTC-006 and RTC-007 remain incomplete; RTC-011 through RTC-015 remain planned
+current_wave: D_rtc013_cluster_accepted_and_committed
+  implementation_gate: RTC-004, RTC-005, RTC-006 and RTC-007 remain incomplete; RTC-011/012/013 implementation committed with real unit/runtime evidence, scale load and browser matrices remain open
   contract: docs/contracts/rtc-scale-control-contract.md
   runbook: docs/runbooks/RTC_SCALE_DEPLOYMENT_AND_ROLLBACK.md
   evidence_commits:
@@ -75,6 +75,11 @@ scale_objective:
     - 197fdbcc1b20cbb41864c59886bfd8d149280982
     - da68dc1b22e333b6a1b89aa6bf9d59ee7fe15614
     - a94e75e9b51439c249878451bc4e73468e2ba975
+  implementation_evidence_commits:
+    - 826333a
+    - 43a87c5
+    - dd7d4b6
+    - a934d8f
   prerequisite_evidence_commits:
     - 5d70da7
     - 597c041
@@ -131,20 +136,25 @@ tasks:
     title: 安全、负载、故障演练和发布门禁
     status: planned
     depends_on: [RTC-007, RTC-008, RTC-009]
-  - id: RTC-011
+- id: RTC-011
     title: SFU/TURN/客户端容量观测、Admission 与压测
-    status: planned
+    status: in_progress
     depends_on: [RTC-007]
+    implementation_commits: [826333a]
+    evidence_scope: capacity/observability/admission 已实现且 Java 测试与 compose/prometheus 静态校验通过；真实浏览器 QoE/弱网/100×2 压测未执行
   - id: RTC-012
     title: 客户端选择性订阅与媒体减载
-    status: planned
+    status: in_progress
     depends_on: [RTC-005, RTC-007]
+    implementation_commits: [43a87c5, dd7d4b6]
     evidence_commits: [8d6939e, f1d8bf9]
-    evidence_scope: 订阅端口与群聊可见性策略前置实现，未完成真实浏览器和 egress 验收
+    evidence_scope: 订阅端口、复合键 publication registry、quality/attention 策略已实现且 14 个 vitest 通过；真实浏览器 2/4/8 矩阵、adaptiveStream、SFU egress 未执行
   - id: RTC-013
     title: LiveKit 多节点、Redis 路由与 TURN 区域池
-    status: planned
+    status: in_progress
     depends_on: [RTC-011]
+    implementation_commits: [a934d8f]
+    evidence_scope: 双节点共享 Redis routing 真实运行：唯一 node_id/advertised IP/region 注册、join 放置、Redis 故障新房 fail-closed、恢复成功；100/1000 房间、跨区 RTT、TURN TLS/drain/LB 回滚未执行
   - id: RTC-014
     title: Stage + audience 大规模直播分层
     status: planned
@@ -268,8 +278,26 @@ verification:
       result: passed_for_94370b5_on_2026-08-19
     - command: pnpm run build-only
       result: passed_for_94370b5_on_2026-08-19_with_existing_chunk_warnings
-    - command: git diff --check
+- command: git diff --check
       result: passed_for_94370b5_on_2026-08-19
+    - command: mvn -f server/pom.xml test (RTC-011 Wave B)
+      result: passed_217_of_217_on_2026-08-20
+    - command: docker compose -f docker-compose.streaming.yml --env-file deploy/streaming/.env.example config --quiet (RTC-011)
+      result: passed_on_2026-08-20
+    - command: pnpm test (RTC-012 Wave C, vitest 3.2.4)
+      result: passed_14_of_14_on_2026-08-20 (subscriptionPolicy 8 + livekitAdapter 5 + 原有 1)
+    - command: pnpm exec vue-tsc --noEmit --pretty false (RTC-012 RTC module)
+      result: passed_for_RTC_module_on_2026-08-20 (仓库其余 TS 错误为预先存在)
+    - command: pnpm exec eslint src/modules/rtc (RTC-012)
+      result: passed_on_2026-08-20
+    - command: pnpm run build-only (RTC-012)
+      result: passed_on_2026-08-20_with_existing_chunk_warnings
+    - command: powershell -File deploy/rtc/cluster/validate.ps1 -Runtime (RTC-013 Wave D)
+      result: passed_on_2026-08-20 (双节点 Redis 注册 + join 放置 + Redis 故障 fail-closed + 恢复成功 + bounded stop)
+    - command: powershell -File deploy/rtc/validate-coturn-startup.ps1 (RTC-013 TURN bounded-start)
+      result: passed_on_2026-08-20 (relay ports init + prometheus :9641)
+    - command: docker run --rm -v <node-a/b.yaml> ... livekit-server:v1.13.5 --config ... ports (RTC-013)
+      result: passed_on_2026-08-20 (UDP 51000-51050 / 51100-51150)
   unavailable:
     - docker_srs_callback_auth_and_provider_restart_recovery (Spring backend was not running; no callback HTTP or restart recovery was executed)
     - browser_webrtc_e2e
@@ -284,8 +312,8 @@ verification:
     - rtc_qoe_server_aggregation_and_sfu_egress_measurement
     - rtc_scale_dual_browser_p2p_and_sfu_fallback (P2P is not implemented and no authenticated dual-client application harness was executed)
     - rtc_scale_selective_subscription_2_4_8_egress_cpu_matrix (no multi-browser participants or SFU egress/CPU capture)
-    - rtc_scale_100x2_100x8_1000x2_load_matrix (no load harness or multi-node cluster)
-    - rtc_scale_livekit_redis_multinode_and_turn_region_failover (only single-node development templates exist)
+- rtc_scale_100x2_100x8_1000x2_load_matrix (no load harness; 100/1000 room load not executed)
+    - rtc_scale_turn_region_failover_tls_drain_and_lb_rollback (multinode Redis routing executed 2026-08-20; TURN region failover, TCP/TLS 5349, node drain, DNS/LB rollback, cross-region RTT not executed)
     - rtc_scale_stage_10k_audience_and_cdn (Stage, egress and CDN environment do not exist)
-last_verified_commit: a94e75e
-last_doc_commit: a94e75e
+last_verified_commit: a934d8f
+last_doc_commit: a934d8f
