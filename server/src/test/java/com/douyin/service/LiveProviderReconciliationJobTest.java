@@ -236,6 +236,71 @@ class LiveProviderReconciliationJobTest {
                 99L, "stream-1", "srs-1:old-client", "provider_missing");
     }
 
+    @Test
+    void endingRoomWithUnreachableProviderIsLeftAlone() {
+        LiveService liveService = mock(LiveService.class);
+        LiveProviderSessionService sessions = mock(LiveProviderSessionService.class);
+        LiveProviderClient provider = mock(LiveProviderClient.class);
+        LiveRoom room = room("srs-1:client-1");
+        room.setStatus("ENDING");
+        room.setProviderGraceUntil(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
+        when(liveService.listProviderRooms()).thenReturn(List.of(room));
+        when(provider.snapshot()).thenReturn(LiveProviderClient.LiveProviderSnapshot.unavailable());
+
+        new LiveProviderReconciliationJob(liveService, sessions, provider,
+                Clock.fixed(NOW, ZoneOffset.UTC)).reconcileOnce();
+
+        // A host-requested shutdown owns its bounded ENDING window; an API
+        // outage must not rewrite it to DEGRADED or consume the deadline.
+        verify(liveService, never()).providerUnavailable(99L, "stream-1");
+        verify(liveService, never()).endProviderRoom(99L, "stream-1", "srs-1:client-1", "provider_missing");
+    }
+
+    @Test
+    void endingRoomWithReachableAbsentStreamAfterGraceEndsExactlyItsGeneration() {
+        LiveService liveService = mock(LiveService.class);
+        LiveProviderSessionService sessions = mock(LiveProviderSessionService.class);
+        LiveProviderClient provider = mock(LiveProviderClient.class);
+        LiveProviderReconciliationTransitionService transitions = mock(
+                LiveProviderReconciliationTransitionService.class);
+        LiveRoom room = room("srs-1:client-1");
+        room.setStatus("ENDING");
+        room.setProviderGraceUntil(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
+        when(liveService.listProviderRooms()).thenReturn(List.of(room));
+        when(provider.snapshot()).thenReturn(new LiveProviderClient.LiveProviderSnapshot(true, Set.of()));
+
+        new LiveProviderReconciliationJob(liveService, sessions, provider, transitions,
+                Clock.fixed(NOW, ZoneOffset.UTC)).reconcileOnce();
+
+        verify(transitions).retireAndEnd(99L, "stream-1", "srs-1:client-1",
+                "provider_missing", "provider_missing");
+        verify(liveService, never()).providerUnavailable(99L, "stream-1");
+        verify(liveService, never()).providerHeartbeat(99L, "stream-1", "srs-1:client-1");
+    }
+
+    @Test
+    void endingRoomWithActiveStreamIsLeftAloneUntilItsExactCloseEvent() {
+        LiveService liveService = mock(LiveService.class);
+        LiveProviderSessionService sessions = mock(LiveProviderSessionService.class);
+        LiveProviderClient provider = mock(LiveProviderClient.class);
+        LiveProviderReconciliationTransitionService transitions = mock(
+                LiveProviderReconciliationTransitionService.class);
+        LiveRoom room = room("srs-1:client-1");
+        room.setStatus("ENDING");
+        room.setProviderGraceUntil(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
+        when(liveService.listProviderRooms()).thenReturn(List.of(room));
+        when(provider.snapshot()).thenReturn(new LiveProviderClient.LiveProviderSnapshot(
+                true, Set.of("stream-1"), Map.of("stream-1", "srs-1:client-1"), "srs-1"));
+
+        new LiveProviderReconciliationJob(liveService, sessions, provider, transitions,
+                Clock.fixed(NOW, ZoneOffset.UTC)).reconcileOnce();
+
+        verify(transitions, never()).retireAndEnd(
+                99L, "stream-1", "srs-1:client-1", "provider_missing", "provider_missing");
+        verify(liveService, never()).providerHeartbeat(99L, "stream-1", "srs-1:client-1");
+        verify(liveService, never()).providerUnavailable(99L, "stream-1");
+    }
+
     private static LiveRoom room(String providerSessionId) {
         LiveRoom room = new LiveRoom();
         room.setId(99L);

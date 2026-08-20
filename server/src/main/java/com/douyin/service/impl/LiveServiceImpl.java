@@ -144,16 +144,56 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
         LiveRoom room = getById(roomId);
         if (room == null || !room.getHostUserId().equals(hostUserId)) return null;
 
-        // Stop native streaming engine
-        sessionManager.stopSession(roomId);
+        // PREVIEW has no provider generation to drain. Keep this terminal path
+        // for failed starts, while a started room first enters ENDING so the
+        // exact provider generation can close it or reconciliation can expire
+        // it after the bounded grace window.
+        if ("PREVIEW".equals(room.getStatus())) {
+            LocalDateTime now = LocalDateTime.now();
+            LambdaUpdateWrapper<LiveRoom> terminal = new LambdaUpdateWrapper<LiveRoom>()
+                    .set(LiveRoom::getStatus, "ENDED")
+                    .set(LiveRoom::getProviderState, "ENDED")
+                    .set(LiveRoom::getProviderGraceUntil, null)
+                    .set(LiveRoom::getProviderLastSeenAt, now)
+                    .set(LiveRoom::getUpdateTime, now)
+                    .eq(LiveRoom::getId, roomId)
+                    .eq(LiveRoom::getHostUserId, hostUserId)
+                    .eq(LiveRoom::getStatus, "PREVIEW");
+            if (baseMapper.update(null, terminal) == 1) {
+                return getById(roomId);
+            }
+            return getById(roomId);
+        }
 
-        room.setStatus("ENDED");
-        room.setProviderState("ENDED");
-        room.setProviderGraceUntil(null);
-        room.setUpdateTime(LocalDateTime.now());
-        updateById(room);
-        log.info("Live ended: roomId={}, totalViewers={}", roomId, room.getTotalViewers());
-        return room;
+        if ("ENDING".equals(room.getStatus()) || "ENDED".equals(room.getStatus())) {
+            return room;
+        }
+        if (!isProviderMutableStatus(room.getStatus())) return null;
+
+        LocalDateTime now = LocalDateTime.now();
+        LambdaUpdateWrapper<LiveRoom> ending = new LambdaUpdateWrapper<LiveRoom>()
+                .set(LiveRoom::getStatus, "ENDING")
+                .set(LiveRoom::getProviderState, "ENDING")
+                .set(LiveRoom::getProviderGraceUntil, now.plusSeconds(providerGraceSeconds))
+                .set(LiveRoom::getProviderLastSeenAt, now)
+                .set(LiveRoom::getUpdateTime, now)
+                .eq(LiveRoom::getId, roomId)
+                .eq(LiveRoom::getHostUserId, hostUserId)
+                .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED"))
+                .eq(LiveRoom::getSrtStreamId, room.getSrtStreamId());
+        appendProviderGenerationCas(ending, room.getProviderSessionId());
+
+        // The provider generation predicate makes a delayed end request a
+        // no-op if a replacement publisher won the room between the read and
+        // this update. Do not stop a session that belongs to that replacement.
+        if (baseMapper.update(null, ending) != 1) {
+            return getById(roomId);
+        }
+        sessionManager.stopSession(roomId);
+        LiveRoom ended = getById(roomId);
+        log.info("Live ending: roomId={}, totalViewers={}", roomId,
+                ended == null ? room.getTotalViewers() : ended.getTotalViewers());
+        return ended;
     }
 
     @Override
@@ -189,6 +229,7 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
     public LiveRoom providerStarted(Long roomId, String streamKey, String providerSessionId) {
         LiveRoom room = getById(roomId);
         if (!matchesProvider(room, streamKey) || "ENDED".equals(room.getStatus())
+                || "ENDING".equals(room.getStatus())
                 || isBlank(providerSessionId)) return null;
         if ("LIVE".equals(room.getStatus())
                 && !isBlank(room.getProviderSessionId())
@@ -229,6 +270,7 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
     public LiveRoom providerHeartbeat(Long roomId, String streamKey, String providerSessionId) {
         LiveRoom room = getById(roomId);
         if (!matchesProvider(room, streamKey) || "ENDED".equals(room.getStatus())
+                || "ENDING".equals(room.getStatus())
                 || !sameProviderSession(room.getProviderSessionId(), providerSessionId)) return null;
         LocalDateTime now = LocalDateTime.now();
         LambdaUpdateWrapper<LiveRoom> update = new LambdaUpdateWrapper<LiveRoom>()
@@ -252,6 +294,26 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
         if (!matchesProvider(room, streamKey) || "ENDED".equals(room.getStatus())
                 || (!initialStart && !sameProviderSession(room.getProviderSessionId(), providerSessionId))) return null;
         LocalDateTime now = LocalDateTime.now();
+        if ("ENDING".equals(room.getStatus())) {
+            LambdaUpdateWrapper<LiveRoom> terminal = new LambdaUpdateWrapper<LiveRoom>()
+                    .set(LiveRoom::getStatus, "ENDED")
+                    .set(LiveRoom::getProviderState, "ENDED")
+                    .set(LiveRoom::getProviderGraceUntil, null)
+                    .set(LiveRoom::getProviderLastSeenAt, now)
+                    .set(LiveRoom::getUpdateTime, now)
+                    .eq(LiveRoom::getId, roomId)
+                    .eq(LiveRoom::getSrtStreamId, streamKey)
+                    .eq(LiveRoom::getStatus, "ENDING");
+            if (!initialStart) {
+                terminal.eq(LiveRoom::getProviderSessionId, normalizeProviderId(providerSessionId));
+            } else {
+                terminal.and(w -> w.isNull(LiveRoom::getProviderSessionId)
+                        .or().eq(LiveRoom::getProviderSessionId, ""));
+            }
+            if (baseMapper.update(null, terminal) != 1) return null;
+            sessionManager.stopSession(roomId);
+            return getById(roomId);
+        }
         LambdaUpdateWrapper<LiveRoom> update = new LambdaUpdateWrapper<LiveRoom>()
                 .set(LiveRoom::getProviderState, "DISCONNECTED")
                 .set(LiveRoom::getProviderLastSeenAt, now)
@@ -270,6 +332,7 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
     public LiveRoom providerUnavailable(Long roomId, String streamKey) {
         LiveRoom room = getById(roomId);
         if (!matchesProvider(room, streamKey) || "ENDED".equals(room.getStatus())) return null;
+        if ("ENDING".equals(room.getStatus())) return room;
         LambdaUpdateWrapper<LiveRoom> transition = new LambdaUpdateWrapper<LiveRoom>()
                 .set(LiveRoom::getProviderState, "UNAVAILABLE")
                 .set(LiveRoom::getStatus, "DEGRADED")
@@ -309,7 +372,7 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
                 .eq(LiveRoom::getId, roomId)
                 .eq(LiveRoom::getSrtStreamId, streamKey)
                 .eq(!initialStart, LiveRoom::getProviderSessionId, normalizeProviderId(providerSessionId))
-                .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED")));
+                .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED", "ENDING")));
         if (affected != 1) return null;
         log.info("Live provider room ended: roomId={}, reason={}", roomId, reason);
         sessionManager.stopSession(roomId);
@@ -319,8 +382,18 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
     @Override
     public List<LiveRoom> listProviderRooms() {
         return list(new LambdaQueryWrapper<LiveRoom>()
-                .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED"))
+                .in(LiveRoom::getStatus, List.of("STARTING", "LIVE", "DEGRADED", "ENDING"))
                 .isNotNull(LiveRoom::getSrtStreamId));
+    }
+
+    private static void appendProviderGenerationCas(LambdaUpdateWrapper<LiveRoom> update,
+                                                    String providerSessionId) {
+        if (isBlank(providerSessionId)) {
+            update.and(w -> w.isNull(LiveRoom::getProviderSessionId)
+                    .or().eq(LiveRoom::getProviderSessionId, ""));
+        } else {
+            update.eq(LiveRoom::getProviderSessionId, normalizeProviderId(providerSessionId));
+        }
     }
 
     private static boolean matchesProvider(LiveRoom room, String streamKey) {
@@ -349,7 +422,12 @@ public class LiveServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> imple
     }
 
     private static boolean isInitialProviderStart(LiveRoom room, String providerSessionId) {
-        return room != null && ("STARTING".equals(room.getStatus()) || "DEGRADED".equals(room.getStatus()))
+        return room != null && ("STARTING".equals(room.getStatus()) || "DEGRADED".equals(room.getStatus())
+                || "ENDING".equals(room.getStatus()))
                 && isBlank(room.getProviderSessionId()) && isBlank(providerSessionId);
+    }
+
+    private static boolean isProviderMutableStatus(String status) {
+        return "STARTING".equals(status) || "LIVE".equals(status) || "DEGRADED".equals(status);
     }
 }

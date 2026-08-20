@@ -69,7 +69,12 @@ public class LiveProviderReconciliationJob {
         LiveProviderClient.LiveProviderSnapshot snapshot = providerClient.snapshot();
         if (!snapshot.reachable()) {
             for (LiveRoom room : rooms) {
-                liveService.providerUnavailable(room.getId(), room.getSrtStreamId());
+                // A host-requested shutdown owns its bounded ENDING window;
+                // an API outage must not rewrite it to DEGRADED or consume the
+                // deadline before the provider can be inspected.
+                if (!"ENDING".equals(room.getStatus())) {
+                    liveService.providerUnavailable(room.getId(), room.getSrtStreamId());
+                }
             }
             return;
         }
@@ -79,6 +84,19 @@ public class LiveProviderReconciliationJob {
         for (LiveRoom room : rooms) {
             String streamKey = room.getSrtStreamId();
             if (streamKey == null || streamKey.isBlank()) continue;
+            if ("ENDING".equals(room.getStatus())) {
+                // ENDING is terminal intent, not a recoverable provider state:
+                // an active stream is left alone until its exact close event;
+                // only a reachable, absent stream at/after grace may finish
+                // the generation through the transactional terminal CAS.
+                if (!activeStreams.contains(streamKey)
+                        && room.getProviderGraceUntil() != null
+                        && !now.isBefore(room.getProviderGraceUntil())) {
+                    transitionService.retireAndEnd(room.getId(), streamKey,
+                            room.getProviderSessionId(), "provider_missing", "provider_missing");
+                }
+                continue;
+            }
             if (activeStreams.contains(streamKey)) {
                 if (room.getProviderSessionId() == null || room.getProviderSessionId().isBlank()) {
                     // A row created before provider generations were durable
