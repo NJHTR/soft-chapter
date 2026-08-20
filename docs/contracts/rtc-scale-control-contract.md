@@ -54,7 +54,8 @@ rtt_ms_p95, packet_loss_ratio_p95, nack_rate, pli_rate, fir_rate
   `provider/region/zone/version/codec/media_kind/reason`。
 - `node_epoch` 在 provider 进程重启时变化，`snapshot_seq` 在同一 epoch 内严格递增；
   `snapshot_id=(node_id,node_epoch,snapshot_seq)`。Adapter 在受控明细存储中以同一 `snapshot_id`
-  写入 provider resource membership（例如 LiveKit room），但 membership 不进入 Prometheus/Kafka。
+  写入 provider resource membership（例如 LiveKit room/participant/publication）及其可归因的
+  `observed_capacity_vector`，但 membership 不进入 Prometheus/Kafka。
 - 每个计数或速率同时声明配置上限。没有可验证上限的维度只可告警，不能伪造利用率。
 - 快照过期后不得用于新房 placement。Redis/registry 不可用且没有新鲜本地快照时，新房默认
   fail-closed；已有房间继续运行并告警，不得被静默迁移或踢出。
@@ -82,8 +83,22 @@ existing_room, requested_at
 `effective_video_quality` 和 `expires_at`。相同 `request_id` 使用 TTL reservation 幂等返回；
 reservation 不得因客户端重试重复占用容量。
 
-Reservation 使用以下生命周期；`PENDING` 和 `CONSUMED` 计入尚未被快照吸收的容量，`ABSORBED`
-不再额外计数：
+每个 reservation 固化 admission model 产生的 `reserved_capacity_vector`，维度可包括 rooms、
+participants、connections、publishers、subscribers、tracks、egress Mbps、RTP pps 和 relay 用量。
+Admission 对每个维度使用：
+
+```text
+effective_capacity[d] = latest_aggregate_snapshot[d]
+                      + sum(active_reservation.remaining_capacity_vector[d])
+remaining[d] = max(reserved[d] - correlated_observed[d], 0)
+```
+
+只有 provider membership 能按稳定业务/provider resource 归因且声明相同单位的维度，才可更新
+`correlated_observed`。不能可靠归因的维度保持 `observed=0` 并继续保守预留直到 release；禁止用
+节点 aggregate 增量猜测某个 reservation 已被吸收。
+
+Reservation 使用以下生命周期；`PENDING` 全量计入，`CONSUMED` 按 `remaining_capacity_vector`
+计入，所有维度 remaining 为 0 后才进入 `ABSORBED`：
 
 ```text
 PENDING -> CONSUMED -> ABSORBED
@@ -92,16 +107,27 @@ PENDING -> EXPIRED
 ```
 
 - admission 必须以原子操作同时检查新鲜快照、未被 provider 快照吸收的 reservation 和阈值，再创建
-  `PENDING`；同一 `request_id` 返回原记录。记录至少包含 `assigned_node_id/node_epoch` 和 admission
-  使用的 `snapshot_seq_floor`。
-- provider 接受创建/首次 admission 后记录稳定 `provider_resource_id` 并进入 `CONSUMED`。只有同一
-  `node_id/node_epoch` 上 `snapshot_seq > snapshot_seq_floor` 的 membership 明细明确包含该 resource，
-  才能 CAS 为 `ABSORBED`；对应 aggregate snapshot 此时接管计数，避免双计或容量空窗。
-- provider 拒绝或控制面创建失败必须显式 `RELEASED`。`PENDING` lease 到期只能在控制面和 provider
-  均确认资源不存在后进入 `EXPIRED`；不确定时保持占用并告警。
+  `PENDING`；同一 `request_id` 返回原记录。记录至少包含完整 reserved/observed/remaining vector、
+  intended region/node 和 admission 使用的 snapshot id。尚未绑定实际节点的 PENDING 进入 region
+  unbound pool，并计入该 region 每个 placement 决策，不能只记在可能错误的 intended node。
+- provider 接受创建/首次 admission 后，控制面必须先 CAS bind 实际 `node_id/node_epoch`、稳定
+  `provider_resource_id`、递增的 `binding_generation` 和该 epoch 当前最大 `snapshot_seq_floor`，再允许
+  后续媒体 admission。若该 epoch 尚无快照，floor 取 `-1`，reservation 仍全量计入。
+- 只有绑定 generation 未变化、同 `node_id/node_epoch` 且 `snapshot_seq > snapshot_seq_floor` 的
+  membership 明细，才能逐维更新 correlated observed/remaining。room 出现只能吸收 rooms 维度；
+  participant/publication/track/egress 等必须由各自贡献证据吸收。只有所有维度 remaining 为 0，
+  才能 CAS 为 `ABSORBED`。
+- provider 实际 node/epoch 与绑定不同时，必须先以 CAS rebind：递增 `binding_generation`，原子移动
+  reservation 归属，清零 correlated observed、恢复完整 remaining vector，并把 floor 设为新 epoch
+  当前最大 seq（没有则 `-1`）。在下一份匹配 membership 到达前保持全量预留，禁止跨 epoch 比较 seq。
+- provider 明确拒绝，或控制面与 provider 均确认资源未创建时，必须显式 `RELEASED`。超时、响应丢失
+  或其他结果不确定的创建失败必须保持 `PENDING` 并进入 reconciliation；确认资源存在后执行 bind 并
+  进入 `CONSUMED`。`PENDING` lease 到期只能在控制面和 provider 均确认资源不存在后进入 `EXPIRED`；
+  不确定时保持占用并告警。
 - reconciler 按 `decision_id + call_id/room_id` 收敛孤儿 reservation；若 `PENDING` 对应的 provider
-  resource 已存在，必须补写实际 node/epoch/resource id 并进入 `CONSUMED`，再等待明确 membership
-  absorption。状态变化使用 CAS，重复 consume/absorb/release 不得重复增减容量。
+  resource 已存在，必须调用同一 bind/rebind CAS 补写实际 node/epoch/resource id 并进入 `CONSUMED`，
+  再等待逐维 membership absorption。状态和 vector 变化均使用 CAS，重复 bind/observe/release 不得
+  重复增减容量。
 
 - 规划阈值：任一可靠维度达到 70% 持续 5 分钟，告警并扩容，目标保留 30% headroom。
 - 硬门禁：任一可靠维度达到 80%，停止新房或只允许音频/低层视频。80% 是紧急保护线，
