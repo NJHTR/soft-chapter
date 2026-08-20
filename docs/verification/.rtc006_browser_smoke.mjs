@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module'
 import http from 'node:http'
+import assert from 'node:assert/strict'
 
 const require = createRequire(import.meta.url)
 const { chromium } = require(process.env.PLAYWRIGHT_PACKAGE || 'playwright')
@@ -72,7 +73,7 @@ async function negotiate(page, endpoint, mode) {
       headers: { 'Content-Type': 'application/sdp', Accept: 'application/sdp' },
       body: pc.localDescription.sdp
     })
-    if (!response.ok) throw new Error(`${mode} SDP ${response.status}: ${await response.text()}`)
+    if (!response.ok) throw new Error(`${mode} SDP request failed with status ${response.status}`)
     location = response.headers.get('Location')
     await pc.setRemoteDescription({ type: 'answer', sdp: await response.text() })
     // SRS can receive RTP before Chromium exposes non-zero RTP counters.
@@ -201,6 +202,10 @@ try {
     if ('requestVideoFrameCallback' in video) video.requestVideoFrameCallback(done)
     else video.addEventListener('loadeddata', done, { once: true })
   }))
+  Object.assign(whep, await viewer.evaluate(() => ({
+    connectionState: window.__rtc006.pc.connectionState,
+    iceConnectionState: window.__rtc006.pc.iceConnectionState,
+  })))
   await wait(5000)
   const flv = await readFirstBytes(`${srsHttp}/${stream}.flv`)
   await wait(3000)
@@ -219,6 +224,20 @@ try {
     media: { status: hlsPlaylist.status, bytes: hlsPlaylist.body.length },
     segment: hlsSegment
   }
+  assert.equal(whip.connectionState, 'connected', 'WHIP peer connection did not reach connected')
+  assert.equal(whip.sessionCreated, true, 'WHIP response did not create a provider session')
+  assert.equal(whep.connectionState, 'connected', 'WHEP peer connection did not reach connected')
+  assert.equal(whep.sessionCreated, true, 'WHEP response did not create a provider session')
+  assert.equal(firstFrame.decoded, true, 'WHEP did not decode a first video frame')
+  assert.ok(firstFrame.width > 0 && firstFrame.height > 0, 'WHEP first frame has invalid dimensions')
+  assert.equal(hls.status, 200, 'HLS master playlist request failed')
+  assert.ok(hls.bytes > 0, 'HLS master playlist was empty')
+  assert.equal(hls.media.status, 200, 'HLS media playlist request failed')
+  assert.ok(hls.media.bytes > 0, 'HLS media playlist was empty')
+  assert.equal(hls.segment.status, 200, 'HLS segment request failed')
+  assert.ok(hls.segment.bytes > 0, 'HLS segment was empty')
+  assert.equal(flv.status, 200, 'HTTP-FLV request failed')
+  assert.ok(flv.bytes > 0, 'HTTP-FLV response was empty')
   console.log(JSON.stringify({ stream, whip, whep, firstFrame, hls, flv }))
 } finally {
   await cleanup(viewer)
