@@ -75,13 +75,15 @@ services:
     ports:
       - "3478:3478/udp"
       - "3478:3478/tcp"
-      - "49160-49180:49160-49180/udp" # relay 范围
+      - "${TURN_RELAY_MIN_PORT:-52000}-${TURN_RELAY_MAX_PORT:-52020}:${TURN_RELAY_MIN_PORT:-52000}-${TURN_RELAY_MAX_PORT:-52020}/udp" # relay 范围
     volumes:
       - ./deploy/rtc/turnserver.conf:/etc/coturn/turnserver.conf
     command: >
       --log-file=stdout
       --static-auth-secret=${TURN_SHARED_SECRET:?请在 .env 中设置 TURN_SHARED_SECRET}
       --external-ip=${SRS_RTC_CANDIDATE:?请在 .env 中设置 SRS_RTC_CANDIDATE(浏览器可达 IP)}
+      --min-port=${TURN_RELAY_MIN_PORT:-52000}
+      --max-port=${TURN_RELAY_MAX_PORT:-52020}
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/3478'"]
       interval: 15s
