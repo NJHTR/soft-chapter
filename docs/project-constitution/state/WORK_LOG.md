@@ -1,5 +1,27 @@
 # 工作日志
 
+## 2026-08-20：RTC-SCALE-001 实现波次 F（RTC-015 受控 P2P）提交
+
+- Wave F `3d6d592`：后端 `com.douyin.rtc.p2p`——拓扑严格状态机（`DISABLED→ELIGIBLE→CONSENTED→
+  PROBING`，`P2P_CONNECTED`/`FALLING_BACK→SFU_CONNECTED|FAILED`，P2P_CONNECTED 后无静默切换）、
+  双方 consent 绑定 call_id+topology_generation+participant_id（TTL 60s、event_id 重放不延长 TTL、
+  PROBING 中撤销 → FALLING_BACK PERMISSION_REVOKED）、P2pPolicyRule eligibility 矩阵（feature flag
+  默认关闭 fail-closed）、HMAC-SHA256 签名 v1 信令信封 + 有界内存邮箱（payload ≤32KB、ice ≤10、
+  seq 单调、event_id 幂等、速率 ≤10/s、TTL 30s 瞬态不落库）、`P2pCandidateClassification`
+  （host/srflx/prflx→direct/srflx，任一 relay→RELAY_REQUIRED 回退）、审计只存元数据+SHA-256 摘要、
+  `rtc_p2p_attempts/fallbacks/consent_pairs` 指标、`P2pController` `/api/rtc/p2p`（topology/
+  evaluate/consent/probe-start/probe-result/fallback/signal/inbox/audit）+ `P2pExceptionHandler`。
+  P2pServiceTest 关键用例：双 consent→探测→direct 收敛 P2P_CONNECTED、relay 回退 RELAY_REQUIRED、
+  consent 过期 CONSENT_EXPIRED、重放不延长 TTL、签名伪造拒绝、越界/滥用 seq 拒绝、速率限流、审计
+  无原文。Maven：p2p 38/38 + 全量 282/282 通过。
+- 前端 `src/modules/rtc/p2p`（同提交）：p2pMachine 拓扑镜像/候选分类/1.5~3s 预算、p2pClient 控制面
+  调用。vitest 8/8、eslint、vue-tsc 干净。
+- 未执行项如实记录：真实双浏览器 1 对 1/NAT/IPv6/企业网、TURN UDP/TCP/TLS 与不可用矩阵、真实
+  成功率/回退率/relay 比例、CPU/电量/SFU egress 实测；P2pStateStore/邮箱为单实例内存，生产开关
+  必须保持 `RTC_P2P_ENABLED=false`。RTC-015 保持 `in_progress`。
+- 状态文件（PROJECT_STATE.yaml / TASK_INDEX.md / RTC-015 任务文件）已写入真实提交哈希与证据条目；
+  CallPanel.vue 用户改动与用户提示词 md 全程未触碰、未入库。Wave B~F 实现全部提交完毕。
+
 ## 2026-08-20：RTC-SCALE-001 实现波次 E（RTC-014 Stage+Audience）提交
 
 - Wave E 后端 `49b5692`：`com.douyin.rtc.stage` Stage 状态机（`AUDIENCE→REQUESTED→PROMOTING→

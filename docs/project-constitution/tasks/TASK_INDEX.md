@@ -19,7 +19,7 @@
 | RTC-012 | 客户端选择性订阅与媒体减载 | `in_progress`（实现 `dd7d4b6`+`43a87c5`） | RTC-005、RTC-007 | 订阅端口/registry/注意力策略已实现，14 vitest 通过；真实 2/4/8 浏览器矩阵/egress 未完成 |
 | RTC-013 | LiveKit 多节点、Redis 路由与 TURN 区域池 | `in_progress`（实现 `a934d8f`） | RTC-011 | 双节点 Redis 路由/注册/故障注入已真实验收；房间负载/TURN TLS/drain/LB 回滚未完成 |
 | RTC-014 | Stage + audience 大规模直播分层 | `in_progress`（实现 `49b5692`+`b3566d1`） | RTC-006、RTC-013 | Stage 状态机/成员/审计/控制器/egress port(后端)+ 前端镜像状态机已实现，27 Java + 8 vitest 通过、244/244 全量通过；真实浏览器矩阵/Egress 真服务/多实例 store 未完成 |
-| RTC-015 | 受控 1 对 1 P2P 实验与 SFU 回退 | `planned` | RTC-004、RTC-007 | 独立信令、ICE 探测、灰度、质量和隐私验收 |
+| RTC-015 | 受控 1 对 1 P2P 实验与 SFU 回退 | `in_progress`（实现 `3d6d592`） | RTC-004、RTC-007 | P2P 拓扑/双 consent/eligibility/HMAC 信令/relay 回退已实现，38 Java + 8 vitest 通过、282/282 全量通过；真实双浏览器/NAT/TURN 矩阵未执行，开关 fail-closed |
 
 ## AI 持续学习任务索引
 
@@ -90,6 +90,16 @@ RTC-007 到 RTC-010 必须在真实浏览器、TURN、弱网、重连和故障�
   eslint/vue-tsc 干净。未执行：真实浏览器上麦/下麦/撤销矩阵、LiveKit Egress 真服务、多实例 stage
   store、permission API 实际撤销调用（`revokePublishPermission` 当期返回 false 留 providerPending）、
   1 stage + 10k audience 增收。RTC-014 状态更新为 `in_progress`，不得标记 completed。下一波次 RTC-015。
+- Wave F（RTC-015）已提交（2026-08-20）：`3d6d592`（后端 `com.douyin.rtc.p2p` 拓扑状态机
+  `DISABLED→ELIGIBLE→CONSENTED→PROBING`、`P2P_CONNECTED`/`FALLING_BACK→SFU_CONNECTED|FAILED`、
+  双方 consent+TTL+event_id 幂等（重放不延长 TTL）、P2pPolicyRule eligibility（scope=direct/恰好两人/
+  ACCEPTED|NEGOTIATING/无录制审核 Stage 群聊/ACL）、HMAC-SHA256 签名 v1 信令信封 + 有界邮箱
+  （大小 32KB/ice ≤10/seq 单调/event_id 幂等/速率 ≤10/s）、relay 分类回退 + 稳定原因、审计只存
+  元数据与摘要、`rtc_p2p_*` 指标、`/api/rtc/p2p` 控制面 + 前端 `src/modules/rtc/p2p` 镜像/候选分类/
+  预算）。38 Java 测试 + 8 vitest 全绿，mvn 全量 282/282 通过。未执行：真实双浏览器/NAT/IPv6/TURN
+  矩阵、真实成功率/回退率/relay 比例、CPU/电量/SFU egress 实测；生产开关必须保持 `RTC_P2P_ENABLED=false`。
+  RTC-015 状态更新为 `in_progress`，不得标记 completed。实现波次 B~F 已全部提交，剩余为最终
+  test(RTC-SCALE)/docs 报告。
 
 ---
 

@@ -53,7 +53,7 @@ scale_objective:
   owner: /root
   started_at: "2026-08-20"
   branch: dev/full
-current_wave: E_rtc014_stage_committed
+current_wave: F_rtc015_p2p_committed
   implementation_gate: RTC-004, RTC-005, RTC-006 and RTC-007 remain incomplete; RTC-011/012/013 implementation committed with real unit/runtime evidence, scale load and browser matrices remain open
   contract: docs/contracts/rtc-scale-control-contract.md
   runbook: docs/runbooks/RTC_SCALE_DEPLOYMENT_AND_ROLLBACK.md
@@ -82,6 +82,7 @@ current_wave: E_rtc014_stage_committed
     - a934d8f
     - 49b5692
     - b3566d1
+    - 3d6d592
   prerequisite_evidence_commits:
     - 5d70da7
     - 597c041
@@ -165,8 +166,10 @@ tasks:
     evidence_scope: Stage 状态机/成员/审计/控制器/egress provider port(后端)+ 前端镜像状态机已实现且 27 个 stage Java 测试与 8 个 vitest 全绿、244/244 全量 Java suite 通过；真实浏览器 stage 矩阵、LiveKit Egress 真服务、多实例 stage store、permission API 实际撤销调用未执行
   - id: RTC-015
     title: 受控 1 对 1 P2P 实验与 SFU 回退
-    status: planned
+    status: in_progress
     depends_on: [RTC-004, RTC-007]
+    implementation_commits: [3d6d592]
+    evidence_scope: P2P 拓扑状态机、双方 consent+TTL、eligibility 规则、HMAC 信令信封/有界邮箱(seq/重复/速率/大小/候选数)、relay 分类回退、审计摘要、rtc_p2p_* 指标与 REST 控制面已实现且 38 Java+8 vitest 通过、282/282 全量通过；真实双浏览器/NAT/IPv6/TURN 矩阵、真实成功率/回退率/relay 比例未执行，开关保持 fail-closed
   - id: AI-001
     title: AI 持续学习宪法、架构与安全基线(文档+密钥 env)
     status: completed
@@ -312,6 +315,16 @@ verification:
       result: passed_for_stage_module_on_2026-08-20
     - command: pnpm exec vitest run src/modules/live/stage (RTC-014)
       result: passed_8_of_8_on_2026-08-20 (stageMachine 状态机/幂等/stale 守卫)
+    - command: mvn -f server/pom.xml "-Dtest=com.douyin.rtc.p2p.**" test (RTC-015 Wave F)
+      result: passed_38_of_38_on_2026-08-20 (状态机 7 + policy 4 + 候选分类 5 + service 17 + controller 5)
+    - command: mvn -f server/pom.xml test (RTC-015 Wave F full suite)
+      result: passed_282_of_282_on_2026-08-20
+    - command: pnpm exec vitest run src/modules/rtc/p2p (RTC-015)
+      result: passed_8_of_8_on_2026-08-20 (p2pMachine 拓扑镜像/候选分类/预算)
+    - command: pnpm exec eslint src/modules/rtc/p2p (RTC-015)
+      result: passed_on_2026-08-20
+    - command: pnpm exec vue-tsc --noEmit --pretty false (RTC-015 p2p module)
+      result: passed_for_p2p_module_on_2026-08-20
   unavailable:
     - docker_srs_callback_auth_and_provider_restart_recovery (Spring backend was not running; no callback HTTP or restart recovery was executed)
     - browser_webrtc_e2e
@@ -333,5 +346,8 @@ verification:
     - rtc_scale_stage_egress_real_service (LiveKit Egress 真服务与 SRS 出流未执行)
     - rtc_scale_stage_multi_instance_store (InMemoryStageStore 仅单实例,多实例 step store/reconciliation 未执行)
     - rtc_scale_stage_permission_api_real_revoke (permission API 实际撤销 provider 调用未执行;revokePublishPermission 当期返回 false 留 providerPending)
-last_verified_commit: b3566d1
-last_doc_commit: b3566d1
+    - rtc_scale_p2p_dual_browser_nat_ipv6_turn_matrix (受控 P2P 控制面已提交;真实双浏览器 1 对 1/NAT/IPv6/企业网/TURN 不可用矩阵未执行)
+    - rtc_scale_p2p_real_success_fallback_relay_rates (真实 P2P 成功率/回退率/relay 比例、CPU/电量/SFU egress 实测未执行)
+    - rtc_scale_p2p_multi_instance_store (P2pStateStore/信令邮箱为单实例内存,多实例拓扑与共享密钥未执行)
+last_verified_commit: 3d6d592
+last_doc_commit: 3d6d592

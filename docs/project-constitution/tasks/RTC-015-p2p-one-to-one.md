@@ -2,9 +2,9 @@
 
 ## 状态与边界
 
-- 状态：`planned`
+- 状态：`in_progress`（实现已提交，未满足 DoD）
 - 负责人：未认领
-- 分支/开始时间：未分配
+- 分支/开始时间：dev/full / 2026-08-20
 - 波次：F（规模化子任务最后执行）
 - 依赖：RTC-004、RTC-007
 - 默认开关：`RTC_P2P_ENABLED=false`
@@ -85,6 +85,16 @@ git diff --check
 
 ## 交付记录
 
-- 提交哈希：未实现
-- 测试结果：未执行
-- 遗留风险：RTC-007 未完成，真实 P2P/NAT/TURN 环境未提供
+- 提交哈希：`3d6d592`（后端 `com.douyin.rtc.p2p`：拓扑状态机 DISABLED→ELIGIBLE→CONSENTED→PROBING、
+  P2P_CONNECTED/FALLING_BACK→SFU_CONNECTED|FAILED、双方 consent+TTL+event_id 幂等、P2pPolicyRule
+  eligibility、HMAC 签名 v1 信封、有界信令邮箱(seq/重复/速率/大小/候选数)、审计只存元数据+摘要、
+  `rtc_p2p_*` 指标、`/api/rtc/p2p` 控制面；前端 `src/modules/rtc/p2p` 拓扑镜像+候选分类+预算+客户端）
+- 测试结果：
+  - `mvn "-Dtest=com.douyin.rtc.p2p.**" test`：38/38 通过（状态机 7 / policy 4 / 候选分类 5 / service 17 / controller 5）
+  - `mvn test` 全量：282/282 通过
+  - `pnpm exec vitest run src/modules/rtc/p2p`：8/8 通过
+  - `pnpm exec eslint src/modules/rtc/p2p` + `vue-tsc`(P2P 模块)：干净
+- 未执行 DoD：真实双浏览器 1 对 1/NAT/IPv6/企业网、TURN UDP/TCP/TLS/不可用矩阵、真实 P2P 成功率/
+  回退率/relay 比例、CPU/电量/SFU egress 实测；生产开关仍须 `RTC_P2P_ENABLED=false`
+- 遗留风险：RTC-007 未完成；信令邮箱与 consent store 为单实例内存；客户端回调与
+  RECONNECTING 走 CallService generation 的联调未实现（后端只到 SFU_CONNECTED/FAILED 收敛）
