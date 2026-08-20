@@ -18,7 +18,7 @@
 | RTC-011 | SFU/TURN/客户端容量观测、Admission 与压测 | `in_progress`（实现 `826333a`） | RTC-007 | 容量/观测/admission 已实现，Java 217 测试通过；压测 harness/真实浏览器 QoE 未完成 |
 | RTC-012 | 客户端选择性订阅与媒体减载 | `in_progress`（实现 `dd7d4b6`+`43a87c5`） | RTC-005、RTC-007 | 订阅端口/registry/注意力策略已实现，14 vitest 通过；真实 2/4/8 浏览器矩阵/egress 未完成 |
 | RTC-013 | LiveKit 多节点、Redis 路由与 TURN 区域池 | `in_progress`（实现 `a934d8f`） | RTC-011 | 双节点 Redis 路由/注册/故障注入已真实验收；房间负载/TURN TLS/drain/LB 回滚未完成 |
-| RTC-014 | Stage + audience 大规模直播分层 | `planned` | RTC-006、RTC-013 | SRS/CDN audience、上麦、breakout room |
+| RTC-014 | Stage + audience 大规模直播分层 | `in_progress`（实现 `49b5692`+`b3566d1`） | RTC-006、RTC-013 | Stage 状态机/成员/审计/控制器/egress port(后端)+ 前端镜像状态机已实现，27 Java + 8 vitest 通过、244/244 全量通过；真实浏览器矩阵/Egress 真服务/多实例 store 未完成 |
 | RTC-015 | 受控 1 对 1 P2P 实验与 SFU 回退 | `planned` | RTC-004、RTC-007 | 独立信令、ICE 探测、灰度、质量和隐私验收 |
 
 ## AI 持续学习任务索引
@@ -83,6 +83,13 @@ RTC-007 到 RTC-010 必须在真实浏览器、TURN、弱网、重连和故障�
   双节点注册、join 放置、Redis 故障 fail-closed、恢复成功）。RTC-011/012/013 状态更新为
   `in_progress`：真实 2/4/8 浏览器矩阵、100×2/100×8/1000×2 负载、SFU egress、TURN TLS/drain/
   LB 回滚未执行，不得标记 completed。RTC-014（Stage+Audience）为下一波次。
+- Wave E（RTC-014）已提交（2026-08-20）：`49b5692`（Stage 状态机 `AUDIENCE→REQUESTED→PROMOTING→
+  ON_STAGE→DEMOTING→AUDIENCE`、`REVOKING→REVOKED` 终态、event_id+generation 幂等/CAS、主持人 ACL、
+  8 人上限、LiveKit Egress HTTP provider port、脱敏审计）与 `b3566d1`（前端 stageMachine 镜像 +
+  stageClient 控制面）。staged 27 Java 测试 + stageMachine 8 vitest 全绿，mvn 全量 244/244 通过，
+  eslint/vue-tsc 干净。未执行：真实浏览器上麦/下麦/撤销矩阵、LiveKit Egress 真服务、多实例 stage
+  store、permission API 实际撤销调用（`revokePublishPermission` 当期返回 false 留 providerPending）、
+  1 stage + 10k audience 增收。RTC-014 状态更新为 `in_progress`，不得标记 completed。下一波次 RTC-015。
 
 ---
 

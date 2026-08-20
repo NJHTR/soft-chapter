@@ -1,5 +1,27 @@
 # 工作日志
 
+## 2026-08-20：RTC-SCALE-001 实现波次 E（RTC-014 Stage+Audience）提交
+
+- Wave E 后端 `49b5692`：`com.douyin.rtc.stage` Stage 状态机（`AUDIENCE→REQUESTED→PROMOTING→
+  ON_STAGE→DEMOTING→AUDIENCE`、任一受控态经 `REVOKING→REVOKED` 终态）、成员/审计模型、
+  `event_id + stage_generation` 幂等/CAS（重放返回首次结果、旧 generation 拒绝）、主持人 ACL
+  （request 仅本人、approve/demote/revoke 仅主持人、CONFIRM_* 系统 actor 免检）、APPROVE 8 人硬上限
+  （`STAGE_LIMIT_REACHED`）、DEMOTING/REVOKING 需 provider 移除 publish 权限且失败保持 providerPending
+  不提前标已撤、`LiveKitEgressHttpPort`（twirp `StartRoomCompositeEgress`、admin token HS256 30s、
+  `revokePublishPermission` 当期返回 false 留待真实 provider 调用）、脱敏审计（SHA-256 前 16 hex）。
+  `StageController` `/api/live/stage` 控制面 + `StageExceptionHandler`（409/403/400/502）。
+  测试：StageStateMachine 8 + StageService 10 + StageController 5 + LiveKitEgressHttpPort 4 =
+  27/27 通过；mvn 全量 244/244 通过。（StageController 测试经确定性 `when(jwtUtil.getUserIdFromToken(anyString()))` 修复后全绿）
+- Wave E 前端 `b3566d1`：`src/modules/live/stage/stageMachine.ts`（客户端镜像状态机，
+  event_id 防重放 + generation stale 守卫 + 仅 ON_STAGE 授予 publish 标志）+ `stageClient.ts`
+  （request/approve/joined/demote/revoke/left/members/audit）。vitest 8/8 通过；
+  `pnpm exec eslint src/modules/live/stage` 与 vue-tsc（stage 模块）干净。
+- 未执行项如实记录：真实浏览器上麦/下麦/撤销矩阵、LiveKit Egress 真服务出流到 SRS、多实例 stage
+  store/reconciliation、permission API 实际撤销 provider 调用、1 stage + 10k audience 增收。
+  RTC-014 保持 `in_progress`（DoD 未全闭不得 completed）。当前 stage 控制面为单实例 InMemory store。
+- 状态文件（PROJECT_STATE.yaml / TASK_INDEX.md / RTC-014 任务文件）已写入真实提交哈希与证据条目；
+  CallPanel.vue 用户改动与用户提示词 md 全程未触碰、未入库。
+
 ## 2026-08-20：RTC-SCALE-001 实现波次 B/C/D 提交与真实验收
 
 - Wave B（RTC-011）`826333a`：capacity/observability/admission（CapacityRegistry/AdmissionService/

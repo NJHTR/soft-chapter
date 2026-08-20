@@ -2,9 +2,9 @@
 
 ## 状态与边界
 
-- 状态：`planned`
+- 状态：`in_progress`（实现已提交，未满足 DoD）
 - 负责人：未认领
-- 分支/开始时间：未分配
+- 分支/开始时间：dev/full / 2026-08-20
 - 波次：E
 - 依赖：RTC-006、RTC-013
 - 负责目录：`server` 直播/stage 控制面、stage 数据迁移、`deploy/streaming/`、直播前端和 CDN 运维文档
@@ -80,6 +80,11 @@ git diff --check
 
 ## 交付记录
 
-- 提交哈希：未实现
-- 测试结果：未执行
-- 遗留风险：RTC-006、RTC-013 未完成；当前仅存在单主播 SRS audience 路径
+- 提交哈希：`49b5692`（后端 Stage 状态机/成员/审计/控制器/egress provider port）、`b3566d1`（前端镜像状态机 + 控制面客户端）
+- 测试结果：
+  - `mvn "-Dtest=com.douyin.rtc.stage.**" test`：27/27 通过（StageStateMachine 8 / StageService 10 / StageController 5 / LiveKitEgressHttpPort 4）
+  - `mvn test` 全量：244/244 通过
+  - `pnpm exec vitest run src/modules/live/stage`：8/8 通过
+  - `pnpm exec eslint src/modules/live/stage` + `vue-tsc`：通过
+- 未执行 DoD：真实浏览器上麦/下麦/撤销矩阵、LiveKit Egress 真服务出流、多实例 step store/reconciliation、permission API 实际撤销调用（`revokePublishPermission` 当期返回 false 留 providerPending）、1 stage + 10k audience 增收
+- 遗留风险：RTC-006、RTC-013 未完成；当前 stage 控制面为单实例 InMemory store；普通观众 audience 路径仅存于 RTC-006 既有 SRS 链路

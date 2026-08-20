@@ -53,7 +53,7 @@ scale_objective:
   owner: /root
   started_at: "2026-08-20"
   branch: dev/full
-current_wave: D_rtc013_cluster_accepted_and_committed
+current_wave: E_rtc014_stage_committed
   implementation_gate: RTC-004, RTC-005, RTC-006 and RTC-007 remain incomplete; RTC-011/012/013 implementation committed with real unit/runtime evidence, scale load and browser matrices remain open
   contract: docs/contracts/rtc-scale-control-contract.md
   runbook: docs/runbooks/RTC_SCALE_DEPLOYMENT_AND_ROLLBACK.md
@@ -80,6 +80,8 @@ current_wave: D_rtc013_cluster_accepted_and_committed
     - 43a87c5
     - dd7d4b6
     - a934d8f
+    - 49b5692
+    - b3566d1
   prerequisite_evidence_commits:
     - 5d70da7
     - 597c041
@@ -157,8 +159,10 @@ tasks:
     evidence_scope: 双节点共享 Redis routing 真实运行：唯一 node_id/advertised IP/region 注册、join 放置、Redis 故障新房 fail-closed、恢复成功；100/1000 房间、跨区 RTT、TURN TLS/drain/LB 回滚未执行
   - id: RTC-014
     title: Stage + audience 大规模直播分层
-    status: planned
+    status: in_progress
     depends_on: [RTC-006, RTC-013]
+    implementation_commits: [49b5692, b3566d1]
+    evidence_scope: Stage 状态机/成员/审计/控制器/egress provider port(后端)+ 前端镜像状态机已实现且 27 个 stage Java 测试与 8 个 vitest 全绿、244/244 全量 Java suite 通过；真实浏览器 stage 矩阵、LiveKit Egress 真服务、多实例 stage store、permission API 实际撤销调用未执行
   - id: RTC-015
     title: 受控 1 对 1 P2P 实验与 SFU 回退
     status: planned
@@ -298,6 +302,16 @@ verification:
       result: passed_on_2026-08-20 (relay ports init + prometheus :9641)
     - command: docker run --rm -v <node-a/b.yaml> ... livekit-server:v1.13.5 --config ... ports (RTC-013)
       result: passed_on_2026-08-20 (UDP 51000-51050 / 51100-51150)
+    - command: mvn -f server/pom.xml "-Dtest=com.douyin.rtc.stage.**" test (RTC-014 Wave E)
+      result: passed_27_of_27_on_2026-08-20 (StageStateMachine 8 + StageService 10 + StageController 5 + LiveKitEgressHttpPort 4)
+    - command: mvn -f server/pom.xml test (RTC-014 Wave E full suite)
+      result: passed_244_of_244_on_2026-08-20
+    - command: pnpm exec eslint src/modules/live/stage (RTC-014)
+      result: passed_on_2026-08-20
+    - command: pnpm exec vue-tsc --noEmit --pretty false (RTC-014 stage module)
+      result: passed_for_stage_module_on_2026-08-20
+    - command: pnpm exec vitest run src/modules/live/stage (RTC-014)
+      result: passed_8_of_8_on_2026-08-20 (stageMachine 状态机/幂等/stale 守卫)
   unavailable:
     - docker_srs_callback_auth_and_provider_restart_recovery (Spring backend was not running; no callback HTTP or restart recovery was executed)
     - browser_webrtc_e2e
@@ -315,5 +329,9 @@ verification:
 - rtc_scale_100x2_100x8_1000x2_load_matrix (no load harness; 100/1000 room load not executed)
     - rtc_scale_turn_region_failover_tls_drain_and_lb_rollback (multinode Redis routing executed 2026-08-20; TURN region failover, TCP/TLS 5349, node drain, DNS/LB rollback, cross-region RTT not executed)
     - rtc_scale_stage_10k_audience_and_cdn (Stage, egress and CDN environment do not exist)
-last_verified_commit: a934d8f
-last_doc_commit: a934d8f
+    - rtc_scale_stage_real_browser_matrix (Stage 控制面已提交;真实浏览器上麦/下麦/撤销矩阵未执行)
+    - rtc_scale_stage_egress_real_service (LiveKit Egress 真服务与 SRS 出流未执行)
+    - rtc_scale_stage_multi_instance_store (InMemoryStageStore 仅单实例,多实例 step store/reconciliation 未执行)
+    - rtc_scale_stage_permission_api_real_revoke (permission API 实际撤销 provider 调用未执行;revokePublishPermission 当期返回 false 留 providerPending)
+last_verified_commit: b3566d1
+last_doc_commit: b3566d1
