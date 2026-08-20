@@ -33,5 +33,9 @@ public enum CallErrorCode {
     /** provider 或依赖服务错误 */
     PROVIDER_ERROR,
     /** RTC-011 容量门禁拒绝（超限或容量服务不可用） */
-    CAPACITY_REJECTED
+    CAPACITY_REJECTED,
+    /** RTC-014 Stage 发布者到达硬上限(默认 8) */
+    STAGE_LIMIT_REACHED,
+    /** RTC-014 命令携带的 stage_generation 已过期(乱序旧事件不得复活成员) */
+    GENERATION_STALE
 }
