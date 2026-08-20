@@ -51,7 +51,7 @@ powershell -File deploy/streaming/smoke.ps1
 | 7889 | livekit | Prometheus metrics |
 | 50000-50050/udp | livekit | WebRTC RTP |
 | 3478 | coturn | TURN UDP/TCP |
-| 52000-52020/udp | coturn | TURN relay（可由 `TURN_RELAY_MIN_PORT/MAX_PORT` 覆盖） |
+| 40000-40020/udp | coturn | TURN relay（低于 Windows 默认动态范围；可由 `TURN_RELAY_MIN_PORT/MAX_PORT` 覆盖，部署前检查宿主机排除段） |
 | 8888/8889 | mediamtx(alternative) | WebRTC/API、RTMP |
 | 9091 / 3003 | prometheus / grafana(monitoring) | 指标 |
 
