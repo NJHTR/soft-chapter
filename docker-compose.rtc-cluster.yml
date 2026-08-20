@@ -1,0 +1,154 @@
+# RTC-013 LiveKit 双节点集群 + 共享 Redis + TURN 双区域
+# 职责边界(宪法 §3):
+#   - redis         LiveKit 官方 room routing / 节点发现权威存储(AUTH, TLS 待证书)
+#   - livekit-node-a/b 双 SFU 节点,共享 Redis,node_id/region/advertised IP/UDP 范围唯一
+#   - turn-region-a/b  coturn 区域池(UDP/TCP;TLS 5349 待证书未验收)
+#   - lk-cli        livekit-cli 验收工具(join/row 级隔离与故障注入)
+# 密钥均来自 .env(复制 deploy/rtc/cluster/.env.example),严禁硬编码进本文件。
+# 用法:
+#   docker compose -f docker-compose.rtc-cluster.yml --env-file deploy/rtc/cluster/.env up -d
+#   powershell -File deploy/rtc/cluster/validate.ps1 [-Runtime]
+#   powershell -File deploy/rtc/validate-coturn-startup.ps1 -Service turn-region-a
+# 媒体仍在 LiveKit;Spring 只做 admission/token/ACL/审计,不转发 RTP(契约 §5)。
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    container_name: douyin-rtc-redis
+    restart: unless-stopped
+    command: ["sh", "-c", "redis-server /etc/redis/redis.conf --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 中设置 REDIS_PASSWORD}
+    ports:
+      - "16379:6379/tcp"
+    volumes:
+      - ./deploy/rtc/cluster/redis.conf:/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      rtc-cluster-net:
+        ipv4_address: 172.31.0.10
+
+  # 集群节点 A:节点 id/region/advertised IP/TCP/UDP 范围唯一(契约 §5)
+  livekit-node-a:
+    image: livekit/livekit-server:v1.13.5
+    container_name: douyin-livekit-node-a
+    restart: unless-stopped
+    ports:
+      - "17880:7880/tcp"              # HTTP/WS 信令(不与单节点栈 7880 冲突)
+      - "17881:7881/tcp"              # WebRTC over TCP
+      - "17889:7889/tcp"              # Prometheus metrics
+      - "51000-51050:51000-51050/udp" # WebRTC RTP(单节点栈 50000-50050 已占用)
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./deploy/rtc/cluster/livekit-node-a.yaml:/etc/livekit.yaml:ro
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-cluster-key}: ${LIVEKIT_API_SECRET:?请在 .env 中设置 LIVEKIT_API_SECRET}"
+      LIVEKIT_REDIS_PASSWORD: "${REDIS_PASSWORD:?请在 .env 中设置 REDIS_PASSWORD}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7889/metrics >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      rtc-cluster-net:
+        ipv4_address: 172.31.10.10
+
+  # 集群节点 B:id/region/advertised IP/TCP/UDP 与 A 互斥,共享同一 Redis
+  livekit-node-b:
+    image: livekit/livekit-server:v1.13.5
+    container_name: douyin-livekit-node-b
+    restart: unless-stopped
+    ports:
+      - "17882:7880/tcp"              # HTTP/WS 信令
+      - "17883:7881/tcp"              # WebRTC over TCP
+      - "17899:7889/tcp"              # Prometheus metrics
+      - "51100-51150:51100-51150/udp" # WebRTC RTP(A 的 51000-51050 已占用)
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./deploy/rtc/cluster/livekit-node-b.yaml:/etc/livekit.yaml:ro
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-cluster-key}: ${LIVEKIT_API_SECRET:?请在 .env 中设置 LIVEKIT_API_SECRET}"
+      LIVEKIT_REDIS_PASSWORD: "${REDIS_PASSWORD:?请在 .env 中设置 REDIS_PASSWORD}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7889/metrics >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      rtc-cluster-net:
+        ipv4_address: 172.31.10.11
+
+  # TURN 区域池 region-a(短时 REST 凭据,共享密钥不经浏览器/仓库)
+  turn-region-a:
+    image: coturn/coturn:4.17.2
+    container_name: douyin-turn-region-a
+    restart: unless-stopped
+    ports:
+      - "13478:3478/udp"
+      - "13478:3478/tcp"
+      - "41000-41020:41000-41020/udp"
+    volumes:
+      - ./deploy/rtc/cluster/turnserver-region-a.conf:/etc/coturn/turnserver.conf:ro
+    command: >
+      --log-file=stdout
+      --listening-ip=172.31.20.10
+      --static-auth-secret=${TURN_SHARED_SECRET:?请在 .env 中设置 TURN_SHARED_SECRET}
+      --external-ip=${SRS_RTC_CANDIDATE:?请在 .env 中设置 SRS_RTC_CANDIDATE(浏览器可达 IP)}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/3478'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      rtc-cluster-net:
+        ipv4_address: 172.31.20.10
+
+  # TURN 区域池 region-b:容器内端口与 A 相同,宿主映射错开
+  turn-region-b:
+    image: coturn/coturn:4.17.2
+    container_name: douyin-turn-region-b
+    restart: unless-stopped
+    ports:
+      - "13479:3478/udp"
+      - "13479:3478/tcp"
+      - "41100-41120:41100-41120/udp"
+    volumes:
+      - ./deploy/rtc/cluster/turnserver-region-b.conf:/etc/coturn/turnserver.conf:ro
+    command: >
+      --log-file=stdout
+      --listening-ip=172.31.20.11
+      --static-auth-secret=${TURN_SHARED_SECRET:?请在 .env 中设置 TURN_SHARED_SECRET}
+      --external-ip=${SRS_RTC_CANDIDATE:?请在 .env 中设置 SRS_RTC_CANDIDATE(浏览器可达 IP)}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/3478'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      rtc-cluster-net:
+        ipv4_address: 172.31.20.11
+
+  # 验收工具:livekit-cli 为无 shell 最小镜像,由 validator 用 docker run --rm(宿主侧)驱动,
+# join/隔离/故障注入命令见 deploy/rtc/cluster/validate.ps1。
+
+networks:
+  rtc-cluster-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.0.0/16

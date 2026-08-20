@@ -1,0 +1,20 @@
+# LiveKit 集群节点 B(RTC-013 多节点)
+# 与 node-a 唯一差异:node_id/region 分区、advertised IP、TCP/UDP 端口范围。
+# 密钥不写入本文件:compose 通过 LIVEKIT_KEYS / LIVEKIT_REDIS_PASSWORD 注入。
+# node_id 由 LiveKit 按容器 hostname 自动生成(douyin-livekit-node-b);region 进节点注册。
+region: cn-east-2
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 51100
+  port_range_end: 51150
+  node_ip: 172.31.10.11
+  use_external_ip: false
+redis:
+  address: redis:6379
+  db: 0
+  use_tls: false
+prometheus:
+  port: 7889
+logging:
+  level: info

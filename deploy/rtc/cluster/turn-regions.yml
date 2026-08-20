@@ -1,0 +1,26 @@
+# RTC-013 TURN 区域清单(控制面按 region/health/priority 选择短期凭据的来源模板)
+# 短期凭据(REST HMAC)由 LiveKit rtc.turn_servers 或后端 issue;共享 secret 绝不入库/进浏览器。
+# transport: udp/tcp 可验收;turns(tcp+TLS) 需受信任证书,当前 disabled 并保留验收项。
+regions:
+  - id: cn-east-1
+    priority: 10
+    transports:
+      - udp
+      - tcp
+    endpoints:
+      - { url: "turn:turn-region-a:3478?transport=udp", priority: 10 }
+      - { url: "turn:turn-region-a:3478?transport=tcp", priority: 20 }
+  - id: cn-east-2
+    priority: 10
+    transports:
+      - udp
+      - tcp
+    endpoints:
+      - { url: "turn:turn-region-b:3478?transport=udp", priority: 10 }
+      - { url: "turn:turn-region-b:3478?transport=tcp", priority: 20 }
+  - id: cn-east-1-tls
+    priority: 50
+    transports: [tcp]
+    enabled: false
+    endpoints:
+      - { url: "turns:turn-region-a:5349?transport=tcp", priority: 10 }

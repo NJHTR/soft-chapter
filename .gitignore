@@ -62,6 +62,9 @@ server/python/training_data_cleaned_*.jsonl
 # RTC-002 provider secrets
 deploy/streaming/.env
 
+# RTC-013 cluster secrets
+deploy/rtc/cluster/.env
+
 # Native streaming engine build output (CMake/Visual Studio artifacts)
 /streaming-engine/build/
 

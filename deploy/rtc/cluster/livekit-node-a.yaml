@@ -1,0 +1,23 @@
+# LiveKit 集群节点 A(RTC-013 多节点)
+# 共享 Redis room routing / 节点发现 / 房间粘着由 LiveKit 官方实现;
+# 密钥不写入本文件:compose 通过 LIVEKIT_KEYS / LIVEKIT_REDIS_PASSWORD 注入。
+# node_ip 为 docker-compose.rtc-cluster.yml 静态分配的容器 IP,保证 advertised IP 唯一。
+# 职责边界:媒体仍在 LiveKit;Spring 只做 admission/token/ACL/审计,不转发 RTP。
+# node_id 由 LiveKit 按容器 hostname 自动生成并注册到共享 Redis(douyin-livekit-node-a/b 唯一);
+# region 进节点注册,用于区域放置与容量登记(RTC-011 快照含 node_id/region/zone/version)。
+region: cn-east-1
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 51000
+  port_range_end: 51050
+  node_ip: 172.31.10.10
+  use_external_ip: false
+redis:
+  address: redis:6379
+  db: 0
+  use_tls: false
+prometheus:
+  port: 7889
+logging:
+  level: info
