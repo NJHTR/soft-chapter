@@ -1,5 +1,30 @@
 # 工作日志
 
+## 2026-08-20：RTC-SCALE-001 Wave A 独立审查修正
+
+- 三个只读审查者逐提交检查 Wave A、TURN/browser smoke 和状态提交；所有 parent diff check 均通过。
+  审查同时发现了不能带入实现阶段的契约/验收缺陷，因此没有把“diff clean”误当成语义通过。
+- `db93cdf` 将 coturn 默认 relay 从仍位于 Windows 动态 UDP 范围的 `52000-52020` 移到
+  `40000-40020`，并把 `.env.example` 改为可被 Compose 完整解析的无空格占位值。宿主机动态范围
+  为 `49152-65535`，新范围当前无占用；重建后 provider smoke 8/8，REST 临时凭据 UDP allocate
+  和 LiveKit CLI 真实媒体发布均通过。
+- `1d48b45` 让 RTC-006 浏览器 smoke 对 WHIP/WHEP session、连接状态、WHEP 首帧、HLS master/media/TS
+  和 HTTP-FLV 字节做 fail-closed assertion，并禁止错误路径输出 provider body。重跑通过：WHEP
+  `640x480`，HLS TS `98189` bytes，HTTP-FLV `72599` bytes；这些单次字节数不是容量指标。
+- 契约修正：`62f61dc`（RTC-011 reservation 生命周期、TURN/连接维度和单节点告警）、`9feb821`
+  （RTC-012 复合 registry key）、`4cc0edb`（RTC-013 使用 pinned provider 支持的验证方式）、
+  `693aef2`（RTC-014 已连接发布者权限撤销与 Egress 方向）、`474c89d`（RTC-015 分离 topology、
+  标准 ICE candidate type 和派生 outcome）、`ed60e51`（依赖必须 completed 及 Playwright 证据措辞）。
+- 可复现构建：Maven 使用
+  `C:\Users\NJHTR\.m2\wrapper\dists\apache-maven-3.9.14-bin\1cb7fhup6b5n3bed6kckbrnspv\apache-maven-3.9.14\bin\mvn.cmd`；
+  compile 与 `163/163` test 通过。前端使用 bundled Node
+  `C:\Users\NJHTR\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe`
+  (`v24.19.0`)；直接运行项目 `vue-tsc`/RTC ESLint 通过，bundled pnpm `11.19.0` 的 build 通过，
+  保留既有 libarchive、circular chunk 和 vendor size 警告。
+- 状态不变：RTC-006 仍为 `in_progress`；RTC-007、RTC-011～015 仍为 `planned`。没有登录态双客户端、
+  callback runtime/restart、Redis 多实例、2/4/8、负载、多节点、Stage/CDN、P2P 或 CPU/网络/egress
+  数据，RTC-SCALE-001 仍只完成 Wave A。
+
 ## 2026-08-20：RTC-SCALE-001 Wave A 契约、基线修复与真实 smoke
 
 - 基线：分支 `dev/full`，输入 HEAD `415bae2`。RTC-006 在 task/index/state 中均为
@@ -17,10 +42,10 @@
   `640x480`，HLS master/media/TS 和 HTTP-FLV 有真实字节。首次运行发现输出含 SRS session
   `Location`/token；`597c041` 改为 `sessionCreated` 布尔值，修复后重跑同样通过且输出脱敏；
   `1f83efc` 将证据写回 RTC-006 任务。
-- 构建验证：Maven 不在 PATH，使用本机 Maven 3.9.14 绝对路径；`-DskipTests compile` 通过，
+- 构建验证：Maven 不在 PATH，使用本机 Maven 3.9.14 wrapper cache 的 `mvn.cmd`；`-DskipTests compile` 通过，
   全套 `163/163` 通过。`pnpm exec vue-tsc --noEmit --pretty false`、
   `pnpm exec eslint src/modules/rtc`、compose example config 和 diff check 通过。系统 Node 22 的首次
-  `pnpm run build-only` 以 Windows `C000001D` 退出；切换桌面工作区 Node 24 后同一命令通过，
+  `pnpm run build-only` 以 Windows `C000001D` 退出；切换桌面工作区 Node 24.19.0 后同一命令通过，
   保留既有 libarchive externalization、circular chunk 和 vendor 体积警告。
 - 未执行且不宣称通过：两个登录态客户端的 LiveKit 通话 UI、2/4/8 人选择性订阅、后台/最小化/
   摄像头重开矩阵、TURN NAT/TCP/TLS、SRS callback 鉴权和 restart convergence、Redis 多实例

@@ -90,6 +90,10 @@ git diff --check
   `8a50dcf6570770b1e69554d5082e6d789b5b19d4`（RTC-013）、
   `d4a74ce3645e8711d6cf25b07ee22b8d0f54950a`（RTC-014）、
   `95fa8f5d28a87f2fa1a88cbbebbf50b84bdfcc16`（RTC-015）。
+- 独立审查修正：`62f61dc`（RTC-011）、`9feb821`（RTC-012）、`4cc0edb`（RTC-013）、
+  `693aef2`（RTC-014）、`474c89d`（RTC-015）、`ed60e51`（统筹依赖/证据门禁）；基线 smoke
+  修正为 `db93cdf`（TURN 范围/Compose example）和 `1d48b45`（浏览器 fail-closed assertions）。
 - 测试结果：Maven compile、163 项测试、Vue typecheck、RTC ESLint、compose config 和 diff check
-  在 2026-08-20 通过；生产 build 和本轮最终 Git 审计以工作日志为准。
+  在 2026-08-20 通过；bundled Node 24.19.0 production build、provider smoke 8/8 和有 assertion 的
+  SRS browser smoke 也通过，具体命令/环境和未执行矩阵以工作日志为准。
 - 遗留风险：所有未勾选 DoD；不得因本文件存在而降低发布门禁。

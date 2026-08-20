@@ -7,7 +7,7 @@ project:
 baseline:
   observed_at: "2026-08-20"
   branch: dev/full
-  head_commit: 1f83efc
+  head_commit: ed60e51
   remote_tracking: origin/dev/full
   remote_tracking_commit: 890506ae05bb0a2c52b076370d81546a71c80c51
   worktree_dirty: true
@@ -45,15 +45,15 @@ current_task:
     - SRS callback、provider session/reconciliation 和 bounded grace
     - server/sql/migration_038_live_provider_session.sql (036/037 reserved by AI tasks)
     - server/sql/migration_039_normalize_provider_session_id.sql
-  evidence_commits: [25e440a, 3bc701b, 94d349d, 9c70437, ec3f286, 02fa7b8, 876eb57, 2c2ef00, a54c83d, 99acc27, 597c041]
-  evidence_scope: callback/session/reconciliation implementation, atomic generation transitions, legacy sentinel migration, Redis Lua TTL lifecycle, bounded SRS API timeouts and malformed callback fail-closed behavior are covered by Java tests and local Redis verification; direct SRS WHIP/WHEP browser smoke passed after redacting session URLs, while authenticated application clients, real callback runtime, Redis multi-instance and SRS restart gates remain open
+  evidence_commits: [25e440a, 3bc701b, 94d349d, 9c70437, ec3f286, 02fa7b8, 876eb57, 2c2ef00, a54c83d, 99acc27, 597c041, 1d48b45]
+  evidence_scope: callback/session/reconciliation implementation, atomic generation transitions, legacy sentinel migration, Redis Lua TTL lifecycle, bounded SRS API timeouts and malformed callback fail-closed behavior are covered by Java tests and local Redis verification; direct SRS WHIP/WHEP browser smoke now fails closed on missing media and passed with redacted session output, while authenticated application clients, real callback runtime, Redis multi-instance and SRS restart gates remain open
 scale_objective:
   id: RTC-SCALE-001
   status: in_progress
   owner: /root
   started_at: "2026-08-20"
   branch: dev/full
-  current_wave: A_contracts_completed
+  current_wave: A_contracts_completed_and_independently_audited
   implementation_gate: RTC-006 and RTC-007 remain incomplete; RTC-011 through RTC-015 remain planned
   contract: docs/contracts/rtc-scale-control-contract.md
   runbook: docs/runbooks/RTC_SCALE_DEPLOYMENT_AND_ROLLBACK.md
@@ -64,10 +64,18 @@ scale_objective:
     - 8a50dcf6570770b1e69554d5082e6d789b5b19d4
     - d4a74ce3645e8711d6cf25b07ee22b8d0f54950a
     - 95fa8f5d28a87f2fa1a88cbbebbf50b84bdfcc16
+    - 62f61dc56c7d159ec552ab70cb45681141968d1d
+    - 9feb8215d72e4706562894400144a325d9ad236b
+    - 4cc0edb41bbe679b4d9fadfa78bb5048bc739140
+    - 693aef2fbf7f2f97038712236eb7ed5f6b2678f0
+    - 474c89de7208a190390d97ae426a42d9574df10e
+    - ed60e519cc56270c2dae3f89ce1fd861dc7ad9a0
   prerequisite_evidence_commits:
     - 5d70da7
     - 597c041
-  evidence_scope: Wave A architecture, control contracts, task boundaries, rollback and not-run acceptance matrix only; no capacity, multi-node, stage, P2P or authenticated multi-client scale browser claim
+    - db93cdfc3bf749068dc8dfc7bd05a2e3bf7d71cf
+    - 1d48b45644593409f39967571b1837345b1b6f79
+  evidence_scope: Wave A architecture, independently audited control contracts, task boundaries, rollback and not-run acceptance matrix only; no capacity, multi-node, stage, P2P or authenticated multi-client scale browser claim
 tasks:
   - id: RTC-SCALE-001
     title: 客户端减载、多人通话扩容与万人直播分层
@@ -203,6 +211,14 @@ verification:
       result: passed_on_2026-08-20_with_existing_chunk_warnings
     - command: pnpm run build-only (RTC-SCALE Wave A verification)
       result: system_Node_22_failed_with_Windows_C000001D; rerun_with_workspace_Node_24_passed_on_2026-08-20_with_existing_libarchive_circular_chunk_and_vendor_size_warnings
+    - command: 'C:\Users\NJHTR\.m2\wrapper\dists\apache-maven-3.9.14-bin\1cb7fhup6b5n3bed6kckbrnspv\apache-maven-3.9.14\bin\mvn.cmd -f server/pom.xml -DskipTests compile (post-audit)'
+      result: passed_on_2026-08-20
+    - command: 'C:\Users\NJHTR\.m2\wrapper\dists\apache-maven-3.9.14-bin\1cb7fhup6b5n3bed6kckbrnspv\apache-maven-3.9.14\bin\mvn.cmd -f server/pom.xml test (post-audit)'
+      result: passed_163_of_163_on_2026-08-20
+    - command: 'bundled Node v24.19.0 + node_modules/.bin/vue-tsc.cmd --noEmit --pretty false and eslint.cmd src/modules/rtc (post-audit)'
+      result: passed_on_2026-08-20
+    - command: 'bundled Node v24.19.0 + bundled pnpm v11.19.0 run build-only (post-audit)'
+      result: passed_on_2026-08-20_with_existing_libarchive_circular_chunk_and_vendor_size_warnings
     - command: docker compose -f docker-compose.streaming.yml --env-file deploy/streaming/.env.example config --quiet
       result: passed_in_current_worktree
     - command: powershell parser deploy/streaming/provider-callback-smoke.ps1
@@ -217,6 +233,8 @@ verification:
       result: failed_5_of_8_on_2026-08-20; Windows excluded UDP range 49152-49251 prevented coturn binding 49160-49180; SRS, LiveKit metrics and LiveKit CLI media passed
     - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc (after 5d70da7)
       result: passed_8_of_8_on_2026-08-20; containers healthy, SRS API, LiveKit metrics, coturn TCP, SRS HTTP-FLV, TURN UDP allocate and LiveKit CLI real media passed
+    - command: powershell -File deploy/streaming/smoke.ps1 -ProfileName webrtc (after db93cdf with TURN_RELAY_MIN_PORT=40000 and TURN_RELAY_MAX_PORT=40020)
+      result: passed_8_of_8_on_2026-08-20; coturn range is below host dynamic UDP range 49152-65535 and REST credential allocation passed
     - command: mvn -f server/pom.xml -Dtest=com.douyin.service.LiveProviderReconciliationJobTest,com.douyin.service.LiveProviderReconciliationTransitionServiceTest,com.douyin.service.LiveProviderSessionServiceTest,com.douyin.service.SrsLiveProviderClientTest,com.douyin.service.impl.LiveServiceImplProviderGenerationTest test
       result: passed_33_of_33_on_2026-08-20
     - command: local Redis 6379 LivePresenceService jshell verification
@@ -229,6 +247,8 @@ verification:
       result: passed (SRS_RTC_CANDIDATE=172.21.160.1; WHIP connected; WHEP decoded first frame 640x480; HLS master/media/TS and HTTP-FLV bytes)
     - command: bundled Node 24 + Playwright runtime docs/verification/.rtc006_browser_smoke.mjs (after 597c041)
       result: passed_on_2026-08-20 (WHIP connected; WHEP decoded first frame 640x480; HLS master/media/TS and HTTP-FLV bytes; session URLs/tokens redacted)
+    - command: bundled Node v24.19.0 + Playwright + Chrome docs/verification/.rtc006_browser_smoke.mjs (after 1d48b45)
+      result: passed_on_2026-08-20 (asserted WHIP/WHEP connected, session creation, 640x480 decoded frame, nonempty HLS master/media/TS and HTTP-FLV; failure response body redacted)
     - command: ffprobe HLS TS segment
       result: passed (H.264 video 640x480 + AAC audio)
     - command: pnpm exec eslint src/pages/live/LiveCreate.vue src/utils/streaming/srs_rtc.ts
@@ -249,7 +269,7 @@ verification:
     - turn_nat_matrix
     - turn_tls_5349 (no cert until RTC-003)
     - rtc-e2e_backend_livekit_webhook (needs migration_034/035 + backend up, RTC-004)
-    - srs_whip_whep_browser_media_smoke (passed locally; requires host-reachable candidate and Playwright/Chromium in repeatable CI)
+    - repeatable_ci_srs_whip_whep_browser_media_smoke (local bundled Playwright/Chrome run passed; project dependency and CI job are not installed/configured)
     - live_presence_redis_multi_instance_and_abnormal_disconnect (RTC-006 review gate; only single local Redis touch/count/leave was executed)
     - live_provider_callback_runtime_and_restart_recovery (RTC-006 review gate; Spring backend was not running)
     - browser_post_change_dual_authenticated_app_media (direct SRS WHIP/WHEP browser smoke passed; two logged-in application clients and LiveKit call UI were not executed)
@@ -260,5 +280,5 @@ verification:
     - rtc_scale_100x2_100x8_1000x2_load_matrix (no load harness or multi-node cluster)
     - rtc_scale_livekit_redis_multinode_and_turn_region_failover (only single-node development templates exist)
     - rtc_scale_stage_10k_audience_and_cdn (Stage, egress and CDN environment do not exist)
-last_verified_commit: 597c041
-last_doc_commit: 1f83efc
+last_verified_commit: ed60e51
+last_doc_commit: ed60e51
