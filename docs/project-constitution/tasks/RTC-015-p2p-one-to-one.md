@@ -34,6 +34,8 @@ CONNECTING 的通话尝试 P2P。selected local/remote ICE candidate type 均为
 - Consent 绑定 `call_id + topology_generation + participant_id`，双方独立同意，有 TTL，可撤销。
 - Offer/answer/ICE 使用独立版本化 envelope，校验成员、seq、TTL、大小和候选数量；candidate
   可早于 remote description 缓存，重复 event_id 幂等。
+- 独立 RTC signaling port 可以在 Spring 中临时中继经 ACL/consent/generation 校验的有界 SDP/ICE
+  envelope；原始 SDP、私网 candidate 和 TURN 凭据不写 Kafka/数据库/聊天 WS/日志，只审计元数据和散列。
 - PROBING 预算 1.5～3 秒；relay、ICE failed、TURN-only 或预算到期记录稳定 reason 后回退 SFU。
 - 业务已 CONNECTED 后不得静默热切换。质量/权限变化必须进入用户可见 RECONNECTING，控制面
   增加 generation/审计后才能连接原 LiveKit SFU。
@@ -41,7 +43,7 @@ CONNECTING 的通话尝试 P2P。selected local/remote ICE candidate type 均为
 ## 实现输出
 
 1. 服务端 topology eligibility、consent、generation、TTL、ACL 和审计 API/状态机。
-2. 独立 P2P adapter 与版本化 offer/answer/ICE signaling，不复用旧 mesh。
+2. 独立 P2P adapter 与认证、有界、非持久化原文的 offer/answer/ICE signaling port，不复用旧 mesh。
 3. 短期 TURN credential port、标准 `host|srflx|prflx|relay` candidate pair 分类，以及独立的
    `topology=p2p|sfu` 与 `transport_outcome=direct|srflx|relay|sfu`。
 4. 有界 P2P probe、LiveKit SFU fallback 和权限/质量回退原因。

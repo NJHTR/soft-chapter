@@ -6,8 +6,13 @@
 - 生效条件：各子任务通过自己的真实环境门禁后分别启用
 
 本文只定义控制面、配置和审计契约，不证明任何生产容量。LiveKit、coturn、SRS、CDN 和浏览器
-仍然承载媒体；Spring Boot、Kafka、数据库和聊天 WebSocket 不得转发 RTP、SDP、音视频帧或
-完整高频 WebRTC stats。
+仍然承载媒体；Spring Boot、Kafka、数据库和聊天 WebSocket 不得转发 RTP、音视频帧或完整高频
+WebRTC stats。Kafka、数据库和聊天 WebSocket 也不得承载原始 SDP/ICE。
+
+唯一 SDP/ICE 例外是 RTC-015 的独立 RTC signaling port：它可以在 Spring 控制面中临时中继有界、
+版本化、已认证的 offer/answer/candidate envelope，但必须校验 call roster、双方 consent、
+topology generation、seq、TTL、body/candidate 数量和速率。原始 SDP、私网 candidate 和 TURN 凭据
+不得进入 Kafka、数据库、聊天 WS、日志或审计正文；审计只保留 event id、类型、大小、散列和结果。
 
 ## 1. 通用 envelope
 
@@ -233,8 +238,9 @@ PROBING 预算为 1.5～3 秒。只接受 selected local/remote candidate type �
 
 每次 attempt 记录 `topology=p2p|sfu`、selected local/remote candidate type、派生的
 `direct|srflx|relay|sfu` outcome、RTT、丢包、CPU/电量、SFU egress 和稳定的回退原因。
-版本化 P2P offer/answer/ICE 只能承载 SDP/ICE 控制数据，限制大小、成员、顺序和 TTL；不得复用
-旧 Call.vue mesh，也不得允许聊天 WS 转发媒体/base64。
+版本化 P2P offer/answer/ICE 只能经独立、认证的 RTC signaling port 承载 SDP/ICE 控制数据，限制
+大小、成员、consent、generation、顺序、TTL、candidate 数量和速率；不得复用旧 Call.vue mesh，
+不得经聊天 WS/Kafka 转发，也不得转发媒体/base64。
 
 ## 8. 回滚与审计
 
