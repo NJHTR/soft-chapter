@@ -29,6 +29,7 @@
 - 新增 `server/sql/migration_038_live_provider_session.sql`，036/037 保留给 AI-003/AI-004，不重编号。
 - `3bc701b`、`02fa7b8`、`876eb57` 增加回调事务房间锁、SRS provider generation CAS 和 `on_unpublish/on_stop` 的签名媒体 token 校验；`94d349d` 拒绝缺失/非法 presence session；`9c70437`、`ec3f286` 补齐 generation、分页和 grace 单测。
 - `2c2ef00` 兼容旧房间的空字符串 provider generation，并新增 `migration_039_normalize_provider_session_id.sql`；`a54c83d` 将缺流、代际变化和 grace 到期的 retirement/CAS 收敛放入同一事务，避免 stale reconciliation 阻塞同 SRS server 重连；`99acc27` 使用 Redis Lua 原子维护 presence TTL/key 生命周期，给 SRS API 增加有界 connect/read timeout，并让畸形 callback URL 参数 fail-closed。
+- `597c041` 将浏览器媒体 smoke 的 SRS session `Location` 改为布尔结果，避免在验收输出中泄露临时 token；修复后以 Chrome/Playwright 重跑 WHIP、WHEP 首帧、HLS 和 HTTP-FLV 全部通过。
 
 ## 必查兼容项
 
@@ -42,7 +43,7 @@
 - [x] 旧 `/api/live/engine/webrtc/offer` 返回 410，前端不再导出伪造 offer API。
 - [x] 前端 WHEP/HLS/HTTP-FLV 适配器、代理前缀和播放器清理路径已实现。
 - [x] WHEP/WHIP 异步竞态、断线回调和页面级有限退避恢复已实现；恢复次数有上限，不把控制 WS 重连误当作媒体恢复。
-- [x] 本机 Docker 媒体验收通过：`SRS_RTC_CANDIDATE=172.21.160.1` 时 WHIP `connected`、WHEP 首帧 `640x480`、HLS master/media playlist 与 TS 片段、HTTP-FLV 数据均可读；TS 经 `ffprobe` 确认为 H.264/AAC。
+- [x] 本机 Docker 媒体验收通过：`SRS_RTC_CANDIDATE=172.21.160.1` 时 WHIP `connected`、WHEP 首帧 `640x480`、HLS master/media playlist 与 TS 片段、HTTP-FLV 数据均可读；TS 经 `ffprobe` 确认为 H.264/AAC。2026-08-20 在 `597c041` 后使用 Chrome/Playwright 重跑通过且输出不含 session URL/token。
 - [ ] HTTPS/公网 candidate 下的主播重连、跨网络 ICE/TURN 和浏览器矩阵仍待发布环境验收；前端已具备有界恢复逻辑。
 - [x] viewer presence 已改为 `(room,user,session)` Redis TTL 成员；REST join/leave 与控制 WS 共用幂等 session，避免数据库和连接数双计。仍需在真实 Redis 多实例和异常断开环境复测。
 - [x] 主播所有权、短期 ingest/play token、SRS callback、房间状态和 viewer 权限的 Java/MockMvc 契约测试已覆盖；当前 Maven 全套 `148/148` 通过。
