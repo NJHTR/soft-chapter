@@ -27,7 +27,8 @@
 
 - 统一契约：`docs/contracts/rtc-scale-control-contract.md` 第 4 节。
 - Join 显式携带 `scope=direct|group|stage`，不得用当前远端人数猜测拓扑。
-- Registry 以 `publication_id + source` 管理 microphone、camera、screen share 和 screen audio。
+- Registry 以 `(participant_id, publication_id, source)` 管理 microphone、camera、screen share 和
+  screen audio；participant leave、publication replace 和 source 恢复都使用同一复合键。
 - Adapter 只有期望订阅/质量变化时才调用 LiveKit `setSubscribed` / `setVideoQuality`。
 - 屏幕共享保持 `HIGH` 且优先于摄像头；主画面和 active speaker 为 `HIGH`，普通可见 tile 默认
   `MEDIUM`，弱网或人数策略可降 `LOW`。
@@ -58,7 +59,8 @@ git diff --check
 
 ## Definition of Done
 
-- [ ] `RtcMediaPort` 能按 publication/identity 控制音频、视频和质量层，不泄漏 LiveKit 类型。
+- [ ] `RtcMediaPort` 能按 `(participant_id, publication_id, source)` 控制音频、视频和质量层，不泄漏
+  LiveKit 类型。
 - [ ] `setSubscribed`、`setVideoQuality`、TrackPublished/Unpublished 和轨道清理有 provider mock 契约测试。
 - [ ] direct/group/stage、未来 publication、重复策略、迟到事件、摄像头重开、屏幕共享恢复和 rejoin 测试通过。
 - [ ] `adaptiveStream` 仅在真实 `RemoteTrack.attach/detach` 或等价可见性契约通过后打开。
