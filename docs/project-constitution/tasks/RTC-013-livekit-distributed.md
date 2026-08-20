@@ -31,7 +31,8 @@ coturn pool、短期凭据、节点 drain 和故障恢复策略。
 
 ## 实现输出
 
-1. 至少双节点的独立 cluster compose/Helm values、共享 Redis TLS/auth 和负载入口模板。
+1. 至少双节点的 `docker-compose.rtc-cluster.yml`、`deploy/rtc/cluster/livekit-node-a.yaml`、
+   `livekit-node-b.yaml`、共享 Redis TLS/auth 和负载入口模板。
 2. 唯一节点/地域/advertised IP/UDP 端口约束与容量登记。
 3. TURN 区域清单、健康/故障切换模板和短期 credential adapter。
 4. 节点 drain、Redis 故障、版本升级、DNS/LB 回滚 runbook。
@@ -41,14 +42,17 @@ coturn pool、短期凭据、节点 drain 和故障恢复策略。
 
 ```text
 docker compose -f docker-compose.streaming.yml --env-file deploy/streaming/.env.example config --quiet
-docker compose -f <cluster-compose> --env-file <private-env> config --quiet
-livekit-server --config <rendered-node-a.yaml> --config-body-only
-livekit-server --config <rendered-node-b.yaml> --config-body-only
-coturn -c <rendered-region.conf> --check-config
+docker compose -f docker-compose.rtc-cluster.yml --env-file deploy/rtc/cluster/.env.example config --quiet
+docker run --rm -v "${PWD}/deploy/rtc/cluster/livekit-node-a.yaml:/etc/livekit.yaml:ro" livekit/livekit-server:v1.13.5 --config /etc/livekit.yaml ports
+docker run --rm -v "${PWD}/deploy/rtc/cluster/livekit-node-b.yaml:/etc/livekit.yaml:ro" livekit/livekit-server:v1.13.5 --config /etc/livekit.yaml ports
+powershell -File deploy/rtc/validate-coturn-startup.ps1 -ComposeFile docker-compose.rtc-cluster.yml -Service turn-region-a
 git diff --check
 ```
 
-CLI 参数必须按锁定的 provider 版本确认。真实验收脚本不得输出 Redis/TURN/LiveKit secret。
+上述 cluster 文件和 bounded-start validator 是 RTC-013 实现提交必须创建的固定输出。LiveKit
+`ports` 会解析配置并退出；锁定的 coturn 4.17.2 没有 dry-run/`--check-config`，因此 validator 必须
+启动隔离容器、确认其持续运行且日志无配置错误，再有界停止。真实验收脚本不得输出
+Redis/TURN/LiveKit secret。
 
 ## Definition of Done
 
