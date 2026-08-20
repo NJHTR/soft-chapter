@@ -16,9 +16,10 @@
 
 ## 目标与非目标
 
-仅对 direct、恰好两人、双方针对当前 call/generation 明确同意且仍在 CONNECTING 的通话尝试
-P2P。selected ICE pair 为 host/direct 或 srflx 才使用 P2P；relay、超时、质量或权限问题走可审计
-LiveKit SFU fallback。
+仅对业务 `scope=direct`（1 对 1）、恰好两人、双方针对当前 call/generation 明确同意且仍在
+CONNECTING 的通话尝试 P2P。selected local/remote ICE candidate type 均为非 relay
+（`host|srflx|prflx`）才使用 P2P；
+任一 `relay`、超时、质量或权限问题走可审计 LiveKit SFU fallback。
 
 非目标：P2P 不是 LiveKit 的通用替代；不保证服务器零流量；不为群聊建立 mesh；不在无真实
 双浏览器/NAT 数据时开启生产开关。
@@ -28,8 +29,8 @@ LiveKit SFU fallback。
 - 统一契约：`docs/contracts/rtc-scale-control-contract.md` 第 7 节。
 - `DISABLED -> ELIGIBLE -> CONSENTED -> PROBING -> P2P_CONNECTED`；失败经
   `FALLING_BACK -> SFU_CONNECTED|FAILED`。
-- Eligibility 同时要求：direct、两名有效成员、当前 ACCEPTED/NEGOTIATING、无录制/审核/Stage、
-  feature flag 开启、ACL/token 有效。
+- Eligibility 同时要求：业务 `scope=direct`、两名有效成员、当前 ACCEPTED/NEGOTIATING、
+  无录制/审核/Stage、feature flag 开启、ACL/token 有效。
 - Consent 绑定 `call_id + topology_generation + participant_id`，双方独立同意，有 TTL，可撤销。
 - Offer/answer/ICE 使用独立版本化 envelope，校验成员、seq、TTL、大小和候选数量；candidate
   可早于 remote description 缓存，重复 event_id 幂等。
@@ -41,7 +42,8 @@ LiveKit SFU fallback。
 
 1. 服务端 topology eligibility、consent、generation、TTL、ACL 和审计 API/状态机。
 2. 独立 P2P adapter 与版本化 offer/answer/ICE signaling，不复用旧 mesh。
-3. 短期 TURN credential port 和 host/srflx/relay/sfu candidate 分类。
+3. 短期 TURN credential port、标准 `host|srflx|prflx|relay` candidate pair 分类，以及独立的
+   `topology=p2p|sfu` 与 `transport_outcome=direct|srflx|relay|sfu`。
 4. 有界 P2P probe、LiveKit SFU fallback 和权限/质量回退原因。
 5. attempt、成功率、SFU fallback、TURN relay、RTT、loss、CPU/电量和 SFU egress 摘要。
 
@@ -51,8 +53,8 @@ LiveKit SFU fallback。
 mvn -f server/pom.xml -Dtest=com.douyin.rtc.p2p.** test
 mvn -f server/pom.xml test
 pnpm exec vue-tsc --noEmit --pretty false
-pnpm exec eslint <p2p-adapter-and-signaling-files>
-pnpm exec vitest run <p2p-tests>
+pnpm exec eslint src/modules/rtc/p2p
+pnpm exec vitest run src/modules/rtc/p2p
 git diff --check
 ```
 
@@ -64,9 +66,11 @@ git diff --check
 - [ ] 开关默认关闭且 fail-closed，服务端拒绝 group/live/stage/recording/moderation/未同意请求。
 - [ ] 恰好两人、双方 consent、CONNECTING/generation 和权限撤销有并发/重复/乱序/过期测试。
 - [ ] 独立版本化 offer/answer/ICE、短期 TURN 凭据和 1.5～3 秒预算通过契约测试。
-- [ ] 只有 host/direct 或 srflx selected pair 使用 P2P；relay、超时和失败自动回退 LiveKit SFU。
+- [ ] 只有 local/remote candidate type 均为 `host|srflx|prflx` 的 selected pair 使用 P2P；任一
+  `relay`、超时和失败自动回退 LiveKit SFU。
 - [ ] 已 CONNECTED 后没有静默 room/topology 切换，用户可见重连与审计路径通过。
-- [ ] 记录 direct/srflx/relay/sfu、RTT、丢包、CPU/电量、SFU egress 和稳定回退原因。
+- [ ] 分别记录 `p2p|sfu` topology、local/remote 标准 candidate type、派生的
+  `direct|srflx|relay|sfu` outcome、RTT、丢包、CPU/电量、SFU egress 和稳定回退原因。
 - [ ] IPv4/IPv6、直连、对称 NAT、企业网、UDP 禁用、TURN 不可用、relay、失败回退和挂断通过
   双浏览器验收，并有真实成功率/回退率/relay 比例。
 

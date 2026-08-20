@@ -97,7 +97,8 @@ Reservation 使用 `PENDING -> CONSUMED|RELEASED|EXPIRED` 生命周期：
 
 ```text
 schema_version, event_id, trace_id, call_id, room_id,
-provider, topology, candidate_type, sampled_at, window_ms,
+provider, topology, selected_local_candidate_type, selected_remote_candidate_type,
+transport_outcome, sampled_at, window_ms,
 connection_state, first_frame_ms, freezes, freeze_duration_ms,
 rtt_ms, jitter_ms, packets_lost, packets_received,
 bytes_sent, bytes_received, available_outgoing_bitrate,
@@ -107,8 +108,11 @@ nack_count, pli_count, fir_count, reconnect_count,
 cpu_ratio, memory_mb, battery_delta
 ```
 
-`topology` 取 `direct|srflx|relay|sfu`。room/user/call 明细写入受控聚合存储；Kafka 仅允许发送
-窗口摘要，不允许发送完整 `RTCStatsReport`。Prometheus 不使用 room/user/call/trace 作为 label。
+`topology` 只取 `p2p|sfu`。selected local/remote candidate type 分别使用 WebRTC 标准枚举
+`host|srflx|prflx|relay`；`transport_outcome` 是派生业务分类 `direct|srflx|relay|sfu`：P2P
+host/host 为 direct，任一非 relay 的 srflx/prflx 为 srflx，任一 relay 为 relay，SFU 为 sfu。
+room/user/call 明细写入受控聚合存储；Kafka 仅允许发送窗口摘要，不允许发送完整
+`RTCStatsReport`。Prometheus 不使用 room/user/call/trace 作为 label。
 
 ## 4. 选择性订阅与轨道生命周期
 
@@ -206,12 +210,14 @@ DISABLED -> ELIGIBLE -> CONSENTED -> PROBING
 PROBING -> P2P_CONNECTED | FALLING_BACK -> SFU_CONNECTED | FAILED
 ```
 
-PROBING 预算为 1.5～3 秒。只接受 selected candidate pair 为 `host/direct` 或 `srflx` 的 ICE
-连接；`relay`、超时、权限变化或探测质量不达标立即进入 `FALLING_BACK` 并连接原 LiveKit SFU。
+PROBING 预算为 1.5～3 秒。只接受 selected local/remote candidate type 均不是 `relay` 的 ICE
+连接：host/host 记为 `direct`，任一 `srflx|prflx` 记为 `srflx`。任一 candidate 为 `relay`、
+超时、权限变化或探测质量不达标，立即记录该 outcome，进入 `FALLING_BACK` 并连接原 LiveKit SFU。
 在业务已经 `CONNECTED` 后发生质量恶化时，必须先进入用户可见的 `RECONNECTING`，由控制面
 记录 generation 和 fallback reason，再重连 SFU；禁止后台静默换房间或拓扑。
 
-每次 attempt 记录 `direct|srflx|relay|sfu`、RTT、丢包、CPU/电量、SFU egress 和稳定的回退原因。
+每次 attempt 记录 `topology=p2p|sfu`、selected local/remote candidate type、派生的
+`direct|srflx|relay|sfu` outcome、RTT、丢包、CPU/电量、SFU egress 和稳定的回退原因。
 版本化 P2P offer/answer/ICE 只能承载 SDP/ICE 控制数据，限制大小、成员、顺序和 TTL；不得复用
 旧 Call.vue mesh，也不得允许聊天 WS 转发媒体/base64。
 

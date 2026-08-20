@@ -103,7 +103,8 @@
 
 1. 开关保持关闭，仅验证 eligibility、consent、TTL、候选分类和审计。
 2. 内部测试账号开启 1 对 1 direct；群聊、Stage、录制、审核强制拒绝。
-3. 依次执行 host、srflx、relay、IPv6、UDP 禁用、TURN 不可用、超时和权限撤销。
+3. 依次执行 host、srflx、prflx、relay、IPv6、UDP 禁用、TURN 不可用、超时和权限撤销；分别
+   记录 `p2p|sfu` topology、local/remote candidate type 和 `direct|srflx|relay|sfu` outcome。
 4. 只有直连成功率、SFU fallback 成功率、TURN relay 比例、CPU/电量和通话失败率满足门禁后，
    才扩大灰度。
 
@@ -117,7 +118,7 @@
 
 | 场景 | 必须记录 | 当前基线 |
 |---|---|---|
-| 双浏览器 1 对 1 SFU/P2P fallback | candidate、RTT、loss、CPU、fallback reason | `not_run` |
+| 双浏览器 1 对 1 SFU/P2P fallback | topology、local/remote candidate type、outcome、RTT、loss、CPU、fallback reason | `not_run` |
 | 2/4/8 人选择性订阅 | subscribed publications、层、egress、CPU、首帧、冻结 | `not_run` |
 | 摄像头关闭/重开、屏幕共享 | trackSid/source/generation、黑屏/重复音频 | `not_run` |
 | 最小化、后台、恢复 | video subscribed、audio continuity、恢复首帧 | `not_run` |
