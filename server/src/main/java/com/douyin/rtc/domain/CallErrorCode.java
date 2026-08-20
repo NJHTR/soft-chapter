@@ -37,5 +37,11 @@ public enum CallErrorCode {
     /** RTC-014 Stage 发布者到达硬上限(默认 8) */
     STAGE_LIMIT_REACHED,
     /** RTC-014 命令携带的 stage_generation 已过期(乱序旧事件不得复活成员) */
-    GENERATION_STALE
+    GENERATION_STALE,
+    /** RTC-015 通话当前不满足 P2P eligibility,拒绝创建 attempt */
+    P2P_NOT_ELIGIBLE,
+    /** RTC-015 P2P 信号或 probe 前必须双方 consent 且在 TTL 内 */
+    P2P_CONSENT_REQUIRED,
+    /** RTC-015 该 call_id + topology_generation 的 consent 已过期或已撤销 */
+    P2P_CONSENT_EXPIRED
 }
