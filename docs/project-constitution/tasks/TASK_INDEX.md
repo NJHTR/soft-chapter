@@ -74,6 +74,9 @@ RTC-007 到 RTC-010 必须在真实浏览器、TURN、弱网、重连和故障�
   或万人直播能力。
 - Wave A 独立审查修正：`62f61dc`、`9feb821`、`4cc0edb`、`693aef2`、`474c89d`、`ed60e51`；
   TURN/browser 基线修正为 `db93cdf`、`1d48b45`。依赖门仍未关闭，任务状态不变。
+- 二次语义审查修正：`6283d90`、`67c4467`、`197fdbc`；`da68dc1` 将 RTC-004/005 与任务文件
+  统一为 `in_progress`，`fefff70` 同步 RTC-006 当前证据，`a94e75e` 补齐 RTC-011 逐维 reservation
+  absorption/rebind 契约。RTC-011～015 仍未启动实现。
 
 ---
 

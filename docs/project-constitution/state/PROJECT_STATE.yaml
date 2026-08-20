@@ -7,7 +7,7 @@ project:
 baseline:
   observed_at: "2026-08-20"
   branch: dev/full
-  head_commit: ed60e51
+  head_commit: a94e75e
   remote_tracking: origin/dev/full
   remote_tracking_commit: 890506ae05bb0a2c52b076370d81546a71c80c51
   worktree_dirty: true
@@ -32,7 +32,7 @@ architecture_decisions:
 current_task:
   id: RTC-006
   status: in_progress
-  owner: main-dev-agent
+  owner: /root
   started_at: "2026-08-17"
   branch: dev/full
   scope: migrate_live_streaming_to_whip_whep
@@ -70,12 +70,17 @@ scale_objective:
     - 693aef2fbf7f2f97038712236eb7ed5f6b2678f0
     - 474c89de7208a190390d97ae426a42d9574df10e
     - ed60e519cc56270c2dae3f89ce1fd861dc7ad9a0
+    - 6283d902889e92ccc51bf8dd7988c26da28efbf3
+    - 67c4467dd81fc8baf8061cd533b859b0e8b92cf2
+    - 197fdbcc1b20cbb41864c59886bfd8d149280982
+    - da68dc1b22e333b6a1b89aa6bf9d59ee7fe15614
+    - a94e75e9b51439c249878451bc4e73468e2ba975
   prerequisite_evidence_commits:
     - 5d70da7
     - 597c041
     - db93cdfc3bf749068dc8dfc7bd05a2e3bf7d71cf
     - 1d48b45644593409f39967571b1837345b1b6f79
-  evidence_scope: Wave A architecture, independently audited control contracts, task boundaries, rollback and not-run acceptance matrix only; no capacity, multi-node, stage, P2P or authenticated multi-client scale browser claim
+  evidence_scope: Wave A architecture, independently audited vector-aware control contracts, reconciled dependency gates, rollback and not-run acceptance matrix only; no capacity, multi-node, stage, P2P or authenticated multi-client scale browser claim
 tasks:
   - id: RTC-SCALE-001
     title: 客户端减载、多人通话扩容与万人直播分层
@@ -282,5 +287,5 @@ verification:
     - rtc_scale_100x2_100x8_1000x2_load_matrix (no load harness or multi-node cluster)
     - rtc_scale_livekit_redis_multinode_and_turn_region_failover (only single-node development templates exist)
     - rtc_scale_stage_10k_audience_and_cdn (Stage, egress and CDN environment do not exist)
-last_verified_commit: ed60e51
-last_doc_commit: ed60e51
+last_verified_commit: a94e75e
+last_doc_commit: a94e75e

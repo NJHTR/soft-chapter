@@ -98,6 +98,10 @@ git diff --check
 - 独立审查修正：`62f61dc`（RTC-011）、`9feb821`（RTC-012）、`4cc0edb`（RTC-013）、
   `693aef2`（RTC-014）、`474c89d`（RTC-015）、`ed60e51`（统筹依赖/证据门禁）；基线 smoke
   修正为 `db93cdf`（TURN 范围/Compose example）和 `1d48b45`（浏览器 fail-closed assertions）。
+- 二次语义审查修正：`6283d90`（RTC-011 snapshot absorption）、`67c4467`（RTC-012 shared key）、
+  `197fdbc`（RTC-015 bounded signaling）、`da68dc1`（RTC-004/005 状态与依赖门一致）；`fefff70`
+  同步 RTC-006 当前验证记录；`a94e75e`（RTC-011 vector absorption、node/epoch rebind 和 ambiguous
+  create outcome 保守预留）经独立复审通过。
 - 测试结果：Maven compile、163 项测试、Vue typecheck、RTC ESLint、compose config 和 diff check
   在 2026-08-20 通过；bundled Node 24.19.0 production build、provider smoke 8/8 和有 assertion 的
   SRS browser smoke 也通过，具体命令/环境和未执行矩阵以工作日志为准。

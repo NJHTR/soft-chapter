@@ -1,5 +1,21 @@
 # 工作日志
 
+## 2026-08-20：RTC-SCALE-001 Wave A 二次语义审查收口
+
+- 二次审查没有接受“已大幅修正”作为结束条件，又识别出 reservation aggregate absorption、共享
+  publication key、受控 SDP signaling 例外和 RTC-004/005 状态矛盾。修正提交为：`6283d90`
+  （RTC-011 使用 node epoch/snapshot seq/provider membership 明确吸收 reservation）、`67c4467`
+  （RTC-012 统一复合 registry key）、`197fdbc`（RTC-015 只允许独立认证、有界且不持久化原文的
+  RTC signaling port 中继 SDP/ICE 控制数据）。
+- `da68dc1` 按任务文件的真实 DoD 将 RTC-004/005 在 state/index 统一为 `in_progress`，并明确只有
+  task/index/state 一致且真实证据齐全才算依赖完成。`fefff70` 同步 RTC-006 任务文件、`163/163`
+  Maven 结果和 `1d48b45` fail-closed browser smoke；本次状态收口将 state owner 对齐为 `/root`。
+- `a94e75e` 将 admission reservation 改为 reserved/observed/remaining vector 逐维吸收，补齐
+  node/epoch rebind 与 ambiguous create outcome 保守预留；独立复审通过且没有任务或能力被提升为
+  completed/verified。
+- 当前实现门：RTC-004、RTC-005、RTC-006 均 `in_progress`，RTC-007、RTC-011～015 均 `planned`。
+  因依赖未完成，Wave B～F 业务实现仍未启动；这是一项门禁结论，不是外部阻塞状态。
+
 ## 2026-08-20：RTC-SCALE-001 Wave A 独立审查修正
 
 - 三个只读审查者逐提交检查 Wave A、TURN/browser smoke 和状态提交；所有 parent diff check 均通过。
