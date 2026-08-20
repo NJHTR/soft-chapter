@@ -167,7 +167,7 @@ draining/capacity/expires_at`。
 
 ```text
 AUDIENCE -> REQUESTED -> PROMOTING -> ON_STAGE -> DEMOTING -> AUDIENCE
-                    \-> REVOKED <-/
+                    \-> REVOKING -> REVOKED
 ```
 
 | 命令 | 权限与效果 |
@@ -175,14 +175,19 @@ AUDIENCE -> REQUESTED -> PROMOTING -> ON_STAGE -> DEMOTING -> AUDIENCE
 | `stage.request` | 观众本人申请；重复请求返回同一 request |
 | `stage.approve` | 主播/主持人批准；预留名额并进入 PROMOTING |
 | `stage.joined` | provider webhook/受控确认；generation 匹配后进入 ON_STAGE |
-| `stage.demote` | 本人退出或主持人下麦；进入 DEMOTING，撤销发布 token |
+| `stage.demote` | 本人退出或主持人下麦；进入 DEMOTING，停止补签并撤销 provider 发布权限 |
 | `stage.left` | provider 确认或有界超时收敛到 AUDIENCE |
-| `stage.revoke` | 权限撤销；立即拒绝补签，进入 REVOKED 并审计 |
+| `stage.revoke` | 权限撤销；立即拒绝补签，进入 REVOKING，provider 确认后进入 REVOKED |
 
-所有命令使用 `event_id + stage_generation` 幂等/CAS。乱序旧 generation 不得复活成员。LiveKit
-Egress/Ingress 到 SRS 是 provider 控制命令，媒体不经过 Spring。Egress 失败时回滚到当前 SRS
-单主播 audience，不能把全体观众迁入 Stage。观众降级和断线恢复只切换 WHEP/LL-HLS/HLS/
-HTTP-FLV/CDN 出口，不授予发布权限。
+所有命令使用 `event_id + stage_generation` 幂等/CAS。乱序旧 generation 不得复活成员。已签发并
+使用的 JWT 不能靠停止补签撤销：DEMOTING/REVOKING 必须调用 LiveKit participant permission API
+移除 publish 权限；provider 不支持或调用失败时强制断开该 participant，并以 webhook/查询确认其
+不再发布。确认超时由 generation-aware reconciler 重试和告警，不能把成员提前标成已撤销。
+
+Stage 到 SRS 使用 LiveKit Egress provider 控制命令，媒体不经过 Spring。Ingress 只用于把外部源
+导入 LiveKit，不属于正常 Stage-to-SRS 路径。Egress 失败时回滚到当前 SRS 单主播 audience，不能
+把全体观众迁入 Stage。观众降级和断线恢复只切换 WHEP/LL-HLS/HLS/HTTP-FLV/CDN 出口，不授予
+发布权限。
 
 ## 7. 受控 1 对 1 P2P
 

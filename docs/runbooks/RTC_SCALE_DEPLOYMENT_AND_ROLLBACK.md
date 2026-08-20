@@ -85,13 +85,15 @@
 ### 部署顺序
 
 1. 保持 audience 现有 SRS WHEP/HLS/HTTP-FLV 路径，先上线只读 stage 状态和审计。
-2. 测试主播 + 1 嘉宾，验证 LiveKit Egress/Ingress 到 SRS，确认媒体不经过 Spring/Kafka。
+2. 测试主播 + 1 嘉宾，验证 LiveKit Egress 到 SRS，确认媒体不经过 Spring/Kafka。Ingress 仅用于
+   外部源导入 LiveKit，不属于 Stage-to-SRS 路径。
 3. 验证 8 人硬上限、重复/乱序请求、断线恢复、权限撤销和 egress 失败回滚。
 4. audience 负载逐级放大；每个观众只创建 SRS/CDN 会话，不创建 LiveKit participant。
 
 ### 回滚
 
-- 关闭新 promotion，撤销 stage token，已在台成员进入 DEMOTING。
+- 关闭新 promotion 和 token 补签，已在台成员进入 DEMOTING/REVOKING；调用 LiveKit participant
+  permission API 移除发布权限，失败时断开 participant，并等待 provider 确认或 reconciliation。
 - audience 始终保持或回到现有单主播 SRS 路径；不得将 audience 回滚进 LiveKit 房间。
 - Egress generation 失败时只退休匹配 generation，旧 callback 不得终止新 egress。
 
