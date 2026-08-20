@@ -3,6 +3,8 @@
 - 状态：accepted
 - 日期：2026-08-19
 - 关联任务：RTC-007、RTC-010；后续拆分为 RTC-011～RTC-015
+- 控制契约：`docs/contracts/rtc-scale-control-contract.md`
+- 部署与回滚：`docs/runbooks/RTC_SCALE_DEPLOYMENT_AND_ROLLBACK.md`
 
 ## 背景
 

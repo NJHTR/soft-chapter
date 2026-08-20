@@ -11,6 +11,10 @@
 
 当前本地 compose 只有一个 LiveKit 节点和有限 UDP/TURN 端口池，属于开发配置，不能按生产万人规模估算。
 
+容量登记、admission、QoE 摘要、publication 生命周期、Stage/P2P 状态机的版本化控制约束见
+`docs/contracts/rtc-scale-control-contract.md`；发布顺序和故障回滚见
+`docs/runbooks/RTC_SCALE_DEPLOYMENT_AND_ROLLBACK.md`。两份文档均不替代真实集群和浏览器证据。
+
 ## 2. 推荐拓扑
 
 ```text
