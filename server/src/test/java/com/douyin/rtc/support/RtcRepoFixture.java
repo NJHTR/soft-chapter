@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -54,6 +55,7 @@ public final class RtcRepoFixture {
 
     public final Set<String> follows = new HashSet<>();
     public final Map<Long, Set<Long>> groupMembersByGroup = new HashMap<>();
+    private final AtomicLong ids = new AtomicLong(1L);
 
     public RtcRepoFixture() {
         wire();
@@ -63,6 +65,12 @@ public final class RtcRepoFixture {
         // ===== 会话 =====
         when(sessions.insert(any(CallSession.class))).thenAnswer(inv -> {
             CallSession s = inv.getArgument(0);
+            if (s.getStateVersion() == null) {
+                s.setStateVersion(0L);
+            }
+            if (s.getId() == null) {
+                s.setId(ids.getAndIncrement());
+            }
             // uk_client_request_id 唯一语义: 冲突时 INSERT 抛 DuplicateKeyException(并发竞态路径)
             if (s.getClientRequestId() != null && sessionsByClientRequest.containsKey(s.getClientRequestId())) {
                 throw new DuplicateKeyException("client_request_id 唯一冲突: " + s.getClientRequestId());
@@ -87,6 +95,21 @@ public final class RtcRepoFixture {
                     .findFirst()
                     .orElse(null);
         });
+        when(sessions.listActiveByUserId(anyLong(), any(), anyInt())).thenAnswer(inv -> {
+            Long userId = inv.getArgument(0);
+            LocalDateTime now = inv.getArgument(1);
+            int limit = inv.getArgument(2);
+            return sessionsByCall.values().stream()
+                    .filter(s -> Set.of("RINGING", "ACCEPTED", "NEGOTIATING", "CONNECTED", "ENDING")
+                            .contains(s.getState()))
+                    .filter(s -> s.getExpiresAt() == null || s.getExpiresAt().isAfter(now))
+                    .filter(s -> participantsByKey.values().stream().anyMatch(p ->
+                            s.getCallId().equals(p.getCallId()) && userId.equals(p.getUserId())
+                                    && Set.of("INVITED", "RINGING", "JOINING", "CONNECTED", "RECONNECTING")
+                                    .contains(p.getState())))
+                    .limit(limit)
+                    .toList();
+        });
         when(sessions.findExpiredBefore(anyString(), any()))
                 .thenAnswer(inv -> {
                     String state = inv.getArgument(0);
@@ -96,7 +119,18 @@ public final class RtcRepoFixture {
                             .filter(s -> s.getExpiresAt() != null && !s.getExpiresAt().isAfter(now))
                             .toList();
                 });
-        when(sessions.transitionSession(anyString(), anyString(), anyString(), any(), any(), any(), any()))
+        when(sessions.findTimeoutRecoveryBatch(anyLong(), anyInt())).thenAnswer(inv -> {
+            long afterId = inv.getArgument(0);
+            int limit = inv.getArgument(1);
+            return sessionsByCall.values().stream()
+                    .filter(s -> s.getId() != null && s.getId() > afterId)
+                    .filter(s -> Set.of("RINGING", "NEGOTIATING").contains(s.getState()))
+                    .filter(s -> s.getExpiresAt() != null)
+                    .sorted(Comparator.comparing(CallSession::getId))
+                    .limit(limit)
+                    .toList();
+        });
+        when(sessions.transitionSession(anyString(), anyString(), anyString(), any(), any(), any(), any(), anyLong()))
                 .thenAnswer(inv -> {
                     String callId = inv.getArgument(0);
                     String expected = inv.getArgument(1);
@@ -105,8 +139,10 @@ public final class RtcRepoFixture {
                     LocalDateTime endedAt = inv.getArgument(4);
                     LocalDateTime connectedAt = inv.getArgument(5);
                     LocalDateTime expiresAt = inv.getArgument(6);
+                    Long expectedVersion = inv.getArgument(7);
                     CallSession s = sessionsByCall.get(callId);
-                    if (s == null || !expected.equals(s.getState())) {
+                    if (s == null || !expected.equals(s.getState())
+                            || !expectedVersion.equals(s.getStateVersion())) {
                         return 0;
                     }
                     s.setState(target);
@@ -116,6 +152,9 @@ public final class RtcRepoFixture {
                         s.setConnectedAt(connectedAt);
                     }
                     s.setExpiresAt(expiresAt);
+                    if ("RINGING".equals(target) && s.getRingAt() == null) {
+                        s.setRingAt(LocalDateTime.now());
+                    }
                     return 1;
                 });
 
@@ -194,6 +233,7 @@ public final class RtcRepoFixture {
                 .toList());
 
         // ===== ACL =====
+        when(acl.userExists(anyLong())).thenReturn(true);
         when(acl.mutualFollowConfirmed(anyLong(), anyLong())).thenAnswer(inv -> {
             Long a = inv.getArgument(0);
             Long b = inv.getArgument(1);

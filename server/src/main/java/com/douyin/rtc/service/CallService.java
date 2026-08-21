@@ -22,6 +22,9 @@ import com.douyin.rtc.capacity.CapacityReservationStore;
 import com.douyin.rtc.repository.RtcCallEventMapper;
 import com.douyin.rtc.repository.RtcCallParticipantMapper;
 import com.douyin.rtc.repository.RtcCallSessionMapper;
+import com.douyin.rtc.timeout.CallTimeoutIndex;
+import com.douyin.rtc.timeout.CallTimeoutIndexUnavailable;
+import com.douyin.rtc.observability.CallControlMetrics;
 import com.douyin.service.RedisCacheService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,6 +33,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -53,6 +59,7 @@ import java.util.UUID;
  */
 @Slf4j
 @Service
+@Transactional
 public class CallService {
 
     private static final long SYSTEM_PARTICIPANT = 0L;
@@ -76,6 +83,11 @@ public class CallService {
     private final Duration ringingTtl;
     private final Duration negotiatingTtl;
     private final AdmissionService admissionService;
+    private final CallTimeoutIndex timeoutIndex;
+    private final CallReconciliationService reconciliationService;
+    private final CallEventOutboxService callEventOutboxService;
+    private final CallControlMetrics controlMetrics;
+    private final CallSessionLookupService lookupService;
 
     public CallService(RtcCallSessionMapper sessionMapper,
                        RtcCallParticipantMapper participantMapper,
@@ -86,7 +98,21 @@ public class CallService {
                        @Value("${rtc.call.ringing-ttl:30s}") Duration ringingTtl,
                        @Value("${rtc.call.negotiating-ttl:5m}") Duration negotiatingTtl) {
         this(sessionMapper, participantMapper, eventMapper, aclService, ledgerService,
-                redisCacheService, ringingTtl, negotiatingTtl, null);
+                redisCacheService, ringingTtl, negotiatingTtl, null, null, null, null, null, null);
+    }
+
+    /** 可选容量 admission hook（RTC-011）：null 表示本地/兼容模式不决策。 */
+    public CallService(RtcCallSessionMapper sessionMapper,
+                       RtcCallParticipantMapper participantMapper,
+                       RtcCallEventMapper eventMapper,
+                       AclService aclService,
+                       CallLedgerService ledgerService,
+                       RedisCacheService redisCacheService,
+                       Duration ringingTtl,
+                       Duration negotiatingTtl,
+                       AdmissionService admissionService) {
+        this(sessionMapper, participantMapper, eventMapper, aclService, ledgerService,
+                redisCacheService, ringingTtl, negotiatingTtl, admissionService, null, null, null, null, null);
     }
 
     /** 可选容量 admission hook（RTC-011）：null 表示本地/兼容模式不决策。 */
@@ -99,7 +125,12 @@ public class CallService {
                        RedisCacheService redisCacheService,
                        @Value("${rtc.call.ringing-ttl:30s}") Duration ringingTtl,
                        @Value("${rtc.call.negotiating-ttl:5m}") Duration negotiatingTtl,
-                       @Autowired(required = false) AdmissionService admissionService) {
+                       @Autowired(required = false) AdmissionService admissionService,
+                       @Autowired(required = false) CallTimeoutIndex timeoutIndex,
+                       @Autowired(required = false) CallReconciliationService reconciliationService,
+                       @Autowired(required = false) CallEventOutboxService callEventOutboxService,
+                       @Autowired(required = false) CallControlMetrics controlMetrics,
+                       @Autowired(required = false) CallSessionLookupService lookupService) {
         this.sessionMapper = sessionMapper;
         this.participantMapper = participantMapper;
         this.eventMapper = eventMapper;
@@ -109,6 +140,11 @@ public class CallService {
         this.ringingTtl = ringingTtl;
         this.negotiatingTtl = negotiatingTtl;
         this.admissionService = admissionService;
+        this.timeoutIndex = timeoutIndex;
+        this.reconciliationService = reconciliationService;
+        this.callEventOutboxService = callEventOutboxService;
+        this.controlMetrics = controlMetrics;
+        this.lookupService = lookupService;
     }
 
     // ==================== 创建 ====================
@@ -182,6 +218,9 @@ public class CallService {
                         "client_request_id 已被其他用户占用");
             }
             log.info("[CALL] create 幂等重放: callId={} clientRequestId={}", existing.getCallId(), cmd.clientRequestId());
+            if (controlMetrics != null) {
+                controlMetrics.idempotencyHit("create");
+            }
             return existing;
         }
 
@@ -200,6 +239,7 @@ public class CallService {
         session.setInitiatorId(initiator);
         session.setProvider(cmd.provider() != null ? cmd.provider() : "livekit");
         session.setState(CallState.CREATED.name());
+        session.setStateVersion(0L);
         session.setClientRequestId(cmd.clientRequestId());
         session.setTraceId(cmd.traceId());
 
@@ -234,6 +274,9 @@ public class CallService {
         }
         try {
             sessionMapper.insert(session);
+            if (lookupService != null) {
+                lookupService.invalidate(callId);
+            }
         } catch (DuplicateKeyException e) {
             // 并发下预查后插入竞态: uk_client_request_id 唯一冲突,回查返回原结果(幂等)
             CallSession raced = sessionMapper.findByClientRequestId(cmd.clientRequestId());
@@ -510,6 +553,8 @@ public class CallService {
                         ParticipantCommand.LEAVE, CallEndReason.HANGUP.name(), null, now);
                 applyParticipantTransition(session, p.getUserId(), ParticipantState.RECONNECTING,
                         ParticipantCommand.LEAVE, CallEndReason.HANGUP.name(), null, now);
+                applyParticipantTransition(session, p.getUserId(), ParticipantState.JOINING,
+                        ParticipantCommand.LEAVE, CallEndReason.HANGUP.name(), null, now);
             }
             if (isGroup(session)) {
                 releaseRemainingGroupParticipants(session, now, CallEndReason.HANGUP.name());
@@ -760,7 +805,7 @@ public class CallService {
 
     /** 重复查询(终态语义之一)。会话不存在返回 null。 */
     public CallSession getCall(String callId) {
-        return sessionMapper.findByCallId(callId);
+        return findSession(callId);
     }
 
     public CallParticipant getParticipant(String callId, Long userId) {
@@ -806,7 +851,7 @@ public class CallService {
     }
 
     private CallSession requireSession(String callId) {
-        CallSession session = sessionMapper.findByCallId(callId);
+        CallSession session = findSession(callId);
         if (session == null) {
             throw new CallDomainException(CallErrorCode.SESSION_NOT_FOUND, "通话不存在: " + callId);
         }
@@ -839,6 +884,9 @@ public class CallService {
     private CallSession replayOrTerminalOrOutOfOrder(CallSession session, CallCommand command, String eventId) {
         CallState state = CallState.valueOf(session.getState());
         if (ledgerService.isReplay(eventId)) {
+            if (controlMetrics != null) {
+                controlMetrics.idempotencyHit(command.name().toLowerCase());
+            }
             return session; // 相同 event_id 重放
         }
         if (CallStateMachine.isFinal(state)) {
@@ -855,22 +903,35 @@ public class CallService {
      * 并发下守卫失败返回 false(调用方应重新加载)。
      */
     private boolean applySessionTransition(CallSession session, CallCommand command,
-                                           String endReason, LocalDateTime expiresAt,
-                                           LocalDateTime connectedAt, LocalDateTime endedAt) {
-        CallState target = CallStateMachine.transition(CallState.valueOf(session.getState()), command);
+                                            String endReason, LocalDateTime expiresAt,
+                                            LocalDateTime connectedAt, LocalDateTime endedAt) {
+        CallState current = CallState.valueOf(session.getState());
+        CallState target = CallStateMachine.transition(current, command);
         int rows = sessionMapper.transitionSession(session.getCallId(), session.getState(), target.name(),
-                endReason, endedAt, connectedAt, expiresAt);
+                endReason, endedAt, connectedAt, expiresAt,
+                session.getStateVersion() == null ? 0L : session.getStateVersion());
         if (rows == 0) {
+            if (controlMetrics != null) {
+                controlMetrics.transitionConflict(session.getState(), target.name());
+            }
             log.warn("[CALL] 守卫更新失败(并发/乱序): callId={} expected={} target={}", session.getCallId(), session.getState(), target);
             return false;
         }
         session.setState(target.name());
+        session.setStateVersion((session.getStateVersion() == null ? 0L : session.getStateVersion()) + 1L);
         session.setEndReason(endReason);
         session.setEndedAt(endedAt);
         if (connectedAt != null) {
             session.setConnectedAt(connectedAt);
         }
         session.setExpiresAt(expiresAt);
+        if (target == CallState.RINGING && session.getRingAt() == null) {
+            session.setRingAt(LocalDateTime.now());
+        }
+        updateTimeoutIndexAfterCommit(session);
+        if (controlMetrics != null) {
+            controlMetrics.transition(current.name(), target.name());
+        }
         return true;
     }
 
@@ -1034,11 +1095,68 @@ public class CallService {
     private void append(String eventId, CallSession session, Long participantId, CallEventKind kind,
                         Map<String, ?> payload, String traceId) {
         String effective = eventId != null && !eventId.isBlank() ? eventId : systemEventId();
-        ledgerService.append(effective, session.getCallId(), participantId, kind, payload, traceId);
+        CallEvent stored = ledgerService.append(effective, session.getCallId(), participantId, kind,
+                session.getStateVersion(), payload, traceId);
+        if (stored != null) {
+            if (callEventOutboxService != null) {
+                callEventOutboxService.enqueue(session, stored);
+            }
+            notifyAfterCommit(session.getCallId(), effective);
+        }
     }
 
     private String systemEventId() {
         return SYSTEM_EVENT_PREFIX + UUID.randomUUID();
+    }
+
+    private CallSession findSession(String callId) {
+        return lookupService != null ? lookupService.find(callId) : sessionMapper.findByCallId(callId);
+    }
+
+    private void notifyAfterCommit(String callId, String eventId) {
+        if (reconciliationService == null) {
+            return;
+        }
+        Runnable notify = () -> reconciliationService.broadcastCall(callId, eventId);
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    notify.run();
+                }
+            });
+        } else {
+            notify.run();
+        }
+    }
+
+    private void updateTimeoutIndexAfterCommit(CallSession session) {
+        if (timeoutIndex == null) {
+            return;
+        }
+        Runnable update = () -> {
+            try {
+                if (session.getExpiresAt() == null) {
+                    timeoutIndex.remove(session.getCallId());
+                } else {
+                    timeoutIndex.schedule(session.getCallId(), session.getState(),
+                            session.getExpiresAt().atZone(java.time.ZoneId.systemDefault()).toInstant());
+                }
+            } catch (CallTimeoutIndexUnavailable e) {
+                log.warn("[CALL-TIMEOUT] index update deferred to recovery: callId={} state={} error={}",
+                        session.getCallId(), session.getState(), e.getMessage());
+            }
+        };
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    update.run();
+                }
+            });
+        } else {
+            update.run();
+        }
     }
 
     /** 兼容投影落库(仅 direct,方向恒为 发起者 -> 被叫方),失败不阻断主流程 */

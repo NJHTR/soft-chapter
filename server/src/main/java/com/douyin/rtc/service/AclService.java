@@ -38,6 +38,9 @@ public class AclService {
         if (actorId.equals(targetUserId)) {
             throw new CallDomainException(CallErrorCode.INVALID_ARGUMENT, "不能呼叫自己");
         }
+        if (!aclMapper.userExists(targetUserId)) {
+            throw new CallDomainException(CallErrorCode.USER_NOT_FOUND, "目标用户不存在");
+        }
         if (aclMapper.mutualFollowConfirmed(actorId, targetUserId) < 1) {
             throw new CallDomainException(CallErrorCode.NOT_AUTHORIZED, "双方未互相关注,无权发起通话");
         }

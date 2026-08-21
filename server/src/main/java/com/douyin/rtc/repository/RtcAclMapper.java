@@ -14,6 +14,9 @@ import java.util.List;
 @Mapper
 public interface RtcAclMapper {
 
+    @Select("SELECT COUNT(*) > 0 FROM t_user WHERE uid = #{userId}")
+    boolean userExists(@Param("userId") Long userId);
+
     /**
      * direct 通话要求互相关注: t_follow 存在双向关注记录。
      */

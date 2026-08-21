@@ -10,6 +10,8 @@ public enum CallErrorCode {
     INVALID_STATE_TRANSITION,
     /** 会话不存在 */
     SESSION_NOT_FOUND,
+    /** 目标账号不存在；与已存在但当前离线严格区分 */
+    USER_NOT_FOUND,
     /** client_request_id 幂等键已被其他用户占用 */
     SESSION_ALREADY_EXISTS,
     /** 发起者或目标参与者已经处于另一场通话中 */

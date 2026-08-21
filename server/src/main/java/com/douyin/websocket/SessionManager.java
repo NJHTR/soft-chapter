@@ -60,10 +60,24 @@ public class SessionManager {
         for (WebSocketSession session : set) {
             if (session.isOpen()) {
                 try {
-                    session.sendMessage(new TextMessage(json));
-                } catch (IOException e) {
+                    push(session, json);
+                } catch (RuntimeException e) {
                     log.error("Push failed: userId={}, sessionId={}", userId, session.getId(), e);
                 }
+            }
+        }
+    }
+
+    /** Serialize writes per socket; Spring WebSocket sessions do not allow concurrent sendMessage calls. */
+    public void push(WebSocketSession session, String json) {
+        if (session == null || !session.isOpen()) {
+            return;
+        }
+        synchronized (session) {
+            try {
+                session.sendMessage(new TextMessage(json));
+            } catch (IOException e) {
+                throw new IllegalStateException("websocket delivery failed", e);
             }
         }
     }

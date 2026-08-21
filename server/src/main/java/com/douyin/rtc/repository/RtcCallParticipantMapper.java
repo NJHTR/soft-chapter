@@ -16,10 +16,12 @@ import java.util.List;
 @Mapper
 public interface RtcCallParticipantMapper extends BaseMapper<CallParticipant> {
 
-    @Select("SELECT * FROM rtc_call_participant WHERE call_id = #{callId} AND user_id = #{userId}")
+    String COLUMNS = "id,call_id,user_id,role,state,joined_at,left_at,reason,profile_snapshot,create_time,update_time";
+
+    @Select("SELECT " + COLUMNS + " FROM rtc_call_participant WHERE call_id = #{callId} AND user_id = #{userId}")
     CallParticipant findByCallAndUser(@Param("callId") String callId, @Param("userId") Long userId);
 
-    @Select("SELECT * FROM rtc_call_participant WHERE call_id = #{callId}")
+    @Select("SELECT " + COLUMNS + " FROM rtc_call_participant WHERE call_id = #{callId} ORDER BY id ASC")
     List<CallParticipant> listByCall(@Param("callId") String callId);
 
     /**

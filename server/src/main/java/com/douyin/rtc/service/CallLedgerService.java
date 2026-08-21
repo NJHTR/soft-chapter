@@ -47,6 +47,11 @@ public class CallLedgerService {
      */
     public CallEvent append(String eventId, String callId, Long participantId, CallEventKind kind,
                             Map<String, ?> payload, String traceId) {
+        return append(eventId, callId, participantId, kind, 0L, payload, traceId);
+    }
+
+    public CallEvent append(String eventId, String callId, Long participantId, CallEventKind kind,
+                            Long eventVersion, Map<String, ?> payload, String traceId) {
         if (eventId == null || eventId.isBlank()) {
             throw new IllegalArgumentException("event_id 不能为空");
         }
@@ -59,6 +64,7 @@ public class CallLedgerService {
         event.setParticipantId(pid);
         event.setKind(kind.getWire());
         event.setSeq(seq);
+        event.setEventVersion(eventVersion == null ? 0L : eventVersion);
         event.setOccurredAt(LocalDateTime.now());
         event.setPayload(payload == null || payload.isEmpty() ? null : CallJson.write(payload));
         event.setTraceId(traceId);

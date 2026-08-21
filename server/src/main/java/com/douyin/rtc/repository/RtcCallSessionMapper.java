@@ -17,10 +17,16 @@ import java.util.List;
 @Mapper
 public interface RtcCallSessionMapper extends BaseMapper<CallSession> {
 
-    @Select("SELECT * FROM rtc_call_session WHERE call_id = #{callId}")
+    String COLUMNS = "id,call_id,room_id,scope,mode,initiator_id,provider,state,state_version,"
+            + "client_request_id,ring_at,expires_at,connected_at,ended_at,end_reason,trace_id,create_time,update_time";
+    String COLUMNS_S = "s.id,s.call_id,s.room_id,s.scope,s.mode,s.initiator_id,s.provider,s.state,s.state_version,"
+            + "s.client_request_id,s.ring_at,s.expires_at,s.connected_at,s.ended_at,s.end_reason,s.trace_id,"
+            + "s.create_time,s.update_time";
+
+    @Select("SELECT " + COLUMNS + " FROM rtc_call_session WHERE call_id = #{callId}")
     CallSession findByCallId(@Param("callId") String callId);
 
-    @Select("SELECT * FROM rtc_call_session WHERE client_request_id = #{clientRequestId}")
+    @Select("SELECT " + COLUMNS + " FROM rtc_call_session WHERE client_request_id = #{clientRequestId}")
     CallSession findByClientRequestId(@Param("clientRequestId") String clientRequestId);
 
     /**
@@ -29,7 +35,7 @@ public interface RtcCallSessionMapper extends BaseMapper<CallSession> {
      * <p>会话状态和参与者状态同时作为条件，避免群通话中已经离开的成员
      * 继续被误判为忙线。该查询只用于建呼前的控制面守卫，不承载媒体状态。</p>
      */
-    @Select("SELECT s.* FROM rtc_call_session s "
+    @Select("SELECT " + COLUMNS_S + " FROM rtc_call_session s "
             + "JOIN rtc_call_participant p ON p.call_id = s.call_id "
             + "WHERE p.user_id = #{userId} "
             + "AND s.state IN ('RINGING','ACCEPTED','NEGOTIATING','CONNECTED','ENDING') "
@@ -37,9 +43,35 @@ public interface RtcCallSessionMapper extends BaseMapper<CallSession> {
             + "ORDER BY s.update_time DESC LIMIT 1")
     CallSession findActiveByUserId(@Param("userId") Long userId);
 
+    /** Login/reconnect reconciliation. Expired ringing work is never resurrected. */
+    @Select("SELECT " + COLUMNS_S + " FROM rtc_call_session s "
+            + "JOIN rtc_call_participant p ON p.call_id = s.call_id "
+            + "WHERE p.user_id = #{userId} "
+            + "AND s.state IN ('RINGING','ACCEPTED','NEGOTIATING','CONNECTED','ENDING') "
+            + "AND p.state IN ('INVITED','RINGING','JOINING','CONNECTED','RECONNECTING') "
+            + "AND (s.expires_at IS NULL OR s.expires_at > #{now}) "
+            + "ORDER BY s.update_time DESC LIMIT #{limit}")
+    List<CallSession> listActiveByUserId(@Param("userId") Long userId,
+                                         @Param("now") LocalDateTime now,
+                                         @Param("limit") int limit);
+
     /** TTL worker 扫描: 指定状态且已过期的会话 */
-    @Select("SELECT * FROM rtc_call_session WHERE state = #{state} AND expires_at IS NOT NULL AND expires_at <= #{now} LIMIT 200")
+    @Select("SELECT " + COLUMNS + " FROM rtc_call_session "
+            + "WHERE state = #{state} AND expires_at IS NOT NULL AND expires_at <= #{now} "
+            + "ORDER BY expires_at ASC LIMIT 200")
     List<CallSession> findExpiredBefore(@Param("state") String state, @Param("now") LocalDateTime now);
+
+    /** TTL worker 扫描: ENDING 长期未由 webhook 收敛的会话(媒体面未建时 room_finished 不会来)。 */
+    @Select("SELECT " + COLUMNS + " FROM rtc_call_session "
+            + "WHERE state = 'ENDING' AND update_time <= #{olderThan} "
+            + "ORDER BY update_time ASC LIMIT 200")
+    List<CallSession> findEndingStuckBefore(@Param("olderThan") LocalDateTime olderThan);
+
+    /** Bounded startup/failover recovery scan; never used as the periodic timeout scheduler. */
+    @Select("SELECT " + COLUMNS + " FROM rtc_call_session WHERE id > #{afterId} "
+            + "AND state IN ('RINGING','NEGOTIATING') AND expires_at IS NOT NULL "
+            + "ORDER BY id ASC LIMIT #{limit}")
+    List<CallSession> findTimeoutRecoveryBatch(@Param("afterId") Long afterId, @Param("limit") int limit);
 
     /**
      * 守卫更新: 仅当当前状态等于 expected 时迁移到 target。
@@ -49,13 +81,16 @@ public interface RtcCallSessionMapper extends BaseMapper<CallSession> {
      */
     @Update("UPDATE rtc_call_session SET state = #{target}, end_reason = #{endReason}, "
             + "ended_at = #{endedAt}, connected_at = COALESCE(#{connectedAt}, connected_at), "
-            + "expires_at = #{expiresAt} "
-            + "WHERE call_id = #{callId} AND state = #{expected}")
+            + "expires_at = #{expiresAt}, "
+            + "ring_at = CASE WHEN #{target} = 'RINGING' THEN COALESCE(ring_at, NOW()) ELSE ring_at END, "
+            + "state_version = state_version + 1 "
+            + "WHERE call_id = #{callId} AND state = #{expected} AND state_version = #{expectedVersion}")
     int transitionSession(@Param("callId") String callId,
                           @Param("expected") String expected,
                           @Param("target") String target,
                           @Param("endReason") String endReason,
                           @Param("endedAt") LocalDateTime endedAt,
                           @Param("connectedAt") LocalDateTime connectedAt,
-                          @Param("expiresAt") LocalDateTime expiresAt);
+                          @Param("expiresAt") LocalDateTime expiresAt,
+                          @Param("expectedVersion") Long expectedVersion);
 }

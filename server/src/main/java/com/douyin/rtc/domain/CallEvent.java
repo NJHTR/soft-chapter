@@ -34,6 +34,9 @@ public class CallEvent {
 
     private Long seq;
 
+    @JsonProperty("event_version")
+    private Long eventVersion;
+
     @JsonProperty("occurred_at")
     private LocalDateTime occurredAt;
 

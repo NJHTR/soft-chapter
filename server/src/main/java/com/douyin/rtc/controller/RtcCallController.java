@@ -8,12 +8,14 @@ import com.douyin.rtc.provider.LiveKitTokenService;
 import com.douyin.rtc.provider.TokenResult;
 import com.douyin.rtc.service.CallService;
 import com.douyin.rtc.service.CreateCallCommand;
+import com.douyin.rtc.service.CallReconciliationService;
 import com.douyin.rtc.webhook.LiveKitWebhookService;
 import com.douyin.rtc.webhook.WebhookSignatureVerifier;
 import com.douyin.utils.JwtUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -46,18 +48,31 @@ public class RtcCallController {
     private final LiveKitWebhookService webhookService;
     private final WebhookSignatureVerifier signatureVerifier;
     private final ObjectMapper objectMapper;
+    private final CallReconciliationService reconciliationService;
 
     public RtcCallController(JwtUtil jwtUtil, CallService callService,
                              LiveKitTokenService tokenService,
                              LiveKitWebhookService webhookService,
                              WebhookSignatureVerifier signatureVerifier,
                              ObjectMapper objectMapper) {
+        this(jwtUtil, callService, tokenService, webhookService, signatureVerifier,
+                objectMapper, null);
+    }
+
+    @Autowired
+    public RtcCallController(JwtUtil jwtUtil, CallService callService,
+                             LiveKitTokenService tokenService,
+                             LiveKitWebhookService webhookService,
+                             WebhookSignatureVerifier signatureVerifier,
+                             ObjectMapper objectMapper,
+                             CallReconciliationService reconciliationService) {
         this.jwtUtil = jwtUtil;
         this.callService = callService;
         this.tokenService = tokenService;
         this.webhookService = webhookService;
         this.signatureVerifier = signatureVerifier;
         this.objectMapper = objectMapper;
+        this.reconciliationService = reconciliationService;
     }
 
     // ==================== LiveKit token ====================
@@ -133,6 +148,12 @@ public class RtcCallController {
                 string(body, "mode"), string(body, "provider"),
                 string(body, "client_request_id"), string(body, "event_id"), string(body, "trace_id"));
         return Result.ok(callService.createCall(cmd));
+    }
+
+    /** Login/reconnect source of truth; WebSocket delivery is only an optimization. */
+    @GetMapping("/calls/active")
+    public Result<Map<String, Object>> activeCalls(HttpServletRequest req) {
+        return Result.ok(reconciliationService.activeCalls(loginUserId(req)));
     }
 
     @PostMapping("/call/{callId}/accept")

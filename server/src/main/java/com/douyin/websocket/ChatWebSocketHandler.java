@@ -6,6 +6,7 @@ import com.douyin.kafka.MessagePublisher;
 import com.douyin.kafka.dto.ChatMessageEvent;
 import com.douyin.kafka.dto.GroupMessageEvent;
 import com.douyin.service.MessageService;
+import com.douyin.rtc.service.CallReconciliationService;
 import com.douyin.service.UserService;
 import com.douyin.vo.UserVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,15 +38,18 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final MessageService messageService;
     private final UserService userService;
     private final ObjectMapper objectMapper;
+    private final CallReconciliationService callReconciliationService;
 
     public ChatWebSocketHandler(MessagePublisher messagePublisher, SessionManager sessionManager,
                                 MessageService messageService, UserService userService,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                CallReconciliationService callReconciliationService) {
         this.messagePublisher = messagePublisher;
         this.sessionManager = sessionManager;
         this.messageService = messageService;
         this.userService = userService;
         this.objectMapper = objectMapper;
+        this.callReconciliationService = callReconciliationService;
     }
 
     @Override
@@ -53,6 +57,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         Long userId = (Long) session.getAttributes().get("userId");
         if (userId != null) {
             sessionManager.register(userId, session);
+            callReconciliationService.reconcileSession(userId, session);
         }
     }
 

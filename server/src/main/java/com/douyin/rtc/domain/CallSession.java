@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * RTC 通话会话 (CALL_DOMAIN_MODEL.md §1)。rtc-persistence 真相源。
@@ -38,8 +39,14 @@ public class CallSession {
     /** CallState 枚举名 */
     private String state;
 
+    @JsonProperty("state_version")
+    private Long stateVersion;
+
     @JsonProperty("client_request_id")
     private String clientRequestId;
+
+    @JsonProperty("ring_at")
+    private LocalDateTime ringAt;
 
     @JsonProperty("expires_at")
     private LocalDateTime expiresAt;
@@ -63,4 +70,10 @@ public class CallSession {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     @JsonProperty("update_time")
     private LocalDateTime updateTime;
+
+    /** Serialization-time server clock; clients must not use Date.now() as authority. */
+    @JsonProperty("server_now")
+    public Instant serverNow() {
+        return Instant.now();
+    }
 }

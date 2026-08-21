@@ -5,6 +5,7 @@
 | ID | 任务 | 状态 | 依赖 | 主要交付物 |
 |---|---|---|---|---|
 | RTC-SCALE-001 | 客户端减载、多人通话扩容与万人直播分层统筹 | `in_progress`（仅 Wave A） | 子任务依赖门见任务文件 | 统一控制契约、任务边界、部署/回滚手册和真实验收索引 |
+| RTC-CALL-001 | 高并发呼叫生命周期、离线恢复、版本竞争与可靠超时 | `in_progress` | RTC-003、RTC-004、RTC-007、RTC-011 | state/event version CAS、active-call reconciliation、Redis ZSET timeout、call outbox；真实多实例/负载/故障门禁未完成 |
 | RTC-001 | 宪法、现状基线、模块边界、契约和路线图 | `completed` | 无 | `docs/project-constitution`、架构文档、ADR、schema、测试计划 |
 | RTC-002 | LiveKit/coturn/SRS provider bootstrap 环境 | `completed` | RTC-001 | 配置、端口、健康检查、provider CLI smoke test；不依赖业务 token API |
 | RTC-003 | RTC 控制面和通话领域 | `completed` | RTC-001 | CallSession、Participant、ACL、幂等事件、token API、webhook |
