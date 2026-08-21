@@ -33,6 +33,9 @@ public class VideoEvent {
 
     private long timestamp;
 
+    /** 幂等事件 ID（可选；生产者未赋值时由发布器生成，消费端用于去重） */
+    private String eventId;
+
     public static VideoEvent watch(Long userId, Long videoId, Long authorUserId,
                                    double watchDuration, double videoDuration,
                                    boolean finished, double swipeSeconds) {

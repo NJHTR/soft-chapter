@@ -5,6 +5,7 @@ import com.douyin.entity.User;
 import com.douyin.kafka.dto.ChatMessageEvent;
 import com.douyin.kafka.dto.GroupMessageEvent;
 import com.douyin.kafka.dto.NotificationEvent;
+import com.douyin.kafka.reliability.KafkaEventLedgerService;
 import com.douyin.service.GroupChatService;
 import com.douyin.service.MessageService;
 import com.douyin.service.UserService;
@@ -17,19 +18,25 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * Kafka 消息消费者。
- * 从 Kafka 拉取消息 → 持久化到 DB → 通过 WebSocket 推送给在线用户。
+ * 从 Kafka 拉取消息 → 幂等去重 → 持久化到 DB → 通过 WebSocket 推送给在线用户。
  *
- * 三个消费者实例（与分区数对应），并发处理，互不干扰。
+ * <p>可靠性（总任务 §19/§22）：处理前查幂等账本，已处理直接 ack 跳过；
+ * 处理成功后记账再 ack（at-least-once + 去重）。处理异常向上抛出，
+ * 由 kafkaListenerContainerFactory 的指数退避重试 + DLQ 接管，
+ * 不再吞异常导致事件静默丢失。
  */
 @Slf4j
 @Service
-@ConditionalOnProperty(value = "douyin.kafka.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(value = "douyin.kafka.enabled", havingValue = "true")
 public class KafkaMessageConsumer {
 
     private final MessageService messageService;
@@ -37,15 +44,17 @@ public class KafkaMessageConsumer {
     private final UserService userService;
     private final SessionManager sessionManager;
     private final ObjectMapper objectMapper;
+    private final KafkaEventLedgerService ledger;
 
     public KafkaMessageConsumer(MessageService messageService, GroupChatService groupChatService,
                                 UserService userService, SessionManager sessionManager,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper, KafkaEventLedgerService ledger) {
         this.messageService = messageService;
         this.groupChatService = groupChatService;
         this.userService = userService;
         this.sessionManager = sessionManager;
         this.objectMapper = objectMapper;
+        this.ledger = ledger;
     }
 
     /** 消费聊天消息 — 3 个并发消费者，对应 3 个分区 */
@@ -53,7 +62,13 @@ public class KafkaMessageConsumer {
             topics = KafkaTopicConfig.TOPIC_CHAT_MESSAGE,
             concurrency = "3",
             containerFactory = "kafkaListenerContainerFactory")
+    @Transactional
     public void onChatMessage(ChatMessageEvent event, Acknowledgment ack) {
+        String topic = KafkaTopicConfig.TOPIC_CHAT_MESSAGE;
+        if (ledger.isProcessed(topic, event.getEventId())) {
+            ack.acknowledge();
+            return;
+        }
         try {
             log.debug("Consuming chat: from={} to={}", event.getFromUserId(), event.getToUserId());
 
@@ -69,15 +84,17 @@ public class KafkaMessageConsumer {
             String json = buildChatPushJson(msg, event);
 
             // 3. 推送给双方在线用户
-            sessionManager.pushBoth(event.getFromUserId(), event.getToUserId(), json);
+            afterCommit(() -> sessionManager.pushBoth(event.getFromUserId(), event.getToUserId(), json));
+
+            ledger.markProcessedOrThrow(topic, event.getEventId());
+            ack.acknowledge();
 
             log.debug("Chat processed: msgId={}, from={} to={}", msg.getId(),
                     event.getFromUserId(), event.getToUserId());
 
         } catch (Exception e) {
             log.error("Chat consume failed: from={} to={}", event.getFromUserId(), event.getToUserId(), e);
-        } finally {
-            ack.acknowledge(); // 手动提交 offset，保证 at-least-once
+            throw new KafkaConsumeException("chat", e);
         }
     }
 
@@ -87,6 +104,11 @@ public class KafkaMessageConsumer {
             concurrency = "3",
             containerFactory = "kafkaListenerContainerFactory")
     public void onNotification(NotificationEvent event, Acknowledgment ack) {
+        String topic = KafkaTopicConfig.TOPIC_NOTIFICATION;
+        if (ledger.isProcessed(topic, event.getEventId())) {
+            ack.acknowledge();
+            return;
+        }
         try {
             log.info("[KAFKA-CONSUME] notify received: toUser={} fromUser={} type={} content={}",
                     event.getUserId(), event.getFromUserId(), event.getType(), event.getContent());
@@ -100,11 +122,13 @@ public class KafkaMessageConsumer {
                 log.info("[KAFKA-CONSUME] WS pushed to userId={} jsonLen={}", event.getUserId(), json.length());
             }
 
+            ledger.markProcessedOrThrow(topic, event.getEventId());
+            ack.acknowledge();
+
         } catch (Exception e) {
             log.error("[KAFKA-CONSUME] notify consume FAILED: toUser={} type={} error={}",
                     event.getUserId(), event.getType(), e.getMessage(), e);
-        } finally {
-            ack.acknowledge();
+            throw new KafkaConsumeException("notification", e);
         }
     }
 
@@ -129,7 +153,13 @@ public class KafkaMessageConsumer {
             topics = KafkaTopicConfig.TOPIC_GROUP_MESSAGE,
             concurrency = "3",
             containerFactory = "kafkaListenerContainerFactory")
+    @Transactional
     public void onGroupMessage(GroupMessageEvent event, Acknowledgment ack) {
+        String topic = KafkaTopicConfig.TOPIC_GROUP_MESSAGE;
+        if (ledger.isProcessed(topic, event.getEventId())) {
+            ack.acknowledge();
+            return;
+        }
         try {
             log.debug("Consuming group chat: group={} from={}", event.getGroupId(), event.getFromUserId());
 
@@ -145,15 +175,17 @@ public class KafkaMessageConsumer {
             java.util.List<Long> memberUids = groupChatService.getGroupMembers(event.getGroupId())
                     .stream().map(com.douyin.vo.GroupMemberVO::getUserId).toList();
             // 推送给所有群成员（含发送者，前端有 dedup 保护）
-            sessionManager.pushToGroupMembers(memberUids, null, json);
+            afterCommit(() -> sessionManager.pushToGroupMembers(memberUids, null, json));
+
+            ledger.markProcessedOrThrow(topic, event.getEventId());
+            ack.acknowledge();
 
             log.debug("Group chat processed: msgId={}, group={} from={}", msg.getId(),
                     event.getGroupId(), event.getFromUserId());
 
         } catch (Exception e) {
             log.error("Group chat consume failed: group={} from={}", event.getGroupId(), event.getFromUserId(), e);
-        } finally {
-            ack.acknowledge();
+            throw new KafkaConsumeException("group", e);
         }
     }
 
@@ -186,5 +218,18 @@ public class KafkaMessageConsumer {
             resp.put("from_user", UserVO.from(fromUser));
         }
         return objectMapper.writeValueAsString(resp);
+    }
+
+    private void afterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
+        }
     }
 }

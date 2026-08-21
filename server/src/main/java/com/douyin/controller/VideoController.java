@@ -524,7 +524,7 @@ public class VideoController {
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
                 pub.publishNotification(new NotificationEvent(
-                        fUserId, fFromUserId, fType, fVideoId, fCommentId, fContent, System.currentTimeMillis()));
+                        fUserId, fFromUserId, fType, fVideoId, fCommentId, fContent, System.currentTimeMillis(), null));
                 log.info("[NOTIF] Kafka published: toUser={} type={}", fUserId, fType);
             } catch (Exception e) {
                 log.error("[NOTIF] Kafka publish failed: toUser={} type={} error={}", fUserId, fType, e.getMessage(), e);

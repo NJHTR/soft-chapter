@@ -297,7 +297,7 @@ public class UserController {
                 try {
                     pub.publishNotification(new NotificationEvent(
                             fUserId, fLoginUserId, NotificationVO.TYPE_FOLLOW,
-                            null, null, "关注了你", System.currentTimeMillis()));
+                            null, null, "关注了你", System.currentTimeMillis(), null));
                 } catch (Exception ignored) {}
             });
         }
@@ -422,7 +422,7 @@ public class UserController {
         try {
             messagePublisher.publishNotification(new NotificationEvent(
                     targetId, userId, NotificationVO.TYPE_FRIEND_REQUEST,
-                    null, null, "请求添加你为朋友", System.currentTimeMillis()));
+                    null, null, "请求添加你为朋友", System.currentTimeMillis(), null));
         } catch (Exception ignored) {}
 
         return Result.ok();
@@ -447,7 +447,7 @@ public class UserController {
         try {
             messagePublisher.publishNotification(new NotificationEvent(
                     fromId, userId, NotificationVO.TYPE_FRIEND_ACCEPTED,
-                    null, null, "接受了你的朋友申请", System.currentTimeMillis()));
+                    null, null, "接受了你的朋友申请", System.currentTimeMillis(), null));
         } catch (Exception ignored) {}
 
         // 好友申请通过系统通知 → 通知发起方

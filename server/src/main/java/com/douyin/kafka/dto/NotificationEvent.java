@@ -29,4 +29,8 @@ public class NotificationEvent {
     private String content;       // 通知摘要
 
     private long timestamp;
+
+    /** 幂等事件 ID（可选；生产者未赋值时由发布器生成，消费端用于去重） */
+    @JsonProperty("event_id")
+    private String eventId;
 }

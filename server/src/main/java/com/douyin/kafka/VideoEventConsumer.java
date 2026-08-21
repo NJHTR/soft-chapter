@@ -9,12 +9,14 @@ import com.douyin.mapper.LikeMapper;
 import com.douyin.mapper.VideoCollectMapper;
 import com.douyin.mapper.VideoMapper;
 import com.douyin.mapper.WatchHistoryMapper;
+import com.douyin.kafka.reliability.KafkaEventLedgerService;
 import com.douyin.service.RedisCacheService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
@@ -22,10 +24,11 @@ import java.time.LocalDateTime;
  * 视频事件消费者 — 异步写入播放/点赞/收藏，解耦请求线程与 DB 写入。
  *
  * Kafka 启用时从 topic 消费；Kafka 未启用时由 VideoService 直写。
+ * 消费失败向上抛出走重试/DLQ，成功后才记账+ack（幂等去重）。
  */
 @Slf4j
 @Service
-@ConditionalOnProperty(value = "douyin.kafka.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(value = "douyin.kafka.enabled", havingValue = "true")
 public class VideoEventConsumer {
 
     private final LikeMapper likeMapper;
@@ -33,16 +36,19 @@ public class VideoEventConsumer {
     private final VideoCollectMapper collectMapper;
     private final WatchHistoryMapper watchHistoryMapper;
     private final RedisCacheService cache;
+    private final KafkaEventLedgerService ledger;
 
     public VideoEventConsumer(LikeMapper likeMapper, VideoMapper videoMapper,
                               VideoCollectMapper collectMapper,
                               WatchHistoryMapper watchHistoryMapper,
-                              RedisCacheService cache) {
+                              RedisCacheService cache,
+                              KafkaEventLedgerService ledger) {
         this.likeMapper = likeMapper;
         this.videoMapper = videoMapper;
         this.collectMapper = collectMapper;
         this.watchHistoryMapper = watchHistoryMapper;
         this.cache = cache;
+        this.ledger = ledger;
     }
 
     /** 消费视频事件 — 4 个并发消费者，对应 6 分区 */
@@ -50,14 +56,21 @@ public class VideoEventConsumer {
             topics = KafkaTopicConfig.TOPIC_VIDEO_EVENTS,
             concurrency = "4",
             containerFactory = "kafkaListenerContainerFactory")
+    @Transactional
     public void onVideoEvent(VideoEvent event, Acknowledgment ack) {
+        String topic = KafkaTopicConfig.TOPIC_VIDEO_EVENTS;
+        if (ledger.isProcessed(topic, event.getEventId())) {
+            ack.acknowledge();
+            return;
+        }
         try {
             handle(event);
+            ledger.markProcessedOrThrow(topic, event.getEventId());
+            ack.acknowledge();
         } catch (Exception e) {
             log.error("Video event failed: action={} userId={} videoId={}",
                     event.getAction(), event.getUserId(), event.getVideoId(), e);
-        } finally {
-            ack.acknowledge();
+            throw new KafkaConsumeException("video", e);
         }
     }
 
