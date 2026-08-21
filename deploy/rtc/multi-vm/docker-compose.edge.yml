@@ -1,0 +1,17 @@
+# Optional HTTP/WebSocket edge for the disposable LAN cluster.
+# Use HTTPS and a real certificate before exposing this outside the test network.
+services:
+  edge:
+    image: ${EDGE_IMAGE:-caddy:2}
+    restart: unless-stopped
+    init: true
+    network_mode: host
+    volumes:
+      - "${EDGE_CONFIG_PATH:-./runtime/Caddyfile}:/etc/caddy/Caddyfile:ro"
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${EDGE_PORT:-8080}/healthz >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 5s

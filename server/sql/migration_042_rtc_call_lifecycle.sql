@@ -1,8 +1,28 @@
 -- RTC-CALL-001: authoritative call lifecycle versions and reconciliation indexes.
 -- MySQL remains the durable fact; Redis timeout indexes are rebuildable accelerators.
-ALTER TABLE rtc_call_session
-    ADD COLUMN IF NOT EXISTS ring_at DATETIME NULL AFTER client_request_id,
-    ADD COLUMN IF NOT EXISTS state_version BIGINT NOT NULL DEFAULT 0 AFTER state;
+-- MySQL 8.x does not support ADD COLUMN IF NOT EXISTS. Build each ALTER only
+-- when the column is absent so this migration remains rerunnable.
+SET @ddl = IF(
+    EXISTS(SELECT 1 FROM information_schema.columns
+           WHERE table_schema = DATABASE() AND table_name = 'rtc_call_session'
+             AND column_name = 'ring_at'),
+    'SELECT 1',
+    'ALTER TABLE rtc_call_session ADD COLUMN ring_at DATETIME NULL AFTER client_request_id'
+);
+PREPARE migration_042_stmt FROM @ddl;
+EXECUTE migration_042_stmt;
+DEALLOCATE PREPARE migration_042_stmt;
+
+SET @ddl = IF(
+    EXISTS(SELECT 1 FROM information_schema.columns
+           WHERE table_schema = DATABASE() AND table_name = 'rtc_call_session'
+             AND column_name = 'state_version'),
+    'SELECT 1',
+    'ALTER TABLE rtc_call_session ADD COLUMN state_version BIGINT NOT NULL DEFAULT 0 AFTER state'
+);
+PREPARE migration_042_stmt FROM @ddl;
+EXECUTE migration_042_stmt;
+DEALLOCATE PREPARE migration_042_stmt;
 
 SET @ddl = IF(
     EXISTS(SELECT 1 FROM information_schema.statistics
@@ -52,8 +72,16 @@ PREPARE migration_042_stmt FROM @ddl;
 EXECUTE migration_042_stmt;
 DEALLOCATE PREPARE migration_042_stmt;
 
-ALTER TABLE rtc_call_event
-    ADD COLUMN IF NOT EXISTS event_version BIGINT NOT NULL DEFAULT 0 AFTER seq;
+SET @ddl = IF(
+    EXISTS(SELECT 1 FROM information_schema.columns
+           WHERE table_schema = DATABASE() AND table_name = 'rtc_call_event'
+             AND column_name = 'event_version'),
+    'SELECT 1',
+    'ALTER TABLE rtc_call_event ADD COLUMN event_version BIGINT NOT NULL DEFAULT 0 AFTER seq'
+);
+PREPARE migration_042_stmt FROM @ddl;
+EXECUTE migration_042_stmt;
+DEALLOCATE PREPARE migration_042_stmt;
 
 SET @ddl = IF(
     EXISTS(SELECT 1 FROM information_schema.statistics

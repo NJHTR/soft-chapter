@@ -28,6 +28,12 @@ public final class CallTestSupport {
                 fx.constRingingTtl(), fx.constNegotiatingTtl());
     }
 
+    public static CallService deviceAwareService(RtcRepoFixture fx) {
+        return new CallService(fx.sessions, fx.participants, fx.events,
+                new AclService(fx.acl), new CallLedgerService(fx.events, fx.projection), fx.redis,
+                fx.constRingingTtl(), fx.constNegotiatingTtl(), fx.devices);
+    }
+
     public static CallSession createDirect(CallService svc, RtcRepoFixture fx) {
         return createDirect(svc, fx, "creq-00000001", "evt-create-0001");
     }

@@ -2,11 +2,13 @@ package com.douyin.rtc.support;
 
 import com.douyin.entity.Message;
 import com.douyin.rtc.domain.CallEvent;
+import com.douyin.rtc.domain.CallDevice;
 import com.douyin.rtc.domain.CallParticipant;
 import com.douyin.rtc.domain.CallSession;
 import com.douyin.rtc.repository.RtcAclMapper;
 import com.douyin.rtc.repository.RtcCallEventMapper;
 import com.douyin.rtc.repository.RtcCallParticipantMapper;
+import com.douyin.rtc.repository.RtcCallDeviceMapper;
 import com.douyin.rtc.repository.RtcCallSessionMapper;
 import com.douyin.rtc.repository.RtcMessageProjectionMapper;
 import com.douyin.rtc.service.GroupMemberProfile;
@@ -41,6 +43,7 @@ public final class RtcRepoFixture {
 
     public final RtcCallSessionMapper sessions = mock(RtcCallSessionMapper.class);
     public final RtcCallParticipantMapper participants = mock(RtcCallParticipantMapper.class);
+    public final RtcCallDeviceMapper devices = mock(RtcCallDeviceMapper.class);
     public final RtcCallEventMapper events = mock(RtcCallEventMapper.class);
     public final RtcAclMapper acl = mock(RtcAclMapper.class);
     public final RtcMessageProjectionMapper projection = mock(RtcMessageProjectionMapper.class);
@@ -49,6 +52,7 @@ public final class RtcRepoFixture {
     public final Map<String, CallSession> sessionsByCall = new LinkedHashMap<>();
     public final Map<String, CallSession> sessionsByClientRequest = new HashMap<>();
     public final Map<String, CallParticipant> participantsByKey = new HashMap<>();
+    public final Map<String, CallDevice> devicesByKey = new HashMap<>();
     public final Map<String, CallEvent> eventsById = new LinkedHashMap<>();
     public final List<CallEvent> eventLog = new ArrayList<>();
     public final List<Message> projections = new ArrayList<>();
@@ -200,6 +204,38 @@ public final class RtcRepoFixture {
                     }
                     return 1;
                 });
+
+        when(devices.insert(any(CallDevice.class))).thenAnswer(inv -> {
+            CallDevice d = inv.getArgument(0);
+            devicesByKey.put(d.getCallId() + "|" + d.getUserId() + "|" + d.getDeviceId(), d);
+            return 1;
+        });
+        when(devices.findByCallUserDevice(anyString(), anyLong(), anyString())).thenAnswer(inv ->
+                devicesByKey.get(inv.getArgument(0) + "|" + inv.getArgument(1) + "|" + inv.getArgument(2)));
+        when(devices.listByCallAndUser(anyString(), anyLong())).thenAnswer(inv -> devicesByKey.values().stream()
+                .filter(d -> inv.getArgument(0).equals(d.getCallId()) && inv.getArgument(1).equals(d.getUserId())).toList());
+        when(devices.listByCall(anyString())).thenAnswer(inv -> devicesByKey.values().stream()
+                .filter(d -> inv.getArgument(0).equals(d.getCallId())).toList());
+        when(devices.transition(anyString(), anyLong(), anyString(), anyString(), anyString(), any(), any())).thenAnswer(inv -> {
+            CallDevice d = devicesByKey.get(inv.getArgument(0) + "|" + inv.getArgument(1) + "|" + inv.getArgument(2));
+            if (d == null || !inv.getArgument(3).equals(d.getState())) return 0;
+            d.setState(inv.getArgument(4));
+            if (inv.getArgument(5) != null) d.setAcceptedAt(inv.getArgument(5));
+            if (inv.getArgument(6) != null) d.setRejectedAt(inv.getArgument(6));
+            return 1;
+        });
+        when(devices.cancelRingingByCall(anyString())).thenAnswer(inv -> {
+            String callId = inv.getArgument(0);
+            int changed = 0;
+            for (CallDevice d : devicesByKey.values()) {
+                if (callId.equals(d.getCallId())
+                        && ("RINGING".equals(d.getState()) || "INVITED".equals(d.getState()))) {
+                    d.setState("CANCELLED");
+                    changed++;
+                }
+            }
+            return changed;
+        });
 
         // ===== 事件账本 =====
         when(events.insertIgnore(any(CallEvent.class))).thenAnswer(inv -> {

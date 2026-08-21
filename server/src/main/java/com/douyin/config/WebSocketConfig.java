@@ -26,7 +26,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
                            LiveStreamHandler liveStreamHandler,
                            DashboardWebSocketHandler dashboardHandler,
                            WebSocketHandshakeInterceptor handshakeInterceptor,
-                           @Value("${websocket.allowed-origins:http://localhost:3000,http://127.0.0.1:3000}") String allowedOrigins) {
+                           @Value("${websocket.allowed-origins:http://localhost:3000,http://127.0.0.1:3000,https://localhost:3000,https://127.0.0.1:3000,https://10.68.138.84:3000}") String allowedOrigins) {
         this.chatHandler = chatHandler;
         this.liveStreamHandler = liveStreamHandler;
         this.dashboardHandler = dashboardHandler;

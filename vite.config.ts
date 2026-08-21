@@ -4,6 +4,7 @@ import VueJsx from '@vitejs/plugin-vue-jsx'
 import { visualizer } from 'rollup-plugin-visualizer'
 import { Plugin as importToCDN } from 'vite-plugin-cdn-import'
 import { fileURLToPath, URL } from 'node:url'
+import { readFileSync } from 'node:fs'
 import { getLastCommit } from 'git-last-commit'
 import VueMacros from 'unplugin-vue-macros/vite'
 
@@ -171,6 +172,10 @@ export default defineConfig((): Promise<UserConfig> => {
           port: 3000,
           open: true,
           host: '0.0.0.0',
+          https: {
+            key: readFileSync(fileURLToPath(new URL('.certs/lan-key.pem', import.meta.url))),
+            cert: readFileSync(fileURLToPath(new URL('.certs/lan.pem', import.meta.url)))
+          },
           proxy: {
             '/api': {
               target: 'http://localhost:9191',

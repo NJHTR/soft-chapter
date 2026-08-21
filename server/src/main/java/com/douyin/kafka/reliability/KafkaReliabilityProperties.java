@@ -45,10 +45,10 @@ public class KafkaReliabilityProperties {
     private long consumerBackoffMaxMs = 60000L;
 
     /** 消费幂等账本保留小时数（超期清理） */
-    private long ledgerRetentionHours = 24L;
+    private long ledgerRetentionHours = 744L;
 
     /** outbox 终态行保留小时数（超期清理） */
-    private long outboxRetentionHours = 72L;
+    private long outboxRetentionHours = 744L;
 
     /** 账本与 outbox 终态行清理调度间隔 ms */
     private long purgeIntervalMs = 3600000L;

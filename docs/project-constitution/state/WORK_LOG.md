@@ -1,5 +1,30 @@
 # 工作日志
 
+## 2026-08-21：确认 RTC-CALL-001 业务规则与单机部署边界
+
+- 用户确认响铃窗口固定为 `180s`；被叫离线时保留呼叫；同一用户多设备独立响铃，某一设备接听不停止其他设备响铃。
+- 用户确认通话中发生拉黑、注销或 Token 失效时立即终止并禁止继续建连；呼叫历史和幂等记录目标保留到下一个月（至少 `31d`）。
+- 当前实现的 `CallSession`/participant 仍以 `user_id` 为粒度，无法安全表达设备级独立接听；该项必须增加设备级投递状态后才能验收，不能以全局 `ACCEPTED` 冒充完成。
+- 用户只有一台电脑；后续提供本机 Docker 多实例验证和可复制到 M 台服务器的部署模板。单机结果只证明单机配置/逻辑，不证明 `nM` 线性扩展或生产容量。
+- 已将客户端无 `expires_at` 的本地响铃兜底同步为 `180s`，并补充登录/重连后消费 `rtc.call.reconciliation` 的前端入口。
+- 新增 Redis Pub/Sub WebSocket 跨实例 fanout（带 `origin_node` 防回环）；Redis 只做通知，MySQL active-call reconciliation 仍是恢复事实。
+- 新增终态呼叫历史有界清理：事件/参与者先删、会话后删，默认最小保留 31 天；清理不会触碰活跃会话。
+
+## 2026-08-21：RTC-CALL-001 控制面首批实现与可靠事件提交
+
+- `c02f487`：加入 Kafka transactional outbox、consumer ledger、指数退避/DLQ、lag 指标；审计时修复
+  outbox 发送 `JsonNode` 导致 Spring Kafka DTO 类型头丢失的问题，并让数据库消费者 strict 记账失败时
+  禁止 ACK。Kafka 定向测试 `19/19`。
+- `e603ff9`：加入 `state_version/event_version/ring_at`、状态+版本 CAS、服务端权威时间、active-call API、
+  WebSocket 登录 reconciliation/多设备广播、32 分片 Redis ZSET timeout index、恢复退避、negative cache/
+  single-flight、call-specific outbox、指标、migration 042 与恢复 runbook。RTC 定向测试 `224/224`。
+- `2869d56`：独立补齐 P2P/Stage store/service 与 RTC-006 provider 多构造器的 Spring bean 接线。
+- 全量后端 `316/316`；`vue-tsc`、`eslint src/modules/rtc`、Vite build、compose config、`git diff --check`
+  通过。构建只有既有 circular/manual-chunk 与大 chunk 警告。
+- 未执行且不得宣称完成：双浏览器 offline→login/重连/多端，真实 Redis/Kafka/MySQL/WebSocket 故障注入，
+  Kafka DLQ 回放、MySQL EXPLAIN/Hikari 慢库保护、10k/100k/1m pending-call timeout lag 压测。
+- 本地 HTTPS/Caddy/LiveKit、`CallPanel.vue` 和用户提示词保留在工作树，未纳入三笔产品提交。
+
 ## 2026-08-20：RTC-SCALE-001 实现波次全部提交，最终验证报告收口
 
 - Wave B~F 全部实现提交完毕（`826333a`/`43a87c5`+`dd7d4b6`/`a934d8f`/`49b5692`+`b3566d1`/
@@ -446,3 +471,4 @@ pnpm run build-only                         # 只读审查记录为通过
 - `PROJECT_STATE.yaml` 基线头部从 `94370b5` 对齐到当前工作区真实 HEAD `ca813ec`；`last_verified_commit` 仍保持为已验证的 `94370b5`，因为本轮没有重新跑浏览器或 Maven 验证。
 - 记录文档提交哈希：`b00d6fe docs(RTC): add live media reconciliation contract`。
 - RTC-006 仍保持 `in_progress`：当前已具备回调授权和 TTL presence 骨架，但真实 Docker callback 联调、provider 重启恢复和多实例故障验收仍未补齐。
+- 2026-08-21 RTC-CALL：新增 `rtc_call_device` 设备级持久状态与 `device_id` API。单元测试已验证同一被叫两台浏览器独立响铃、设备 A 接听/拒绝不清除设备 B 的 `RINGING`；真实双浏览器验收仍待 Docker/浏览器环境。

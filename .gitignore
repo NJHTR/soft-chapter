@@ -13,6 +13,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Local HTTPS certs (mkcert) - never commit
+.certs/
+
 node_modules
 .DS_Store
 dist
@@ -64,6 +67,11 @@ deploy/streaming/.env
 
 # RTC-013 cluster secrets
 deploy/rtc/cluster/.env
+deploy/rtc/control/.env
+
+# RTC multi-VM deployment secrets and generated LiveKit config
+deploy/rtc/multi-vm/.env
+deploy/rtc/multi-vm/runtime/
 
 # Native streaming engine build output (CMake/Visual Studio artifacts)
 /streaming-engine/build/

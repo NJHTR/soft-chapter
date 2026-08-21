@@ -146,7 +146,8 @@ public class RtcCallController {
         CreateCallCommand cmd = new CreateCallCommand(
                 userId, scope, targetUserId, groupId,
                 string(body, "mode"), string(body, "provider"),
-                string(body, "client_request_id"), string(body, "event_id"), string(body, "trace_id"));
+                string(body, "client_request_id"), string(body, "event_id"), string(body, "trace_id"),
+                string(body, "device_id"));
         return Result.ok(callService.createCall(cmd));
     }
 
@@ -159,13 +160,22 @@ public class RtcCallController {
     @PostMapping("/call/{callId}/accept")
     public Result<CallSession> accept(@PathVariable String callId, @RequestBody(required = false) Map<String, Object> body,
                                       HttpServletRequest req) {
-        return Result.ok(callService.acceptCall(callId, loginUserId(req), eventId(body), traceId(body)));
+        return Result.ok(callService.acceptCall(callId, loginUserId(req), eventId(body), traceId(body), deviceId(body)));
+    }
+
+    @PostMapping("/call/{callId}/device")
+    public Result<Map<String, Object>> registerDevice(@PathVariable String callId,
+                                                       @RequestBody(required = false) Map<String, Object> body,
+                                                       HttpServletRequest req) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("device", callService.registerCallDevice(callId, loginUserId(req), deviceId(body)));
+        return Result.ok(out);
     }
 
     @PostMapping("/call/{callId}/reject")
     public Result<CallSession> reject(@PathVariable String callId, @RequestBody(required = false) Map<String, Object> body,
                                       HttpServletRequest req) {
-        return Result.ok(callService.rejectCall(callId, loginUserId(req), eventId(body), traceId(body)));
+        return Result.ok(callService.rejectCall(callId, loginUserId(req), eventId(body), traceId(body), deviceId(body)));
     }
 
     @PostMapping("/call/{callId}/cancel")
@@ -214,6 +224,7 @@ public class RtcCallController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("call", session);
         out.put("participants", callService.participants(callId));
+        out.put("devices", callService.devices(callId));
         out.put("events", callService.events(callId));
         return Result.ok(out);
     }
@@ -289,5 +300,9 @@ public class RtcCallController {
 
     private static String traceId(Map<String, Object> body) {
         return body != null ? string(body, "trace_id") : null;
+    }
+
+    private static String deviceId(Map<String, Object> body) {
+        return body != null ? string(body, "device_id") : null;
     }
 }

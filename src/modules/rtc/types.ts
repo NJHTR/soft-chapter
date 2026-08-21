@@ -72,6 +72,7 @@ export interface IncomingCall {
   mode: CallMode
   isGroup?: boolean
   groupMembers?: string[]
+  deviceId?: string
 }
 
 export interface OutgoingMeta {

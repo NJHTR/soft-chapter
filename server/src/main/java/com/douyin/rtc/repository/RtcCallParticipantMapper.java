@@ -5,6 +5,7 @@ import com.douyin.rtc.domain.CallParticipant;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
@@ -41,4 +42,9 @@ public interface RtcCallParticipantMapper extends BaseMapper<CallParticipant> {
                               @Param("reason") String reason,
                               @Param("joinedAt") LocalDateTime joinedAt,
                               @Param("leftAt") LocalDateTime leftAt);
+
+    @Delete({"<script>", "DELETE FROM rtc_call_participant WHERE call_id IN",
+            "<foreach collection='callIds' item='callId' open='(' separator=',' close=')'>#{callId}</foreach>",
+            "</script>"})
+    int deleteByCallIds(@Param("callIds") List<String> callIds);
 }

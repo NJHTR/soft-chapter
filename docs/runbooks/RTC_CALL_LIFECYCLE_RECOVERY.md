@@ -3,8 +3,10 @@
 ## Runtime knobs
 
 ```text
-rtc.call.ringing-ttl=30s
+rtc.call.ringing-ttl=180s
 rtc.call.negotiating-ttl=5m
+rtc.call.history-retention=31d
+rtc.call.history-purge-interval-ms=3600000
 rtc.call.timeout-shards=32
 rtc.call.timeout-batch-size=500
 rtc.call.timeout-poll-ms=1000
@@ -35,3 +37,10 @@ douyin.kafka.reliability.outbox-stale-processing-ms=300000
 - If a command returns a terminal state different from optimistic UI, replace local state immediately and stop
   ringing on all devices.
 - If notification delivery is uncertain, call `GET /api/rtc/calls/active`; do not synthesize a terminal state.
+
+## History retention
+
+`CallHistoryRetentionJob` deletes only terminal `rtc_call_session` rows older than the configured
+retention, after deleting their event and participant children. It is bounded by
+`rtc.call.history-purge-batch-size` and never selects active calls. Kafka consumer ledger and
+outbox terminal rows use the same 31-day minimum in the portable control-plane profile.

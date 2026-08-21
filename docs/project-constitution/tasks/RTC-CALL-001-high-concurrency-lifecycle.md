@@ -20,6 +20,11 @@
   `affectedRows=1` 的命令获胜，其余命令重读权威终态。
 - 业务边界：服务端在 `expires_at` 之前收到并成功 CAS 的 ACCEPT 有效；超时 worker 先 CAS 成功后，
   任意晚到 ACCEPT 返回 `EXPIRED`。不接受客户端自报点击时间覆盖服务端事实。
+- 业务配置：响铃窗口固定为 `180s`；被叫离线时仍保留 `RINGING`，直到服务端过期或主叫取消。
+- 多设备策略：同一用户的每个设备独立响铃；某一设备接听不自动停止其他设备的响铃。该语义需要
+  设备级投递状态，不能用单一 user participant 状态伪造。
+- 安全策略：拉黑、注销或 Token 失效在通话中立即终止，并禁止继续建连。
+- 历史/幂等数据的目标保留期为至少 `31d`（下一个月）；Kafka ledger/outbox 默认保留 `744h`。
 - `event_id` 去重；`event_version` 携带生成事件时的 `state_version`。同一 call 的 Kafka key 固定
   `callId`，消费者仍须拒绝旧版本。
 
@@ -37,6 +42,7 @@
 7. Call ID 格式校验、20~40 秒 jitter negative cache 与 JVM single-flight；不存在 ID 重复请求不持续
    回源 MySQL。目标账号存在性独立校验，已存在但离线仍可创建 RINGING 会话。
 8. 低基数状态迁移/冲突、幂等命中、reconciliation 结果和 timeout lag Micrometer 指标。
+9. 终态历史按至少 `31d` 保留后分批清理；事件和参与者子表先删除，活跃会话永不进入清理批次。
 
 ## 仍未实现/未验证
 
@@ -68,6 +74,8 @@ git diff --check
 - [ ] 10k/100k/1m pending call 分片容量与 timeout lag 报告
 - [ ] Hikari/慢查询/锁等待门禁与 EXPLAIN 证据
 - [ ] 浏览器离线上线、多端接听、丢消息重连验收
+- [x] 设备级独立 ringing/accept 状态与单元测试；真实多设备浏览器验收仍待执行
+- [x] 31 天终态历史/幂等数据保留配置与有界清理代码
 
 ## 回滚
 
@@ -76,3 +84,21 @@ git diff --check
   禁止临时切回秒级全表扫描。
 - `DOUYIN_KAFKA_ENABLED=false` 停止新 Kafka/outbox 发布；RTC MySQL 事件账本和 reconciliation 仍工作。
 - WebSocket 广播异常不回滚已提交状态；客户端通过 `GET /api/rtc/calls/active` 恢复。
+
+## 交付记录
+
+- `c02f487`：Kafka transactional outbox、consumer ledger、指数退避/DLQ、lag 指标与 DTO 类型恢复。
+- `e603ff9`：Call CAS/version、active-call reconciliation、多设备广播、Redis ZSET timeout index、
+  negative cache/single-flight、迁移与恢复 runbook。
+- `2869d56`：补齐 RTC-006/014/015 既有多构造器与内存 store 的 Spring 运行时 bean 接线。
+- 验证：Kafka `19/19`、RTC `224/224`、后端全量 `316/316`；`vue-tsc`、RTC ESLint、Vite build、
+  compose config 与 `git diff --check` 通过。
+- 未执行：双浏览器 offline→login/重连/多端接听，真实 Redis/Kafka/MySQL/WebSocket 故障注入，
+  EXPLAIN/Hikari 门禁，10k/100k/1m pending-call 压测。任务因此保持 `in_progress`。
+
+### 设备级状态实现
+
+`rtc_call_device` 以 `(call_id,user_id,device_id)` 唯一标识浏览器/客户端设备，
+设备注册、接听和拒绝均采用幂等状态迁移。会话级 `ACCEPTED` 只由首个设备推进，
+其余设备仍可保持 `RINGING` 并在重连后通过详情接口恢复；设备状态不会替代会话级
+媒体生命周期。旧客户端未携带 `device_id` 时使用兼容的 `default` 设备。

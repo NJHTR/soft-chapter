@@ -1,0 +1,30 @@
+# Optional coturn relay node. Use a separate VM/relay range per region.
+services:
+  turn:
+    image: ${TURN_IMAGE:-coturn/coturn:4.17.2}
+    restart: unless-stopped
+    init: true
+    # Host networking keeps TURN relay candidates on the VM address. Docker
+    # bridge NAT would advertise an unreachable 172.x container address.
+    network_mode: host
+    command:
+      - --log-file=stdout
+      - --no-tls
+      - --no-dtls
+      - --listening-ip=${TURN_LISTENING_IP:?set TURN_LISTENING_IP}
+      - --relay-ip=${TURN_RELAY_IP:?set TURN_RELAY_IP}
+      - --listening-port=${TURN_HOST_PORT:-3478}
+      - --static-auth-secret=${TURN_SHARED_SECRET:?set TURN_SHARED_SECRET}
+      - --external-ip=${TURN_EXTERNAL_IP:?set TURN_EXTERNAL_IP}
+      - --realm=${TURN_REALM:-rtc.local}
+      - --fingerprint
+      - --no-multicast-peers
+      - --prometheus
+      - --min-port=${TURN_RELAY_MIN_PORT:-41000}
+      - --max-port=${TURN_RELAY_MAX_PORT:-41020}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/${TURN_LISTENING_IP:-127.0.0.1}/${TURN_HOST_PORT:-3478}'"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 10s

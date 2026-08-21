@@ -7,6 +7,7 @@ import com.douyin.rtc.domain.CallErrorCode;
 import com.douyin.rtc.domain.CallEvent;
 import com.douyin.rtc.domain.CallEventKind;
 import com.douyin.rtc.domain.CallParticipant;
+import com.douyin.rtc.domain.CallDevice;
 import com.douyin.rtc.domain.CallSession;
 import com.douyin.rtc.domain.CallState;
 import com.douyin.rtc.domain.CallStateMachine;
@@ -21,6 +22,7 @@ import com.douyin.rtc.capacity.CapacityReservation;
 import com.douyin.rtc.capacity.CapacityReservationStore;
 import com.douyin.rtc.repository.RtcCallEventMapper;
 import com.douyin.rtc.repository.RtcCallParticipantMapper;
+import com.douyin.rtc.repository.RtcCallDeviceMapper;
 import com.douyin.rtc.repository.RtcCallSessionMapper;
 import com.douyin.rtc.timeout.CallTimeoutIndex;
 import com.douyin.rtc.timeout.CallTimeoutIndexUnavailable;
@@ -76,6 +78,7 @@ public class CallService {
 
     private final RtcCallSessionMapper sessionMapper;
     private final RtcCallParticipantMapper participantMapper;
+    private final RtcCallDeviceMapper deviceMapper;
     private final RtcCallEventMapper eventMapper;
     private final AclService aclService;
     private final CallLedgerService ledgerService;
@@ -95,10 +98,10 @@ public class CallService {
                        AclService aclService,
                        CallLedgerService ledgerService,
                        RedisCacheService redisCacheService,
-                       @Value("${rtc.call.ringing-ttl:30s}") Duration ringingTtl,
+                       @Value("${rtc.call.ringing-ttl:180s}") Duration ringingTtl,
                        @Value("${rtc.call.negotiating-ttl:5m}") Duration negotiatingTtl) {
         this(sessionMapper, participantMapper, eventMapper, aclService, ledgerService,
-                redisCacheService, ringingTtl, negotiatingTtl, null, null, null, null, null, null);
+                redisCacheService, ringingTtl, negotiatingTtl, null, null, null, null, null, null, null);
     }
 
     /** 可选容量 admission hook（RTC-011）：null 表示本地/兼容模式不决策。 */
@@ -112,7 +115,20 @@ public class CallService {
                        Duration negotiatingTtl,
                        AdmissionService admissionService) {
         this(sessionMapper, participantMapper, eventMapper, aclService, ledgerService,
-                redisCacheService, ringingTtl, negotiatingTtl, admissionService, null, null, null, null, null);
+                redisCacheService, ringingTtl, negotiatingTtl, admissionService, null, null, null, null, null, null);
+    }
+
+    public CallService(RtcCallSessionMapper sessionMapper,
+                       RtcCallParticipantMapper participantMapper,
+                       RtcCallEventMapper eventMapper,
+                       AclService aclService,
+                       CallLedgerService ledgerService,
+                       RedisCacheService redisCacheService,
+                       Duration ringingTtl,
+                       Duration negotiatingTtl,
+                       RtcCallDeviceMapper deviceMapper) {
+        this(sessionMapper, participantMapper, eventMapper, aclService, ledgerService,
+                redisCacheService, ringingTtl, negotiatingTtl, null, null, null, null, null, null, deviceMapper);
     }
 
     /** 可选容量 admission hook（RTC-011）：null 表示本地/兼容模式不决策。 */
@@ -123,16 +139,18 @@ public class CallService {
                        AclService aclService,
                        CallLedgerService ledgerService,
                        RedisCacheService redisCacheService,
-                       @Value("${rtc.call.ringing-ttl:30s}") Duration ringingTtl,
+                       @Value("${rtc.call.ringing-ttl:180s}") Duration ringingTtl,
                        @Value("${rtc.call.negotiating-ttl:5m}") Duration negotiatingTtl,
                        @Autowired(required = false) AdmissionService admissionService,
                        @Autowired(required = false) CallTimeoutIndex timeoutIndex,
                        @Autowired(required = false) CallReconciliationService reconciliationService,
                        @Autowired(required = false) CallEventOutboxService callEventOutboxService,
                        @Autowired(required = false) CallControlMetrics controlMetrics,
-                       @Autowired(required = false) CallSessionLookupService lookupService) {
+                       @Autowired(required = false) CallSessionLookupService lookupService,
+                       @Autowired(required = false) RtcCallDeviceMapper deviceMapper) {
         this.sessionMapper = sessionMapper;
         this.participantMapper = participantMapper;
+        this.deviceMapper = deviceMapper;
         this.eventMapper = eventMapper;
         this.aclService = aclService;
         this.ledgerService = ledgerService;
@@ -306,6 +324,7 @@ public class CallService {
             for (Long target : targets) {
                 insertParticipant(callId, target, "member", groupProfiles.get(target));
             }
+            registerDevice(callId, initiator, deviceId(cmd.deviceId()), "RINGING");
             ringParticipants(session, initiator, targets);
             append(eventId, session, initiator, CallEventKind.CALL_REQUEST,
                     Map.of("scope", scope, "mode", session.getMode(), "targets", targets.size()), cmd.traceId());
@@ -324,12 +343,53 @@ public class CallService {
      * 其他成员已经接听而被乱序短路。</p>
      */
     public CallSession acceptCall(String callId, Long actorId, String eventId, String traceId) {
+        return acceptCall(callId, actorId, eventId, traceId, null);
+    }
+
+    /** Device-aware acceptance. A device accepts independently; the call is promoted once. */
+    public CallSession acceptCall(String callId, Long actorId, String eventId, String traceId, String requestedDeviceId) {
         assertClientEventId(eventId);
         CallSession session = requireSession(callId);
         aclService.assertAuthenticated(actorId);
         CallParticipant participant = requireTargetParticipant(session, actorId);
         if (isGroup(session)) {
             return acceptGroupCall(session, participant, actorId, eventId, traceId);
+        }
+        String deviceId = deviceId(requestedDeviceId);
+        boolean deviceCommand = deviceMapper != null;
+        // Do not materialize a new device row for a terminal or out-of-order
+        // command. Active ACCEPTED/NEGOTIATING calls are the exception: a new
+        // device may still accept independently while the session is active.
+        if (deviceCommand) {
+            if (!CallState.ACCEPTED.name().equals(session.getState())
+                    && !CallState.NEGOTIATING.name().equals(session.getState())) {
+                CallSession shortCircuit = replayOrTerminalOrOutOfOrder(session, CallCommand.ACCEPT, eventId);
+                if (shortCircuit != null) {
+                    return shortCircuit;
+                }
+            }
+            if (isExpired(session)) {
+                throw new CallDomainException(CallErrorCode.CALL_EXPIRED, "通话已过期,无法接听");
+            }
+            ensureDevice(callId, actorId, deviceId);
+            CallDevice device = deviceMapper.findByCallUserDevice(callId, actorId, deviceId);
+            if (device != null && !"RINGING".equals(device.getState()) && !"ACCEPTED".equals(device.getState())) {
+                return session;
+            }
+            // Once another device promoted the call, this device can still accept
+            // independently and join the already accepting session.
+            if (CallState.ACCEPTED.name().equals(session.getState())
+                    || CallState.NEGOTIATING.name().equals(session.getState())) {
+                LocalDateTime now = LocalDateTime.now();
+                if (device != null && "RINGING".equals(device.getState())) {
+                    deviceMapper.transition(callId, actorId, deviceId, "RINGING", "ACCEPTED", now, null);
+                }
+                applyParticipantTransition(session, actorId, ParticipantState.RINGING,
+                        ParticipantCommand.JOIN, null, now, null);
+                append(eventId, session, actorId, CallEventKind.CALL_ACCEPT,
+                        Map.of("mode", session.getMode(), "device_id", deviceId), traceId);
+                return session;
+            }
         }
         CallSession shortCircuit = replayOrTerminalOrOutOfOrder(session, CallCommand.ACCEPT, eventId);
         if (shortCircuit != null) {
@@ -342,10 +402,22 @@ public class CallService {
             throw new CallDomainException(CallErrorCode.RATE_LIMITED, "操作过于频繁,请稍后再试");
         }
         LocalDateTime now = LocalDateTime.now();
-        if (!applySessionTransition(session, CallCommand.ACCEPT, null, null, null, null)) {
-            return reload(session);
+        ensureDevice(callId, actorId, deviceId);
+        CallDevice device = deviceMapper == null ? null
+                : deviceMapper.findByCallUserDevice(callId, actorId, deviceId);
+        if (device != null && "RINGING".equals(device.getState())) {
+            deviceMapper.transition(callId, actorId, deviceId, "RINGING", "ACCEPTED", now, null);
+        } else if (device != null && !"ACCEPTED".equals(device.getState())) {
+            return session;
         }
-        applyParticipantTransition(session, actorId, ParticipantState.RINGING, ParticipantCommand.JOIN, null, now, null);
+        if (CallState.RINGING.name().equals(session.getState())) {
+            if (!applySessionTransition(session, CallCommand.ACCEPT, null, null, null, null)) {
+                session = reload(session);
+            }
+        }
+        if (CallState.ACCEPTED.name().equals(session.getState()) || CallState.NEGOTIATING.name().equals(session.getState())) {
+            applyParticipantTransition(session, actorId, ParticipantState.RINGING, ParticipantCommand.JOIN, null, now, null);
+        }
         append(eventId, session, actorId, CallEventKind.CALL_ACCEPT, Map.of("mode", session.getMode()), traceId);
         project(session, 1, 0);
         return session;
@@ -356,6 +428,11 @@ public class CallService {
      * 其余成员和 LiveKit room 不受影响。
      */
     public CallSession rejectCall(String callId, Long actorId, String eventId, String traceId) {
+        return rejectCall(callId, actorId, eventId, traceId, null);
+    }
+
+    /** Device-aware rejection; another device may continue ringing. */
+    public CallSession rejectCall(String callId, Long actorId, String eventId, String traceId, String requestedDeviceId) {
         assertClientEventId(eventId);
         CallSession session = requireSession(callId);
         aclService.assertAuthenticated(actorId);
@@ -363,14 +440,31 @@ public class CallService {
         if (isGroup(session)) {
             return rejectGroupCall(session, participant, actorId, eventId, traceId);
         }
-        CallSession shortCircuit = replayOrTerminalOrOutOfOrder(session, CallCommand.REJECT, eventId);
-        if (shortCircuit != null) {
-            return shortCircuit;
-        }
         if (isExpired(session)) {
             throw new CallDomainException(CallErrorCode.CALL_EXPIRED, "通话已过期,无法拒绝");
         }
         LocalDateTime now = LocalDateTime.now();
+        String deviceId = deviceId(requestedDeviceId);
+        ensureDevice(callId, actorId, deviceId);
+        if (deviceMapper != null) {
+            if (ledgerService.isReplay(eventId)) return session;
+            CallDevice device = deviceMapper.findByCallUserDevice(callId, actorId, deviceId);
+            if (device != null && "RINGING".equals(device.getState())) {
+                deviceMapper.transition(callId, actorId, deviceId, "RINGING", "REJECTED", null, now);
+            } else if (device != null && !"REJECTED".equals(device.getState())) {
+                return session;
+            }
+            if (deviceMapper.listByCallAndUser(callId, actorId).stream()
+                    .anyMatch(d -> "RINGING".equals(d.getState()))) {
+                return session;
+            }
+            if (!CallState.RINGING.name().equals(session.getState())) {
+                return session;
+            }
+        } else {
+            CallSession shortCircuit = replayOrTerminalOrOutOfOrder(session, CallCommand.REJECT, eventId);
+            if (shortCircuit != null) return shortCircuit;
+        }
         if (!applySessionTransition(session, CallCommand.REJECT, CallEndReason.REJECTED.name(), null, null, now)) {
             return reload(session);
         }
@@ -816,6 +910,23 @@ public class CallService {
         return participantMapper.listByCall(callId);
     }
 
+    /** Registers a browser/device as independently ringing for reconciliation. */
+    public CallDevice registerCallDevice(String callId, Long actorId, String requestedDeviceId) {
+        CallSession session = requireSession(callId);
+        aclService.assertAuthenticated(actorId);
+        requireTargetParticipant(session, actorId);
+        if (CallStateMachine.isFinal(CallState.valueOf(session.getState())) || isExpired(session)) {
+            throw new CallDomainException(CallErrorCode.CALL_EXPIRED, "通话已结束,无法注册设备");
+        }
+        String id = deviceId(requestedDeviceId);
+        ensureDevice(callId, actorId, id);
+        return deviceMapper == null ? null : deviceMapper.findByCallUserDevice(callId, actorId, id);
+    }
+
+    public List<CallDevice> devices(String callId) {
+        return deviceMapper == null ? List.of() : deviceMapper.listByCall(callId);
+    }
+
     public List<CallEvent> events(String callId) {
         return ledgerService.eventsByCall(callId);
     }
@@ -928,6 +1039,12 @@ public class CallService {
         if (target == CallState.RINGING && session.getRingAt() == null) {
             session.setRingAt(LocalDateTime.now());
         }
+        // A terminal session must stop any still-ringing device. Device-level
+        // acceptance remains independent while the session is active; only
+        // the terminal transition cancels the remaining ringing deliveries.
+        if (CallStateMachine.isFinal(target) || target == CallState.ENDING) {
+            cancelRingingDevices(session.getCallId());
+        }
         updateTimeoutIndexAfterCommit(session);
         if (controlMetrics != null) {
             controlMetrics.transition(current.name(), target.name());
@@ -952,6 +1069,42 @@ public class CallService {
         participant.setState(ParticipantState.INVITED.name());
         participant.setProfileSnapshot(profileSnapshot(userId, profile));
         participantMapper.insert(participant);
+    }
+
+    private String deviceId(String requested) {
+        if (requested == null || requested.isBlank()) return "default";
+        return requested.length() > 128 ? requested.substring(0, 128) : requested;
+    }
+
+    private void registerDevice(String callId, Long userId, String deviceId, String state) {
+        if (deviceMapper == null) return;
+        if (deviceMapper.findByCallUserDevice(callId, userId, deviceId) != null) return;
+        CallDevice device = new CallDevice();
+        device.setCallId(callId);
+        device.setUserId(userId);
+        device.setDeviceId(deviceId);
+        device.setState(state);
+        try {
+            deviceMapper.insert(device);
+        } catch (DuplicateKeyException ignored) {
+            // Concurrent reconnect/registration is idempotent.
+        }
+    }
+
+    private void ensureDevice(String callId, Long userId, String deviceId) {
+        registerDevice(callId, userId, deviceId, "RINGING");
+    }
+
+    /**
+     * Reconcile durable device delivery state after a call-level terminal CAS.
+     * A device that already accepted is deliberately left untouched; only
+     * pending ringing deliveries are cancelled.
+     */
+    private void cancelRingingDevices(String callId) {
+        if (deviceMapper == null) {
+            return;
+        }
+        deviceMapper.cancelRingingByCall(callId);
     }
 
     private String profileSnapshot(Long userId, GroupMemberProfile profile) {

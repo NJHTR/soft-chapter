@@ -48,7 +48,6 @@ services:
     restart: unless-stopped
     profiles: ["webrtc"]
     ports:
-      - "7880:7880/tcp"    # HTTP/WS 信令
       - "7881:7881/tcp"    # WebRTC over TCP
       - "7889:7889/tcp"    # Prometheus metrics
       - "50000-50050:50000-50050/udp" # WebRTC RTP
@@ -65,6 +64,22 @@ services:
       start_period: 10s
     networks:
       - streaming-net
+
+  # wss TLS 终结(LiveKit 1.13 无内置 TLS):外部 7880 -> 容器 7880
+  caddy-livekit-wss:
+    image: caddy:2
+    container_name: douyin-livekit-wss
+    restart: unless-stopped
+    profiles: ["webrtc"]
+    ports:
+      - "7880:7880/tcp"    # wss 入口
+    volumes:
+      - ./deploy/streaming/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./.certs:/etc/caddy/certs:ro
+    networks:
+      - streaming-net
+    depends_on:
+      - livekit
 
   # WebRTC TURN 穿透边缘(REST 临时凭据,TLS 5349 待证书落地见 deploy/rtc/turnserver.conf)
   coturn:

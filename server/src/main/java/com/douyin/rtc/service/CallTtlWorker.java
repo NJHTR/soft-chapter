@@ -23,7 +23,7 @@ import java.util.UUID;
 
 /**
  * 通话 TTL 回收 worker。生产主路径从分片 Redis ZSET 读取到期项:
- * - RINGING 超过 TTL(默认 30s,可配 rtc.call.ringing-ttl) -> EXPIRED;
+ * - RINGING 超过 TTL(默认 180s,可配 rtc.call.ringing-ttl) -> EXPIRED;
  * - NEGOTIATING 超过 TTL(默认 5m,可配 rtc.call.negotiating-ttl) -> FAILED(end_reason=expired)。
  * 全部走守卫式更新,只处理终态前(状态已被客户端命令推进则跳过)。
  */

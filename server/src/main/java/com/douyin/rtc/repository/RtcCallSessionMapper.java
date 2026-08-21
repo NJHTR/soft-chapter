@@ -5,6 +5,7 @@ import com.douyin.rtc.domain.CallSession;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
@@ -72,6 +73,21 @@ public interface RtcCallSessionMapper extends BaseMapper<CallSession> {
             + "AND state IN ('RINGING','NEGOTIATING') AND expires_at IS NOT NULL "
             + "ORDER BY id ASC LIMIT #{limit}")
     List<CallSession> findTimeoutRecoveryBatch(@Param("afterId") Long afterId, @Param("limit") int limit);
+
+    @Select("SELECT call_id FROM rtc_call_session "
+            + "WHERE state IN ('REJECTED','CANCELLED','EXPIRED','FAILED','ENDED') "
+            + "AND COALESCE(ended_at, update_time) < #{olderThan} ORDER BY id ASC LIMIT #{limit}")
+    List<String> findTerminalCallIdsForPurge(@Param("olderThan") LocalDateTime olderThan,
+                                             @Param("limit") int limit);
+
+    @Delete({"<script>",
+            "DELETE FROM rtc_call_session WHERE call_id IN",
+            "<foreach collection='callIds' item='callId' open='(' separator=',' close=')'>#{callId}</foreach>",
+            "AND state IN ('REJECTED','CANCELLED','EXPIRED','FAILED','ENDED')",
+            "AND COALESCE(ended_at, update_time) &lt; #{olderThan}",
+            "</script>"})
+    int deleteTerminalByCallIds(@Param("callIds") List<String> callIds,
+                                @Param("olderThan") LocalDateTime olderThan);
 
     /**
      * 守卫更新: 仅当当前状态等于 expected 时迁移到 target。

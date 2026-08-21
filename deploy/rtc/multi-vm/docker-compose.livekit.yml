@@ -1,0 +1,28 @@
+# One LiveKit SFU node. Redis and the API webhook endpoint are external.
+services:
+  livekit:
+    image: ${LIVEKIT_IMAGE:-livekit/livekit-server:v1.13.5}
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${LIVEKIT_SIGNAL_PORT:-7880}:7880/tcp"
+      - "${BIND_ADDRESS:-0.0.0.0}:${LIVEKIT_TCP_PORT:-7881}:7881/tcp"
+      - "${BIND_ADDRESS:-0.0.0.0}:${LIVEKIT_METRICS_PORT:-7889}:7889/tcp"
+      - "${BIND_ADDRESS:-0.0.0.0}:${LIVEKIT_RTP_MIN_PORT:-51000}-${LIVEKIT_RTP_MAX_PORT:-51050}:${LIVEKIT_RTP_MIN_PORT:-51000}-${LIVEKIT_RTP_MAX_PORT:-51050}/udp"
+    volumes:
+      - "${LIVEKIT_CONFIG_PATH:-./runtime/livekit.yaml}:/etc/livekit.yaml:ro"
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET}"
+    command:
+      - --config
+      - /etc/livekit.yaml
+      - --redis-password
+      # An empty value is valid for the disposable LAN Redis used by the local
+      # VM test. Set REDIS_PASSWORD when the shared Redis requires auth.
+      - "${REDIS_PASSWORD:-}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7889/metrics >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 15s

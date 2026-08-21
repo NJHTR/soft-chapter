@@ -917,9 +917,11 @@ function handleSignal(msg: any) {
   const fromUserId = msg.from_user_id
   const callId = data?.call_id || msg.call_id
 
-  // RTC-004 新链路:1 对 1 的旧 offer/answer/ICE 全部交给 LiveKit;
-  // 旧组件只继续承载群聊和明确的 legacy bridge。
-  if (RTC004 && !state.isGroup && !data?.isGroup) return
+  // RTC-004/005 新链路接管:1 对 1 交给 LiveKit store,群通话交给
+  // CallPanel/wsBridge(useRtcStore)。旧来电卡片与 handleAccept 会发送
+  // 死信 call_accept、走 WebRTC P2P 与 LiveKit 混流,导致主叫永远停在
+  // RINGING、被叫只见自己和发起者——新链路启用的信令一律不再处理。
+  if ((RTC004 && !data?.isGroup) || (RTC005 && data?.isGroup)) return
 
   // 过滤不相关的通话
   if (state.isActive && callId && state.callId && callId !== state.callId) return

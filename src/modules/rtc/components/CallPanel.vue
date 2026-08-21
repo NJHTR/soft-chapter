@@ -41,8 +41,16 @@
           <div class="rtc-actions dialing-actions">
             <div class="rtc-action-btn hangup" @click="store.cancel()">
               <div class="btn-circle hangup">
-                <svg class="rtc-svg-icon rtc-hangup-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z" transform="rotate(135 12 12)" />
+                <svg
+                  class="rtc-svg-icon rtc-hangup-icon"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z"
+                    transform="rotate(135 12 12)"
+                  />
                 </svg>
               </div>
               <span>取消</span>
@@ -66,8 +74,16 @@
           <div class="rtc-actions incoming-actions">
             <div class="rtc-action-btn" @click="store.reject()">
               <div class="btn-circle red">
-                <svg class="rtc-svg-icon rtc-hangup-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z" transform="rotate(135 12 12)" />
+                <svg
+                  class="rtc-svg-icon rtc-hangup-icon"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z"
+                    transform="rotate(135 12 12)"
+                  />
                 </svg>
               </div>
               <span>拒绝</span>
@@ -88,8 +104,16 @@
           <div class="rtc-actions dialing-actions">
             <div class="rtc-action-btn hangup" @click="store.hangup()">
               <div class="btn-circle hangup">
-                <svg class="rtc-svg-icon rtc-hangup-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z" transform="rotate(135 12 12)" />
+                <svg
+                  class="rtc-svg-icon rtc-hangup-icon"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z"
+                    transform="rotate(135 12 12)"
+                  />
                 </svg>
               </div>
               <span>挂断</span>
@@ -174,8 +198,8 @@
                     class="rtc-hidden-audio"
                   />
                   <div
-                  v-if="store.mode === 'audio' || !entry.videoEnabled || !entry.stream"
-                  class="rtc-group-tile-off"
+                    v-if="store.mode === 'audio' || !entry.videoEnabled || !entry.stream"
+                    class="rtc-group-tile-off"
                   >
                     <img :src="entry.avatar || defaultAvatar" alt="" />
                   </div>
@@ -197,17 +221,19 @@
             </div>
           </template>
           <template v-else-if="store.mode === 'video'">
-            <div class="rtc-video-stage" :class="{ 'rtc-video-stage-remote-focused': videoLayoutSwapped }">
+            <div
+              class="rtc-video-stage"
+              :class="{ 'rtc-video-stage-remote-focused': videoLayoutSwapped }"
+            >
               <!-- 本机主画面 -->
               <div
-                class="rtc-video-self-layer"
-                :class="{ 'is-clickable': videoLayoutSwapped }"
-                :role="videoLayoutSwapped ? 'button' : undefined"
-                :tabindex="videoLayoutSwapped ? 0 : -1"
+                class="rtc-video-self-layer is-clickable"
+                role="button"
+                tabindex="0"
                 aria-label="切换主画面"
-                @click.stop="videoLayoutSwapped && toggleVideoLayout()"
-                @keydown.enter.prevent="videoLayoutSwapped && toggleVideoLayout()"
-                @keydown.space.prevent="videoLayoutSwapped && toggleVideoLayout()"
+                @click.stop="toggleVideoLayout()"
+                @keydown.enter.prevent="toggleVideoLayout()"
+                @keydown.space.prevent="toggleVideoLayout()"
               >
                 <video
                   v-if="localVideoEnable"
@@ -227,14 +253,13 @@
               </div>
               <!-- 对端右上角小窗 -->
               <div
-                class="rtc-video-remote-preview"
-                :class="{ 'is-clickable': !videoLayoutSwapped }"
-                :role="!videoLayoutSwapped ? 'button' : undefined"
-                :tabindex="!videoLayoutSwapped ? 0 : -1"
+                class="rtc-video-remote-preview is-clickable"
+                role="button"
+                tabindex="0"
                 aria-label="切换主画面"
-                @click.stop="!videoLayoutSwapped && toggleVideoLayout()"
-                @keydown.enter.prevent="!videoLayoutSwapped && toggleVideoLayout()"
-                @keydown.space.prevent="!videoLayoutSwapped && toggleVideoLayout()"
+                @click.stop="toggleVideoLayout()"
+                @keydown.enter.prevent="toggleVideoLayout()"
+                @keydown.space.prevent="toggleVideoLayout()"
               >
                 <video
                   v-if="store.mode === 'video'"
@@ -337,7 +362,11 @@
                 </div>
                 <span>扬声器</span>
               </div>
-              <div v-if="store.mode === 'video'" class="rtc-action-btn" @click="store.toggleCamera()">
+              <div
+                v-if="store.mode === 'video'"
+                class="rtc-action-btn"
+                @click="store.toggleCamera()"
+              >
                 <div class="btn-circle" :class="{ off: store.devices.videoOff }">
                   <img :src="store.devices.videoOff ? iconCameraOff : iconCameraOn" alt="" />
                 </div>
@@ -370,13 +399,25 @@
               </div>
               <div class="rtc-action-btn secondary-hangup" @click="store.hangup()">
                 <div class="btn-circle hangup">
-                  <svg class="rtc-svg-icon rtc-hangup-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z" transform="rotate(135 12 12)" />
+                  <svg
+                    class="rtc-svg-icon rtc-hangup-icon"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z"
+                      transform="rotate(135 12 12)"
+                    />
                   </svg>
                 </div>
                 <span>挂断</span>
               </div>
-              <div v-if="store.mode === 'video'" class="rtc-action-btn secondary-flip" @click="store.switchCamera()">
+              <div
+                v-if="store.mode === 'video'"
+                class="rtc-action-btn secondary-flip"
+                @click="store.switchCamera()"
+              >
                 <div class="btn-circle">
                   <svg
                     class="rtc-svg-icon"
@@ -389,7 +430,9 @@
                   >
                     <polyline points="23 4 23 10 17 10" />
                     <polyline points="1 20 1 14 7 14" />
-                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                    <path
+                      d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+                    />
                   </svg>
                 </div>
                 <span>翻转</span>
@@ -529,27 +572,29 @@ const myAvatar = computed(() => resolveAvatar(baseStore.userinfo.avatar_168x168?
 // itself. Read the store signal so LiveKit mute/unmute callbacks invalidate
 // this computed value, then derive visibility from the current track.
 const peerVideoMuteSignal = computed(() => store.remoteMuted[peerIdentity.value]?.video ?? false)
-const peerVideoEnable = computed(
-  () => {
-    void peerVideoMuteSignal.value
-    return !!peerStream.value?.getVideoTracks().some(
-      (track) => track.readyState !== 'ended' && track.enabled
-    )
-  }
-)
-const peerVideoSignature = computed(() =>
-  peerStream.value?.getVideoTracks().map((track) => `${track.id}:${track.readyState}:${track.enabled}`).join('|') || ''
+const peerVideoEnable = computed(() => {
+  void peerVideoMuteSignal.value
+  return !!peerStream.value
+    ?.getVideoTracks()
+    .some((track) => track.readyState !== 'ended' && track.enabled)
+})
+const peerVideoSignature = computed(
+  () =>
+    peerStream.value
+      ?.getVideoTracks()
+      .map((track) => `${track.id}:${track.readyState}:${track.enabled}`)
+      .join('|') || ''
 )
 const localVideoEnable = computed(
   () =>
-    !!store.localStream?.getVideoTracks().some(
-      (track) => track.readyState !== 'ended' && track.enabled
-    ) &&
-    !store.devices.videoOff
+    !!store.localStream
+      ?.getVideoTracks()
+      .some((track) => track.readyState !== 'ended' && track.enabled) && !store.devices.videoOff
 )
 const localVideoSignature = computed(
   () =>
-    store.localStream?.getVideoTracks()
+    store.localStream
+      ?.getVideoTracks()
       .map((track) => `${track.id}:${track.readyState}:${track.enabled}`)
       .join('|') || ''
 )
@@ -581,9 +626,9 @@ const remoteParticipantEntries = computed(() =>
       name: member?.name || identity,
       avatar: resolveAvatar(member?.avatar),
       muted: store.remoteMuted[identity] || { audio: false, video: false },
-      videoEnabled: stream.getVideoTracks().some(
-        (track) => track.readyState !== 'ended' && track.enabled
-      )
+      videoEnabled: stream
+        .getVideoTracks()
+        .some((track) => track.readyState !== 'ended' && track.enabled)
     }
   })
 )
@@ -620,7 +665,8 @@ function setGroupVideoEl(key: string, el: HTMLVideoElement | HTMLAudioElement | 
     registerRtOutputEl(`group-${key}`, el)
     const identity = key.startsWith('aud-') ? key.slice(4) : key
     const stream = store.remoteStreams[identity]
-    if (stream) bindStream(el as HTMLMediaElement, stream, key.startsWith('aud-') ? 'audio' : 'video')
+    if (stream)
+      bindStream(el as HTMLMediaElement, stream, key.startsWith('aud-') ? 'audio' : 'video')
   } else {
     groupMediaEls.delete(key)
     registerRtOutputEl(`group-${key}`, null)
@@ -663,11 +709,12 @@ function logRemoteVideoEvent(name: string, event: Event) {
     readyState: el?.readyState ?? -1,
     networkState: el?.networkState ?? -1,
     currentTime: el?.currentTime ?? 0,
-    tracks: (el?.srcObject as MediaStream | null)?.getTracks().map((track) => ({
-      kind: track.kind,
-      readyState: track.readyState,
-      enabled: track.enabled
-    })) || []
+    tracks:
+      (el?.srcObject as MediaStream | null)?.getTracks().map((track) => ({
+        kind: track.kind,
+        readyState: track.readyState,
+        enabled: track.enabled
+      })) || []
   })
 }
 
@@ -678,11 +725,12 @@ function logLocalVideoEvent(name: string, event: Event) {
     videoWidth: el?.videoWidth || 0,
     videoHeight: el?.videoHeight || 0,
     readyState: el?.readyState ?? -1,
-    tracks: (el?.srcObject as MediaStream | null)?.getTracks().map((track) => ({
-      kind: track.kind,
-      readyState: track.readyState,
-      enabled: track.enabled
-    })) || []
+    tracks:
+      (el?.srcObject as MediaStream | null)?.getTracks().map((track) => ({
+        kind: track.kind,
+        readyState: track.readyState,
+        enabled: track.enabled
+      })) || []
   })
 }
 
@@ -732,7 +780,13 @@ watch(
 )
 
 watch(
-  [() => store.localStream, localVideoSignature, () => store.phase, () => store.mode, () => store.devices.videoOff],
+  [
+    () => store.localStream,
+    localVideoSignature,
+    () => store.phase,
+    () => store.mode,
+    () => store.devices.videoOff
+  ],
   async ([stream]) => {
     await nextTick()
     await bindStream(
@@ -1059,8 +1113,14 @@ onMounted(() => {
     position: absolute;
     inset: 0;
     z-index: 1;
-    transition: top 0.22s ease, right 0.22s ease, bottom 0.22s ease, left 0.22s ease,
-      width 0.22s ease, height 0.22s ease, border-radius 0.22s ease;
+    transition:
+      top 0.22s ease,
+      right 0.22s ease,
+      bottom 0.22s ease,
+      left 0.22s ease,
+      width 0.22s ease,
+      height 0.22s ease,
+      border-radius 0.22s ease;
   }
 
   .rtc-video-self {
@@ -1105,9 +1165,14 @@ onMounted(() => {
     background: rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.2);
     z-index: 2;
-    transition: top 0.22s ease, right 0.22s ease, bottom 0.22s ease, left 0.22s ease,
-      width 0.22s ease, height 0.22s ease, border-radius 0.22s ease;
-
+    transition:
+      top 0.22s ease,
+      right 0.22s ease,
+      bottom 0.22s ease,
+      left 0.22s ease,
+      width 0.22s ease,
+      height 0.22s ease,
+      border-radius 0.22s ease;
   }
 
   .rtc-video-self-layer.is-clickable,
@@ -1195,6 +1260,7 @@ onMounted(() => {
     gap: 4rem;
     padding: 36rem 16rem 20rem;
     background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent);
+    pointer-events: none;
 
     .rtc-peer-name {
       font-size: 18rem;
@@ -1350,6 +1416,7 @@ onMounted(() => {
   gap: 10rem;
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent);
   z-index: 2;
+  pointer-events: none;
 }
 
 .rtc-group-grid {

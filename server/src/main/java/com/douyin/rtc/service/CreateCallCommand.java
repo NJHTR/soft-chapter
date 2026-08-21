@@ -13,5 +13,11 @@ public record CreateCallCommand(
         String provider,
         String clientRequestId,
         String eventId,
-        String traceId) {
+        String traceId,
+        String deviceId) {
+    public CreateCallCommand(Long initiatorId, String scope, Long targetUserId, Long groupId,
+                             String mode, String provider, String clientRequestId,
+                             String eventId, String traceId) {
+        this(initiatorId, scope, targetUserId, groupId, mode, provider, clientRequestId, eventId, traceId, null);
+    }
 }

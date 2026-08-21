@@ -22,6 +22,12 @@ public class SessionManager {
 
     /** userId -> 该用户所有设备的 WebSocketSession 集合 */
     private final Map<Long, Set<WebSocketSession>> sessions = new ConcurrentHashMap<>();
+    private volatile WebSocketClusterBus clusterBus;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setClusterBus(WebSocketClusterBus clusterBus) {
+        this.clusterBus = clusterBus;
+    }
 
     public void register(Long userId, WebSocketSession session) {
         sessions.computeIfAbsent(userId, k -> new CopyOnWriteArraySet<>()).add(session);
@@ -55,6 +61,15 @@ public class SessionManager {
 
     /** 推送 JSON 消息给指定用户的所有在线设备 */
     public void push(Long userId, String json) {
+        pushLocal(userId, json);
+        WebSocketClusterBus bus = clusterBus;
+        if (bus != null) {
+            bus.publish(userId, json);
+        }
+    }
+
+    /** Deliver only to sockets owned by this JVM. Used by the cluster bus subscriber. */
+    public void pushLocal(Long userId, String json) {
         Set<WebSocketSession> set = sessions.get(userId);
         if (set == null || set.isEmpty()) return;
         for (WebSocketSession session : set) {

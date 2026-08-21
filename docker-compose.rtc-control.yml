@@ -1,0 +1,130 @@
+# Local RTC control-plane stack.
+#
+# Start:
+#   docker compose --env-file deploy/rtc/control/.env -f docker-compose.rtc-control.yml up -d --build
+# Scale the stateless API locally:
+#   docker compose --env-file deploy/rtc/control/.env -f docker-compose.rtc-control.yml up -d --scale rtc-api=2 rtc-api
+# For multiple physical servers, keep mysql/redis/kafka on managed/shared infrastructure and
+# point each API replica at them. Put an external L7 load balancer in front of rtc-api.
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: douyin
+      MYSQL_USER: ${DB_USERNAME:-douyin}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - rtc-mysql:/var/lib/mysql
+      - ./server/sql:/docker-entrypoint-initdb.d:ro
+      - ./deploy/rtc/control/seed-rtc-users.sql:/docker-entrypoint-initdb.d/zz-rtc-test-users.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [rtc-control]
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - rtc-redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [rtc-control]
+
+  kafka:
+    image: apache/kafka:4.0.0
+    restart: unless-stopped
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    volumes:
+      - rtc-kafka:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    networks: [rtc-control]
+
+  rtc-api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Duser.timezone=Asia/Shanghai -Xms256m -Xmx768m -XX:+UseG1GC}
+      SPRING_PROFILES_ACTIVE: dev
+      SERVER_PORT: 9191
+      DB_URL: jdbc:mysql://mysql:3306/douyin?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+      DB_USERNAME: ${DB_USERNAME:-douyin}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DOUYIN_KAFKA_ENABLED: ${DOUYIN_KAFKA_ENABLED:-true}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      RTC_CALL_RINGING_TTL: ${RTC_CALL_RINGING_TTL:-180s}
+      RTC_CALL_HISTORY_RETENTION: ${RTC_CALL_HISTORY_RETENTION:-31d}
+      KAFKA_LEDGER_RETENTION_HOURS: ${KAFKA_LEDGER_RETENTION_HOURS:-744}
+      KAFKA_OUTBOX_RETENTION_HOURS: ${KAFKA_OUTBOX_RETENTION_HOURS:-744}
+      RTC_NODE_ID: ${RTC_NODE_ID:-local-api}
+      WEBSOCKET_CLUSTER_ENABLED: "true"
+      WEBSOCKET_CLUSTER_CHANNEL: douyin:websocket:fanout:v1
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks: [rtc-control]
+
+  rtc-edge:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "${RTC_API_PORT:-9191}:80"
+    volumes:
+      - ./deploy/rtc/control/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - rtc-api
+    networks: [rtc-control]
+
+volumes:
+  rtc-mysql:
+  rtc-redis:
+  rtc-kafka:
+
+networks:
+  rtc-control:
+    driver: bridge

@@ -14,11 +14,13 @@ export interface CreateCallParams {
   event_id?: string
   trace_id?: string
   provider?: 'livekit' | 'p2p-fallback' | 'legacy'
+  device_id?: string
 }
 
 export interface RtcActionRequest {
   event_id?: string
   trace_id?: string
+  device_id?: string
 }
 
 /** POST /api/rtc/call → CallSession */
@@ -34,6 +36,10 @@ export function getToken(data: { call_id: string; ttl_seconds?: number; trace_id
 
 export function acceptCall(callId: string, data: RtcActionRequest = {}) {
   return request({ url: `/rtc/call/${callId}/accept`, method: 'post', data })
+}
+
+export function registerCallDevice(callId: string, data: { device_id: string }) {
+  return request({ url: `/rtc/call/${callId}/device`, method: 'post', data })
 }
 
 export function rejectCall(callId: string, data: RtcActionRequest = {}) {

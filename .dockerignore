@@ -23,3 +23,17 @@ node_modules
 *.sw?
 docs
 node
+server/target/**
+**/target/**
+server/kafkakraft-data/**
+server/audio/**
+.git
+.git/**
+**/node_modules/**
+server/python/**
+**/.venv/**
+**/distill_output/**
+**/*.safetensors
+**/*.pt
+server/src/main/resources/application.yml
+server/src/main/resources/application-dev.yml

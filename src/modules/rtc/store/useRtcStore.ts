@@ -9,6 +9,7 @@ import {
   joinCall,
   confirmConnectedCall,
   getCallDetail,
+  registerCallDevice,
   genClientRequestId
 } from '@/api/rtc'
 import { sendCallSignal } from '@/utils/socket'
@@ -63,6 +64,19 @@ function genEventId(kind: string): string {
 
 function genTraceId(): string {
   return `rtc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function rtcDeviceId(): string {
+  const key = 'douyin.rtc.device_id'
+  try {
+    const existing = window.localStorage.getItem(key)
+    if (existing) return existing
+    const value = `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+    window.localStorage.setItem(key, value)
+    return value
+  } catch {
+    return 'web-default'
+  }
 }
 
 /** 解析详情接口里的 profile_snapshot（string JSON 或对象），提供面板展示姓名/头像。 */
@@ -138,12 +152,12 @@ export const useRtcStore = defineStore('rtc', {
     }
   },
   actions: {
-    /** 开始主叫/被叫振铃，并与服务端默认 30 秒 ringing TTL 对齐。 */
+    /** 开始主叫/被叫振铃；倒计时始终以服务端 expires_at 为准。 */
     beginRinging(role: 'outgoing' | 'incoming', expiresAt?: string | null) {
       ringingTimer = clearTimer(ringingTimer)
       startCallRingtone()
       const configuredRemaining = expiresAt ? new Date(expiresAt).getTime() - Date.now() : 0
-      const timeoutMs = configuredRemaining > 0 ? configuredRemaining : 30_000
+      const timeoutMs = configuredRemaining > 0 ? configuredRemaining : 180_000
       ringingTimer = setTimeout(() => {
         if (role === 'outgoing' && this.phase === 'dialing') {
           void this.cancel()
@@ -245,7 +259,8 @@ export const useRtcStore = defineStore('rtc', {
         mode: meta.isVideo ? 'video' : 'audio',
         target_user_id: meta.toUserId,
         client_request_id: genClientRequestId(),
-        trace_id: this.traceId || undefined
+        trace_id: this.traceId || undefined,
+        device_id: rtcDeviceId()
       })
       if (generation !== lifecycleGeneration || this.phase !== 'dialing') {
         if (res.success && res.data?.call_id) {
@@ -284,7 +299,8 @@ export const useRtcStore = defineStore('rtc', {
         mode: gm.isVideo ? 'video' : 'audio',
         group_id: gm.groupId,
         client_request_id: genClientRequestId(),
-        trace_id: this.traceId || undefined
+        trace_id: this.traceId || undefined,
+        device_id: rtcDeviceId()
       })
       if (generation !== lifecycleGeneration || this.phase !== 'dialing') {
         if (res.success && res.data?.call_id) {
@@ -344,17 +360,46 @@ export const useRtcStore = defineStore('rtc', {
       if (
         !detail.success ||
         !call ||
-        String(call.state).toUpperCase() !== 'RINGING' ||
+        !['RINGING', 'ACCEPTED', 'NEGOTIATING'].includes(String(call.state).toUpperCase()) ||
         String(call.initiator_id) !== String(payload.fromUserId) ||
         !members.some((p: any) => String(p.user_id) === this.myId)
       ) {
         return
       }
+      void registerCallDevice(payload.callId, { device_id: rtcDeviceId() })
       this.hardResetState()
       this.incoming = payload
       this.traceId = genTraceId()
       this.phase = 'ringingIn'
       this.beginRinging('incoming', call.expires_at)
+    },
+
+    /** 登录/重连后由 durable-call reconciliation 触发，不依赖丢失的 call_request。 */
+    async reconcileIncomingCall(callId: string) {
+      if (!callId || this.phase !== 'idle') return
+      const detail = await getCallDetail(callId)
+      const call = detail.data?.call as CallSession | undefined
+      if (
+        !detail.success ||
+        !call ||
+        !['RINGING', 'ACCEPTED', 'NEGOTIATING'].includes(String(call.state).toUpperCase())
+      )
+        return
+      const initiator = String(call.initiator_id ?? '')
+      if (!initiator || initiator === this.myId) return
+      const peer = (detail.data?.participants || []).find(
+        (p: any) => String(p.user_id) === initiator
+      )
+      const profile = parseProfileSnapshot(peer?.profile_snapshot)
+      await registerCallDevice(callId, { device_id: rtcDeviceId() })
+      await this.notifyIncoming({
+        callId,
+        fromUserId: initiator,
+        name: profile.displayName || '用户',
+        avatar: profile.avatar,
+        mode: call.mode === 'video' ? 'video' : 'audio',
+        isGroup: call.scope === 'group'
+      })
     },
 
     /** 对方在媒体会话建立前发现本端忙线时，结束发起方的拨号。 */
@@ -389,7 +434,8 @@ export const useRtcStore = defineStore('rtc', {
       this.phase = 'connecting'
       const res = await acceptCall(incomingCallId, {
         event_id: genEventId('accept'),
-        trace_id: this.traceId || undefined
+        trace_id: this.traceId || undefined,
+        device_id: rtcDeviceId()
       })
       if (generation !== lifecycleGeneration || this.phase !== 'connecting') {
         return
@@ -431,7 +477,8 @@ export const useRtcStore = defineStore('rtc', {
       if (this.incoming?.callId) {
         const res = await rejectCall(this.incoming.callId, {
           event_id: genEventId('reject'),
-          trace_id: this.traceId || undefined
+          trace_id: this.traceId || undefined,
+          device_id: rtcDeviceId()
         })
         if (!res.success) this.error = extractErr(res)
       }

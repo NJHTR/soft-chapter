@@ -14,6 +14,18 @@ server:
 
 websocket:
   allowed-origins: ${WEBSOCKET_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+  cluster:
+    enabled: ${WEBSOCKET_CLUSTER_ENABLED:false}
+    node-id: ${RTC_NODE_ID:local-api}
+    channel: ${WEBSOCKET_CLUSTER_CHANNEL:douyin:websocket:fanout:v1}
+
+douyin:
+  kafka:
+    enabled: ${DOUYIN_KAFKA_ENABLED:false}
+    reliability:
+      ledger-retention-hours: ${KAFKA_LEDGER_RETENTION_HOURS:744}
+      outbox-retention-hours: ${KAFKA_OUTBOX_RETENTION_HOURS:744}
+      purge-interval-ms: ${KAFKA_RELIABILITY_PURGE_INTERVAL_MS:3600000}
 
 live:
   engine:
@@ -49,6 +61,42 @@ spring:
       max-request-size: 500MB
   jackson:
     property-naming-strategy: SNAKE_CASE
+  datasource:
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/douyin?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:5000}
+      validation-timeout: ${DB_VALIDATION_TIMEOUT_MS:2000}
+      maximum-pool-size: ${DB_MAX_POOL_SIZE:30}
+      minimum-idle: ${DB_MIN_IDLE:4}
+      pool-name: DouyinHikari
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP:douyin-server}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      enable-auto-commit: false
+      properties:
+        spring.json.trusted.packages: com.douyin.kafka.dto
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: ${REDIS_POOL_MAX_ACTIVE:32}
+          max-idle: ${REDIS_POOL_MAX_IDLE:16}
+          min-idle: ${REDIS_POOL_MIN_IDLE:4}
+          max-wait: 2000ms
   mail:
     host: ${SMTP_HOST:smtp.qq.com}
     port: ${SMTP_PORT:465}
@@ -93,6 +141,10 @@ minio:
 # RTC 容量门禁与 QoE（RTC-011）。默认关闭；开启后只影响新房/首次媒体 token，
 # 已有房间不动。硬门禁 0.8 / 告警 0.7，快照超时与容量服务不可用时 fail-closed。
 rtc:
+  call:
+    ringing-ttl: ${RTC_CALL_RINGING_TTL:180s}
+    negotiating-ttl: ${RTC_CALL_NEGOTIATING_TTL:5m}
+    history-retention: ${RTC_CALL_HISTORY_RETENTION:31d}
   capacity:
     admission-enabled: ${RTC_CAPACITY_ADMISSION_ENABLED:false}
     snapshot-stale-after-ms: ${RTC_CAPACITY_SNAPSHOT_STALE_MS:15000}

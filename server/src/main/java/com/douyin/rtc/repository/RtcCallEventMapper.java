@@ -3,6 +3,7 @@ package com.douyin.rtc.repository;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.douyin.rtc.domain.CallEvent;
 import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -42,4 +43,9 @@ public interface RtcCallEventMapper extends BaseMapper<CallEvent> {
     @Select("SELECT " + COLUMNS + " FROM rtc_call_event WHERE call_id = #{callId} "
             + "AND participant_id = #{participantId} ORDER BY seq ASC LIMIT 1000")
     List<CallEvent> listByCallAndParticipant(@Param("callId") String callId, @Param("participantId") Long participantId);
+
+    @Delete({"<script>", "DELETE FROM rtc_call_event WHERE call_id IN",
+            "<foreach collection='callIds' item='callId' open='(' separator=',' close=')'>#{callId}</foreach>",
+            "</script>"})
+    int deleteByCallIds(@Param("callIds") List<String> callIds);
 }

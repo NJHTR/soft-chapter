@@ -9,6 +9,7 @@ rtc:
   port_range_start: 50000
   port_range_end: 50050
   use_external_ip: false
+  node_ip: 10.68.138.84
 prometheus:
   port: 7889
 webhook:

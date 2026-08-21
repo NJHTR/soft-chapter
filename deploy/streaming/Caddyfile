@@ -1,0 +1,11 @@
+# wss TLS 终结(LiveKit 1.13 无内置 TLS):朋友以 wss://10.68.138.84:7880 连接
+:7880 {
+	tls /etc/caddy/certs/lan.pem /etc/caddy/certs/lan-key.pem
+
+	@livekit {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @livekit douyin-livekit:7880
+	reverse_proxy douyin-livekit:7880
+}
